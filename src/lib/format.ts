@@ -1,0 +1,107 @@
+import { Array as Arr, String as Str } from "effect"
+
+import type { BulbState } from "@/lib/bulbs/schema"
+
+const truncate = (value: string, width: number): string => {
+  if (width <= 0) {
+    return ""
+  }
+  if (value.length <= width) {
+    return value
+  }
+  if (width === 1) {
+    return "…"
+  }
+  return `${Str.slice(0, width - 1)(value)}…`
+}
+
+const clamp = (value: number, min: number, max: number): number =>
+  Math.min(max, Math.max(min, value))
+
+const meterUnits = (value: number | null, min: number, max: number, width: number): number => {
+  if (value === null) {
+    return 0
+  }
+  if (max <= min) {
+    return 0
+  }
+  return clamp(Math.round(((value - min) / (max - min)) * width), 0, width)
+}
+
+const powerWord = (state: BulbState | undefined): string => {
+  if (state === undefined) {
+    return "unknown"
+  }
+  if (state.power === true) {
+    return "on"
+  }
+  if (state.power === false) {
+    return "off"
+  }
+  return "unknown"
+}
+
+const powerGlyph = (state: BulbState | undefined): string => {
+  if (state === undefined) {
+    return "◌"
+  }
+  if (state.power === true) {
+    return "●"
+  }
+  if (state.power === false) {
+    return "○"
+  }
+  return "◌"
+}
+
+const shortState = (state: BulbState | undefined): string => {
+  if (state === undefined) {
+    return "reading…"
+  }
+  if (state.power === false) {
+    return "off"
+  }
+  if (state.power === null) {
+    return "state unknown"
+  }
+  const brightness = state.brightness === null ? "?" : `${state.brightness}%`
+  return `${powerWord(state)} · ${brightness}`
+}
+
+const stateSummary = (state: BulbState | undefined): string => {
+  if (state === undefined) {
+    return "Reading the bulb…"
+  }
+  if (state.power === null) {
+    return "Power state unknown"
+  }
+  if (!state.power) {
+    return "Off"
+  }
+  const parts = ["On"]
+  if (state.brightness !== null) {
+    parts.push(`${state.brightness}%`)
+  }
+  if (state.mode === "color" && state.color !== null) {
+    parts.push(state.color)
+  } else if (state.mode === "temperature" && state.temperature !== null) {
+    parts.push(`${state.temperature}K`)
+  }
+  return Arr.join(parts, " · ")
+}
+
+const noticeDuration = (message: string): number => {
+  const words = Math.ceil(message.length / 5)
+  return clamp(2500 + words * 220, 3000, 7000)
+}
+
+export {
+  clamp,
+  meterUnits,
+  noticeDuration,
+  powerGlyph,
+  powerWord,
+  shortState,
+  stateSummary,
+  truncate,
+}

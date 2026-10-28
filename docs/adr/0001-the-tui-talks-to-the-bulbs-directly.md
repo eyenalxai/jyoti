@@ -6,6 +6,8 @@ Status: Accepted
 
 ## Context
 
+The credential-store detail in this record is superseded by [3. Bulb credentials live in the OS keyring](0003-bulb-credentials-live-in-the-os-keyring.md); the direct-connection decision stands.
+
 `vingroto` separates a daemon from stateless clients because mail needs a shared cache, keyring credentials, persistent connections and work that continues while the interface is closed. `jyoti` controls up to three bulbs on the local network. It has no shared cache, no credentials store beyond a local token file, no background sync and no second client. A daemon would add a second process, a wire protocol and lifecycle handling without a user-visible benefit.
 
 ## Decision

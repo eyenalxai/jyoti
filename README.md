@@ -1,20 +1,59 @@
 # jyoti
 
-A terminal control panel for Xiaomi light bulbs. OpenTUI (Solid) draws the interface, and the same Bun process talks to the bulbs directly over the local network with Xiaomi's miIO protocol.
+A terminal control panel for Xiaomi light bulbs. One Bun process runs an OpenTUI (Solid) interface and speaks Xiaomi's miIO protocol to the bulbs over the local network. There is no daemon and no client/server split.
 
-> **Status: scaffold only.** The app shell, tooling and documentation are in place. Token loading, the miIO client and the bulb controls are not implemented yet.
+Bulbs are added inside the app. Their tokens go to the OS keyring; only non-secret metadata is written to disk.
 
-## How it will work
+## What it does
 
-- One process. The TUI is the app; there is no daemon, HTTP API or database.
-- Bulbs are addressed by IP and token, read from `~/.local/share/xiaomi-bulbs/tokens.env` — the same file `bulbs.py` already uses.
-- Status reads go through miIO `get_properties`; changes go through `set_properties` over UDP port 54321.
-- The UI is planned to expose power, brightness, color temperature and RGB color, for one bulb, a named target or all bulbs.
+- Lists any number of bulbs, with live power, brightness, color temperature and RGB color.
+- Adds, edits and removes bulbs without touching a config file by hand.
+- Sends power, brightness, warmth and color changes to the selected bulb over UDP.
+- Keeps every action on the keyboard, with an inline error when a bulb does not answer.
+- Uses the terminal's default foreground, background and ANSI palette, so it follows the active terminal theme.
+- Starts empty. It does not read `~/.local/share/xiaomi-bulbs/tokens.env`; that file remains the reference script's input.
 
 ## Requirements
 
 - Bun 1.4 or newer
-- Bulbs on the same LAN, with local control enabled and tokens in the file above
+- `libsecret-tools` and an unlocked Secret Service keyring (`secret-tool` on `PATH`)
+- Bulbs on the same LAN, with local control enabled and their tokens to hand
+
+On Debian/Ubuntu: `sudo apt install libsecret-tools`. On Arch: `sudo pacman -S libsecret`.
+
+## Run
+
+```sh
+bun install
+bun start
+```
+
+The first screen is empty. Press `a` and enter the bulb's name, IP address and 32-character token. The token is written to the keyring; the config file receives the name and address.
+
+## Keys
+
+| Key               | Action                                       |
+| ----------------- | -------------------------------------------- |
+| `↑` `↓` / `j` `k` | Select a bulb, or move the focused control   |
+| `tab`             | Switch between the bulb list and controls    |
+| `←` `→` / `h` `l` | Adjust the focused control                   |
+| `space` / `p`     | Toggle power                                 |
+| `enter`           | Open controls, or act on the focused control |
+| `c`               | Set a hex color                              |
+| `a`               | Add a bulb                                   |
+| `e`               | Edit the selected bulb                       |
+| `d`               | Remove the selected bulb                     |
+| `r`               | Refresh the list and all states              |
+| `?`               | Show the key map                             |
+| `q` / `ctrl+c`    | Quit                                         |
+
+Brightness moves in 5% steps, warmth in 100 K steps. Changes update immediately and are sent after a short idle; a failed command restores the bulb's real state and explains what went wrong.
+
+## Storage and security
+
+- Metadata: `$XDG_CONFIG_HOME/jyoti/bulbs.json`, falling back to `~/.config/jyoti/bulbs.json`. The file is written atomically with mode `0600`.
+- Tokens: Secret Service entries under the `jyoti` service, one per bulb. They never enter the config file, a log line or an error message.
+- Overrides: `JYOTI_CONFIG_PATH`, `JYOTI_KEYRING_SERVICE`, `JYOTI_MIIO_PORT`, `JYOTI_MIIO_TIMEOUT`.
 
 ## Commands
 
@@ -28,24 +67,32 @@ A terminal control panel for Xiaomi light bulbs. OpenTUI (Solid) draws the inter
 | `bun run lint`   | Lint with oxlint                 |
 | `bun run tsc`    | Typecheck                        |
 
-Press `q` or `ctrl+c` to quit.
-
 ## Layout
 
 ```
 src/
-  main.tsx            process entry point
-  components/app.tsx  application shell
-  lib/theme.ts        color palette
+  main.tsx                 process entry point
+  components/
+    app.tsx                screen state and actions
+    bulb/                  dashboard, rail, detail, forms, keyboard
+    ui/                    modal, meter, status, key hint
+  lib/
+    bulbs/                 schemas, config file store, repository
+    keyring/               Secret Service adapter
+    miio/                  packet codec, UDP transport, bulb client
+    config.ts              runtime configuration
+    runtime.ts             Effect runtime boundary
+    theme.ts               palette
 ```
 
-UI components live in `src/components/`; domain and protocol code will live in `src/lib/`. Imports inside `src` use the `@/*` alias.
+`bulbs.py` remains the reference implementation for the wire format; jyoti is a TypeScript port and does not shell out to it.
 
 ## Documentation
 
 - `AGENTS.md` — working agreements for this repository.
 - `GLOSSARY.md` — the language used for bulbs, tokens and miIO.
-- `docs/adr/` — decisions, starting with the direct-connection architecture.
+- `docs/adr/` — the direct-connection and keyring decisions.
+- `docs/agents/issue-tracker.md` — Linear team, labels and publishing conventions.
 
 ## License
 
