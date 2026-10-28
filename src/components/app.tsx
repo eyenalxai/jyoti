@@ -14,6 +14,7 @@ import { Modals } from "@/components/bulb/modals"
 import { useAppKeys } from "@/components/bulb/use-app-keys"
 import { useBulbs } from "@/components/bulb/use-bulbs"
 import { useControls } from "@/components/bulb/use-controls"
+import { useTerminalPalette } from "@/components/bulb/use-terminal-palette"
 import { BRIGHTNESS_STEP, TEMPERATURE_STEP } from "@/lib/bulbs/schema"
 import { noticeDuration } from "@/lib/format"
 import { dispose } from "@/lib/runtime"
@@ -21,10 +22,10 @@ import { palette } from "@/lib/theme"
 import { after, cancel } from "@/lib/timers"
 
 const focusOrder: readonly ControlFocus[] = ["power", "brightness", "temperature", "color"]
-
 const App = () => {
   const renderer = useRenderer()
   const dimensions = useTerminalDimensions()
+  useTerminalPalette()
   const [screen, setScreen] = createSignal<Screen>("dashboard")
   const [activeBulb, setActiveBulb] = createSignal<Bulb | null>(null)
   const [formError, setFormError] = createSignal<string | null>(null)
