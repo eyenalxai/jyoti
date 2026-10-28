@@ -5,10 +5,12 @@ import type { ControlFocus } from "@/components/bulb/controls"
 import type { BulbsModel } from "@/components/bulb/use-bulbs"
 import type { Notice } from "@/components/ui/status"
 
+import { AllDetail } from "@/components/bulb/all-detail"
 import { Detail } from "@/components/bulb/detail"
 import { Empty } from "@/components/bulb/empty"
 import { Rail } from "@/components/bulb/rail"
 import { StatusLine } from "@/components/ui/status"
+import { aggregateState } from "@/lib/bulbs/aggregate"
 import { palette } from "@/lib/theme"
 
 type Pane = "bulbs" | "controls"
@@ -30,6 +32,10 @@ const Dashboard = (props: DashboardProps) => {
   const detailWidth = createMemo(() => Math.min(76, Math.max(20, shellWidth() - railWidth() - 2)))
   const meterWidth = createMemo(() => Math.min(36, Math.max(10, detailWidth() - 24)))
   const mainHeight = createMemo(() => Math.max(0, props.height - 4))
+  const aggregate = createMemo(() =>
+    aggregateState(props.model.bulbs(), props.model.states(), props.model.stateErrors()),
+  )
+  const showingAll = createMemo(() => props.model.allSelected() && props.model.canSelectAll())
 
   const summary = createMemo(() => {
     if (props.model.loading()) {
@@ -52,6 +58,9 @@ const Dashboard = (props: DashboardProps) => {
     }
     if (props.model.refreshing()) {
       return "refreshing…"
+    }
+    if (showingAll()) {
+      return props.pane === "bulbs" ? "↑/↓ select · tab controls" : "space toggle all · tab bulbs"
     }
     if (props.pane === "bulbs") {
       return "↑/↓ select · tab controls"
@@ -79,10 +88,11 @@ const Dashboard = (props: DashboardProps) => {
     if (props.model.bulbs().length === 0) {
       return "? help · q quit"
     }
+    const all = props.model.canSelectAll() ? "A all · " : ""
     if (shellWidth() < 90) {
-      return "a add · ? help · q quit"
+      return `${all}a add · ? help · q quit`
     }
-    return "a add · e edit · d remove · r refresh · ? help · q quit"
+    return `${all}a add · e edit · d remove · r refresh · ? help · q quit`
   })
 
   return (
@@ -145,28 +155,46 @@ const Dashboard = (props: DashboardProps) => {
                     bulbs={props.model.bulbs()}
                     states={props.model.states()}
                     stateErrors={props.model.stateErrors()}
+                    aggregate={aggregate()}
                     selectedId={props.model.selectedId()}
+                    allSelected={props.model.allSelected()}
+                    canSelectAll={props.model.canSelectAll()}
                     height={mainHeight()}
                     width={railWidth() - 2}
                     onSelect={props.model.select}
+                    onSelectAll={props.model.selectAll}
                     active={props.pane === "bulbs"}
                   />
                 </box>
 
                 <box flexGrow={1} paddingLeft={2} minWidth={0}>
-                  <Show when={props.model.selected()}>
-                    {(bulb) => (
-                      <Detail
-                        bulb={bulb()}
-                        state={props.model.selectedState()}
-                        error={props.model.selectedError()}
-                        focus={props.focus}
-                        active={props.pane === "controls"}
-                        width={detailWidth()}
-                        meterWidth={meterWidth()}
-                        onFocus={props.onFocus}
-                      />
-                    )}
+                  <Show
+                    when={showingAll()}
+                    fallback={
+                      <Show when={props.model.selected()}>
+                        {(bulb) => (
+                          <Detail
+                            bulb={bulb()}
+                            state={props.model.selectedState()}
+                            error={props.model.selectedError()}
+                            focus={props.focus}
+                            active={props.pane === "controls"}
+                            width={detailWidth()}
+                            meterWidth={meterWidth()}
+                            onFocus={props.onFocus}
+                          />
+                        )}
+                      </Show>
+                    }
+                  >
+                    <AllDetail
+                      aggregate={aggregate()}
+                      focus={props.focus}
+                      active={props.pane === "controls"}
+                      width={detailWidth()}
+                      meterWidth={meterWidth()}
+                      onFocus={props.onFocus}
+                    />
                   </Show>
                 </box>
               </Show>

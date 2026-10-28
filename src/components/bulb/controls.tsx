@@ -9,11 +9,11 @@ interface ControlRowProps {
   readonly value: JSX.Element
   readonly detail: JSX.Element
   readonly focused: boolean
-  readonly onFocus: () => void
+  readonly onFocus?: (() => void) | undefined
 }
 
 const ControlRow = (props: ControlRowProps) => (
-  <box flexDirection="column" height={2} onMouseDown={props.onFocus}>
+  <box flexDirection="column" height={2} onMouseDown={() => props.onFocus?.()}>
     <box flexDirection="row" gap={1} height={1}>
       <text fg={props.focused ? palette.accent : palette.background}>
         {props.focused ? "›" : " "}

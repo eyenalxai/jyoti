@@ -19,6 +19,7 @@ const Help = () => (
       bulbs
     </text>
     <KeyRow keys="↑ ↓  j k" label="Select a bulb or control" />
+    <KeyRow keys="A" label="Select all bulbs" />
     <KeyRow keys="a  e  d" label="Add, edit or remove" />
 
     <text fg={palette.faint} bg={palette.surfaceRaised} height={1} flexShrink={0}>

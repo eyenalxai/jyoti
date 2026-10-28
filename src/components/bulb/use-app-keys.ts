@@ -14,6 +14,7 @@ interface AppKeysOptions {
   readonly onRefresh: () => void
   readonly onHelp: () => void
   readonly onTogglePower: () => void
+  readonly onSelectAll: () => void
   readonly onTogglePane: () => void
   readonly onFocus: (focus: ControlFocus) => void
   readonly onMove: (delta: number) => void
@@ -31,6 +32,9 @@ interface KeyLike {
 
 const isQuestionMark = (key: KeyLike): boolean =>
   key.name === "?" || (key.shift && key.name === "/")
+
+const isSelectAll = (key: KeyLike): boolean =>
+  !key.ctrl && (key.name === "A" || (key.shift && key.name === "a"))
 
 const handleModal = (key: KeyLike, screen: Screen, options: AppKeysOptions): void => {
   if (screen === "help") {
@@ -91,6 +95,10 @@ const handleSelection = (key: KeyLike, options: AppKeysOptions): boolean => {
 const handleAction = (key: KeyLike, options: AppKeysOptions): boolean => {
   if (key.name === "q") {
     options.onQuit()
+    return true
+  }
+  if (isSelectAll(key)) {
+    options.onSelectAll()
     return true
   }
   if (key.name === "a") {

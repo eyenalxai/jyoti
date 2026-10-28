@@ -1,5 +1,11 @@
 import { Array as Arr, String as Str } from "effect"
 
+import type {
+  AggregateColor,
+  AggregatePower,
+  AggregateState,
+  ValueSpan,
+} from "@/lib/bulbs/aggregate"
 import type { BulbState } from "@/lib/bulbs/schema"
 
 const truncate = (value: string, width: number): string => {
@@ -90,18 +96,84 @@ const stateSummary = (state: BulbState | undefined): string => {
   return Arr.join(parts, " · ")
 }
 
+const aggregateGlyph = (power: AggregatePower): string => {
+  if (power === "on") {
+    return "●"
+  }
+  if (power === "off") {
+    return "○"
+  }
+  if (power === "mixed") {
+    return "◐"
+  }
+  return "◌"
+}
+
+const spanText = (span: ValueSpan | null | undefined, suffix: string): string => {
+  if (span === null || span === undefined) {
+    return "—"
+  }
+  return span.low === span.high ? `${span.low}${suffix}` : `${span.low}–${span.high}${suffix}`
+}
+
+const aggregateColorWord = (color: AggregateColor | null): string => {
+  if (color === null) {
+    return "—"
+  }
+  return color.kind === "equal" ? color.hex : "mixed"
+}
+
+const aggregateShort = (aggregate: AggregateState): string => {
+  if (aggregate.total === 0) {
+    return "no bulbs"
+  }
+  if (aggregate.reachable === 0) {
+    return aggregate.failed > 0 ? `${aggregate.failed} unreachable` : "reading…"
+  }
+  const tail =
+    aggregate.failed > 0
+      ? `${aggregate.failed} unreachable`
+      : `${aggregate.total} ${aggregate.total === 1 ? "bulb" : "bulbs"}`
+  return `${aggregate.power} · ${tail}`
+}
+
+const aggregateSummary = (aggregate: AggregateState): string => {
+  if (aggregate.reachable === 0) {
+    return aggregate.failed > 0 ? "No bulb answered" : "Reading the bulbs…"
+  }
+  if (aggregate.power === "off") {
+    return "Off"
+  }
+  const parts: string[] = [aggregate.power]
+  if (aggregate.brightness !== null) {
+    parts.push(spanText(aggregate.brightness, "%"))
+  }
+  if (aggregate.temperature !== null) {
+    parts.push(spanText(aggregate.temperature, "K"))
+  }
+  if (aggregate.color?.kind === "equal") {
+    parts.push(aggregate.color.hex)
+  }
+  return Arr.join(parts, " · ")
+}
+
 const noticeDuration = (message: string): number => {
   const words = Math.ceil(message.length / 5)
   return clamp(2500 + words * 220, 3000, 7000)
 }
 
 export {
+  aggregateColorWord,
+  aggregateGlyph,
+  aggregateShort,
+  aggregateSummary,
   clamp,
   meterUnits,
   noticeDuration,
   powerGlyph,
   powerWord,
   shortState,
+  spanText,
   stateSummary,
   truncate,
 }

@@ -1,6 +1,4 @@
-import type { Effect } from "effect"
-
-import { Result, Schema, String as Str } from "effect"
+import { Array as Arr, Effect, Result, Schema, String as Str } from "effect"
 
 import type { BulbsModel } from "@/components/bulb/use-bulbs"
 import type { BulbsError } from "@/lib/bulbs/error"
@@ -35,6 +33,20 @@ interface ControlsModel {
 interface Pending {
   readonly timer: Timer
   readonly send: () => void
+}
+
+const nameList = (names: readonly string[]): string => {
+  const first = names[0]
+  const second = names[1]
+  if (first === undefined) {
+    return "The bulbs"
+  }
+  if (second === undefined) {
+    return first
+  }
+  return names.length === 2
+    ? `${first} and ${second}`
+    : `${first}, ${second} and ${names.length - 2} more`
 }
 
 const useControls = (options: UseControlsOptions): ControlsModel => {
@@ -85,7 +97,65 @@ const useControls = (options: UseControlsOptions): ControlsModel => {
     })
   }
 
+  const toggleAllPower = (): Promise<string | null> => {
+    const bulbs = options.model.bulbs()
+    if (bulbs.length === 0) {
+      return Promise.resolve(null)
+    }
+    const states = options.model.states()
+    const known = Arr.flatMap(bulbs, (bulb) => {
+      const state = states.get(bulb.id)
+      return state === undefined || state.power === null ? [] : [state.power]
+    })
+    const target = !(known.length > 0 && Arr.every(known, Boolean))
+
+    for (const bulb of bulbs) {
+      options.model.patchState(bulb.id, { power: target })
+    }
+
+    return run(
+      Bulbs.use((service) =>
+        Effect.forEach(
+          bulbs,
+          (bulb) =>
+            service.setPower(bulb.id, target).pipe(
+              Effect.result,
+              Effect.map((outcome) => ({ bulb, outcome })),
+            ),
+          { concurrency: 4 },
+        ),
+      ),
+    ).then((result) => {
+      if (!result.ok) {
+        options.onError(result.message)
+        for (const bulb of bulbs) {
+          void options.model.readOne(bulb.id)
+        }
+        return result.message
+      }
+
+      const failures = Arr.filter(result.value, (entry) => Result.isFailure(entry.outcome))
+      const changed = result.value.length - failures.length
+      for (const entry of result.value) {
+        if (Result.isFailure(entry.outcome) || !states.has(entry.bulb.id)) {
+          void options.model.readOne(entry.bulb.id)
+        }
+      }
+      if (failures.length === 0) {
+        return null
+      }
+
+      const names = nameList(Arr.map(failures, (entry) => entry.bulb.name))
+      const message = `${names} failed · ${changed} of ${result.value.length} changed`
+      options.onError(message)
+      return message
+    })
+  }
+
   const togglePower = (): Promise<string | null> => {
+    if (options.model.allSelected()) {
+      return toggleAllPower()
+    }
     const bulb = options.model.selected()
     if (bulb === null) {
       return Promise.resolve(null)
@@ -111,6 +181,9 @@ const useControls = (options: UseControlsOptions): ControlsModel => {
   }
 
   const adjustBrightness = (delta: number) => {
+    if (options.model.allSelected()) {
+      return
+    }
     const bulb = options.model.selected()
     if (bulb === null) {
       return
@@ -134,6 +207,9 @@ const useControls = (options: UseControlsOptions): ControlsModel => {
   }
 
   const adjustTemperature = (delta: number) => {
+    if (options.model.allSelected()) {
+      return
+    }
     const bulb = options.model.selected()
     if (bulb === null) {
       return
@@ -157,6 +233,9 @@ const useControls = (options: UseControlsOptions): ControlsModel => {
   }
 
   const setColor = (hex: string): Promise<string | null> => {
+    if (options.model.allSelected()) {
+      return Promise.resolve("Select one bulb to set its color.")
+    }
     const bulb = options.model.selected()
     if (bulb === null) {
       return Promise.resolve(null)

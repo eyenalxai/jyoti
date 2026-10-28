@@ -1,12 +1,11 @@
 import { useRenderer, useTerminalDimensions } from "@opentui/solid"
-import { String as Str } from "effect"
 import { createSignal, onCleanup } from "solid-js"
 
 import type { ControlFocus } from "@/components/bulb/controls"
 import type { Pane } from "@/components/bulb/dashboard"
 import type { Screen } from "@/components/bulb/modals"
 import type { Notice } from "@/components/ui/status"
-import type { Bulb, BulbDraft, BulbPatch } from "@/lib/bulbs/schema"
+import type { Bulb } from "@/lib/bulbs/schema"
 import type { Timer } from "@/lib/timers"
 
 import { Dashboard } from "@/components/bulb/dashboard"
@@ -14,6 +13,7 @@ import { Modals } from "@/components/bulb/modals"
 import { useAppKeys } from "@/components/bulb/use-app-keys"
 import { useBulbs } from "@/components/bulb/use-bulbs"
 import { useControls } from "@/components/bulb/use-controls"
+import { useForms } from "@/components/bulb/use-forms"
 import { useTerminalPalette } from "@/components/bulb/use-terminal-palette"
 import { BRIGHTNESS_STEP, TEMPERATURE_STEP } from "@/lib/bulbs/schema"
 import { noticeDuration } from "@/lib/format"
@@ -51,6 +51,17 @@ const App = () => {
 
   const model = useBulbs({ onError: fail })
   const controls = useControls({ model, onError: fail })
+  const forms = useForms({
+    model,
+    controls,
+    activeBulb,
+    busy,
+    setActiveBulb,
+    setBusy,
+    setFormError,
+    setScreen,
+    notify,
+  })
 
   const closeScreen = () => {
     if (busy()) {
@@ -71,6 +82,10 @@ const App = () => {
   }
 
   const openEdit = () => {
+    if (model.allSelected()) {
+      notify({ kind: "info", message: "All bulbs is a group. Select a bulb to edit it." })
+      return
+    }
     const bulb = model.selected()
     if (bulb === null || busy()) {
       return
@@ -81,6 +96,10 @@ const App = () => {
   }
 
   const openRemove = () => {
+    if (model.allSelected()) {
+      notify({ kind: "info", message: "All bulbs is a group. Select a bulb to remove it." })
+      return
+    }
     const bulb = model.selected()
     if (bulb === null || busy()) {
       return
@@ -91,6 +110,10 @@ const App = () => {
   }
 
   const openColor = () => {
+    if (model.allSelected()) {
+      notify({ kind: "info", message: "All bulbs is a group. Select a bulb to set its color." })
+      return
+    }
     const bulb = model.selected()
     if (bulb === null || busy()) {
       return
@@ -100,91 +123,26 @@ const App = () => {
     setScreen("color")
   }
 
-  const submitAdd = (draft: BulbDraft) => {
-    setBusy(true)
-    setFormError(null)
-    void model.add(draft).then((error) => {
-      setBusy(false)
-      if (error !== null) {
-        setFormError(error)
-        return null
-      }
-      setScreen("dashboard")
-      setActiveBulb(null)
-      notify({ kind: "success", message: `${Str.trim(draft.name)} added.` })
-      return null
-    })
-  }
-
-  const submitEdit = (draft: BulbDraft) => {
-    const bulb = activeBulb()
-    if (bulb === null) {
+  const selectAll = () => {
+    if (!model.canSelectAll()) {
+      notify({
+        kind: "info",
+        message:
+          model.bulbs().length === 0
+            ? "Add a bulb first."
+            : "Add a second bulb to control all of them.",
+      })
       return
     }
-    const patch: BulbPatch = {
-      name: draft.name,
-      address: draft.address,
-      ...(draft.model === undefined ? {} : { model: draft.model }),
-      ...(draft.token.length === 0 ? {} : { token: draft.token }),
-    }
-    setBusy(true)
-    setFormError(null)
-    void model.update(bulb.id, patch).then((error) => {
-      setBusy(false)
-      if (error !== null) {
-        setFormError(error)
-        return null
-      }
-      setScreen("dashboard")
-      setActiveBulb(null)
-      notify({ kind: "success", message: `${Str.trim(draft.name)} saved.` })
-      return null
-    })
-  }
-
-  const confirmRemove = () => {
-    const bulb = activeBulb()
-    if (bulb === null || busy()) {
-      return
-    }
-    setBusy(true)
-    setFormError(null)
-    void model.remove(bulb.id).then((error) => {
-      setBusy(false)
-      if (error !== null) {
-        setFormError(error)
-        return null
-      }
-      setScreen("dashboard")
-      setActiveBulb(null)
-      notify({ kind: "success", message: `${bulb.name} removed.` })
-      return null
-    })
-  }
-
-  const submitColor = (hex: string) => {
-    const bulb = activeBulb()
-    if (bulb === null || busy()) {
-      return
-    }
-    setBusy(true)
-    setFormError(null)
-    void controls.setColor(hex).then((error) => {
-      setBusy(false)
-      if (error !== null) {
-        setFormError(error)
-        return null
-      }
-      setScreen("dashboard")
-      setActiveBulb(null)
-      notify({ kind: "success", message: `${bulb.name} set to ${hex}.` })
-      return null
-    })
+    model.selectAll()
+    setFocus("power")
   }
 
   const cycleFocus = (direction: number) => {
-    const current = focusOrder.indexOf(focus())
-    const next = focusOrder[(current + direction + focusOrder.length) % focusOrder.length]
+    const order = model.allSelected() ? (["power"] as const) : focusOrder
+    const current = order.indexOf(focus())
+    const base = current === -1 ? 0 : current
+    const next = order[(base + direction + order.length) % order.length]
     if (next !== undefined) {
       setFocus(next)
     }
@@ -228,6 +186,13 @@ const App = () => {
   }
 
   const focusControl = (next: ControlFocus) => {
+    if (model.allSelected() && next !== "power") {
+      notify({
+        kind: "info",
+        message: "Select one bulb to change brightness, warmth or color.",
+      })
+      return
+    }
     setPane("controls")
     setFocus(next)
   }
@@ -249,12 +214,13 @@ const App = () => {
     onTogglePower: () => {
       void controls.togglePower()
     },
+    onSelectAll: selectAll,
     onTogglePane: togglePane,
     onFocus: focusControl,
     onMove: move,
     onAdjust: adjust,
     onActivate: activate,
-    onConfirmRemove: confirmRemove,
+    onConfirmRemove: forms.confirmRemove,
   })
 
   onCleanup(() => {
@@ -288,10 +254,10 @@ const App = () => {
         colorInitial={model.selectedState()?.color ?? "#FFFFFF"}
         busy={busy()}
         error={formError()}
-        onSubmitAdd={submitAdd}
-        onSubmitEdit={submitEdit}
-        onConfirmRemove={confirmRemove}
-        onSubmitColor={submitColor}
+        onSubmitAdd={forms.submitAdd}
+        onSubmitEdit={forms.submitEdit}
+        onConfirmRemove={forms.confirmRemove}
+        onSubmitColor={forms.submitColor}
       />
     </box>
   )

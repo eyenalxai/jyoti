@@ -35,6 +35,7 @@ The first screen is empty. Press `a` and enter the bulb's name, IP address and 3
 | Key               | Action                                       |
 | ----------------- | -------------------------------------------- |
 | `↑` `↓` / `j` `k` | Select a bulb, or move the focused control   |
+| `A`               | Select all bulbs (two or more)               |
 | `tab`             | Switch between the bulb list and controls    |
 | `←` `→` / `h` `l` | Adjust the focused control                   |
 | `space` / `p`     | Toggle power                                 |
@@ -48,6 +49,8 @@ The first screen is empty. Press `a` and enter the bulb's name, IP address and 3
 | `q` / `ctrl+c`    | Quit                                         |
 
 Brightness moves in 5% steps, warmth in 100 K steps. Changes update immediately and are sent after a short idle; a failed command restores the bulb's real state and explains what went wrong.
+
+With two or more bulbs, `A` selects **All bulbs**: the panel shows the aggregate power, brightness, warmth and colour, and `space` turns every bulb off when all of them are on, or on otherwise. Edit, remove and colour stay per bulb.
 
 ## Storage and security
 
