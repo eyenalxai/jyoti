@@ -16,6 +16,7 @@
     "prepare": "effect-tsgo patch --no-typescript --oxlint"
   },
   "dependencies": {
+    "@effect/platform-bun": "4.0.7",
     "@opentui/core": "0.7.0",
     "@opentui/solid": "0.7.0",
     "effect": "4.0.7",

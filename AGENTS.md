@@ -21,24 +21,25 @@ Inside `src`, import through the `@/*` alias. `tsconfig.json` holds the compiler
 
 ## Conventions
 
-- Bun is the runtime, package manager and test runner; ESM throughout.
+- Bun is the runtime and package manager; ESM throughout.
 - No barrel files and no re-exports: import the leaf module directly.
 - No lint rule suppressions; fix the code instead of disabling a rule.
 - No `as any`, no casts that silence the type checker, no non-null assertions, no `@ts-ignore`.
 - Comments only to explain a hard "why this way?"; code says what it does.
 - The app owns its state: there is no daemon, no database and no HTTP API.
-- Bulb tokens are read from `~/.local/share/xiaomi-bulbs/tokens.env`; never commit them or log them.
-- Wire values follow the miIO schema used by `bulbs.py`: `siid`/`piid` properties, integer brightness, kelvin temperature and packed RGB.
+- Bulb tokens live in the OS keyring (Secret Service); never commit them, write them to config or log them. Metadata lives in `$XDG_CONFIG_HOME/jyoti/bulbs.json`.
+- Wire values follow the miIO schema used by `bulbs.py`: `siid`/`piid` properties, integer brightness, kelvin temperature and packed RGB. Do not copy Python into this repository.
 - Do not add a dependency unless the task needs it.
+- Do not add tests. Verify changes with `bun run check` and by running the app.
 
 ### Effect
 
 The app runs Effect 4.0.7:
 
-- Services: `class X extends Context.Service<X, XShape>()("jyoti/lib/…")` with `static readonly layer = Layer.effect(X, Effect.gen(function* () { … }))` that returns `X.of({ … })`.
+- Services: `class X extends Context.Service<X, XShape>()("jyoti/lib/<area>/<file>/X")` with `static readonly layer = Layer.effect(X, Effect.gen(function* () { … }))` that returns `X.of({ … })`.
 - Service methods and other reusable effects: `Effect.fn("Domain.operation")(function* …)`.
 - Errors: `Schema.TaggedError`.
-- Records: `Schema.Struct(…)` with a same-name declaration for its decoded type (`interface` for plain shapes, `type X = Schema.Schema.Type<typeof X>` for schemas).
+- Records: name the schema `XSchema` and its decoded type `X`, then export both from the leaf module.
 - Runtime configuration goes through `Config`, not `process.env`.
 
 The recommended Effect lint rules come from `@effect/tsgo` through `oxlint.config.ts`, so `bun run lint` reports Effect diagnostics without a language-server install. `node_modules/effect/AGENTS.md` resolves from the repository root.

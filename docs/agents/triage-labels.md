@@ -15,10 +15,10 @@ roles to the label strings used in team JYO.
 
 ## Category roles
 
-| Label in mattpocock/skills | Label in our tracker | Meaning                       |
-| -------------------------- | -------------------- | ----------------------------- |
-| `bug`                      | `Bug`                | Something is broken           |
-| `enhancement`              | `enhancement`        | New feature or improvement    |
+| Label in mattpocock/skills | Label in our tracker | Meaning                    |
+| -------------------------- | -------------------- | -------------------------- |
+| `bug`                      | `Bug`                | Something is broken        |
+| `enhancement`              | `enhancement`        | New feature or improvement |
 
 `Bug` is the workspace-level label (capitalized); do not create a second `bug`.
 

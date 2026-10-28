@@ -2,7 +2,7 @@
 
 Date: 2026-10-28
 
-Status: Accepted
+Status: Superseded by [3. Bulb credentials live in the OS keyring](0003-bulb-credentials-live-in-the-os-keyring.md)
 
 ## Context
 
