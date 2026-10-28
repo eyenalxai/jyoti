@@ -25,10 +25,11 @@ interface DashboardProps {
 
 const Dashboard = (props: DashboardProps) => {
   const tooSmall = createMemo(() => props.width < 68 || props.height < 20)
-  const railWidth = createMemo(() => (props.width >= 96 ? 30 : 26))
-  const contentWidth = createMemo(() => Math.max(0, props.width - 2))
+  const shellWidth = createMemo(() => Math.min(108, Math.max(0, props.width - 2)))
+  const railWidth = createMemo(() => (shellWidth() >= 96 ? 30 : 26))
+  const detailWidth = createMemo(() => Math.min(76, Math.max(20, shellWidth() - railWidth() - 2)))
+  const meterWidth = createMemo(() => Math.min(36, Math.max(10, detailWidth() - 24)))
   const mainHeight = createMemo(() => Math.max(0, props.height - 4))
-  const meterWidth = createMemo(() => Math.max(6, props.width - railWidth() - 28))
 
   const summary = createMemo(() => {
     if (props.model.loading()) {
@@ -78,7 +79,7 @@ const Dashboard = (props: DashboardProps) => {
     if (props.model.bulbs().length === 0) {
       return "? help · q quit"
     }
-    if (props.width < 90) {
+    if (shellWidth() < 90) {
       return "a add · ? help · q quit"
     }
     return "a add · e edit · d remove · r refresh · ? help · q quit"
@@ -106,79 +107,83 @@ const Dashboard = (props: DashboardProps) => {
         </box>
       }
     >
-      <box flexDirection="column" flexShrink={0}>
-        <box flexDirection="row" justifyContent="space-between" height={1}>
-          <box flexDirection="row" gap={1}>
-            <text fg={palette.accent}>
-              <strong>jyoti</strong>
+      <box flexGrow={1} flexDirection="row" justifyContent="center" minHeight={0}>
+        <box width={shellWidth()} flexDirection="column" minWidth={0} minHeight={0}>
+          <box flexDirection="column" flexShrink={0}>
+            <box flexDirection="row" justifyContent="space-between" height={1}>
+              <box flexDirection="row" gap={1}>
+                <text fg={palette.accent}>
+                  <strong>jyoti</strong>
+                </text>
+                <text fg={palette.faint}>xiaomi light control</text>
+              </box>
+              <text fg={palette.muted}>{summary()}</text>
+            </box>
+            <text fg={palette.border} height={1}>
+              {Str.repeat(shellWidth())("─")}
             </text>
-            <text fg={palette.faint}>xiaomi light control</text>
           </box>
-          <text fg={palette.muted}>{summary()}</text>
-        </box>
-        <text fg={palette.border} height={1}>
-          {Str.repeat(contentWidth())("─")}
-        </text>
-      </box>
 
-      <box flexDirection="row" flexGrow={1} minHeight={0}>
-        <Show
-          when={!props.model.loading()}
-          fallback={
-            <box flexGrow={1} alignItems="center" justifyContent="center">
-              <text fg={palette.muted}>Reading bulbs…</text>
-            </box>
-          }
-        >
-          <Show when={props.model.bulbs().length > 0} fallback={<Empty />}>
-            <box
-              width={railWidth()}
-              flexShrink={0}
-              border={["right"]}
-              borderColor={palette.border}
-              paddingRight={1}
+          <box flexDirection="row" flexGrow={1} minHeight={0}>
+            <Show
+              when={!props.model.loading()}
+              fallback={
+                <box flexGrow={1} alignItems="center" justifyContent="center">
+                  <text fg={palette.muted}>Reading bulbs…</text>
+                </box>
+              }
             >
-              <Rail
-                bulbs={props.model.bulbs()}
-                states={props.model.states()}
-                stateErrors={props.model.stateErrors()}
-                selectedId={props.model.selectedId()}
-                height={mainHeight()}
-                width={railWidth() - 2}
-                onSelect={props.model.select}
-                active={props.pane === "bulbs"}
-              />
-            </box>
-
-            <box flexGrow={1} paddingLeft={2} minWidth={0}>
-              <Show when={props.model.selected()}>
-                {(bulb) => (
-                  <Detail
-                    bulb={bulb()}
-                    state={props.model.selectedState()}
-                    error={props.model.selectedError()}
-                    focus={props.focus}
-                    active={props.pane === "controls"}
-                    width={Math.max(20, props.width - railWidth() - 4)}
-                    meterWidth={meterWidth()}
-                    onFocus={props.onFocus}
+              <Show when={props.model.bulbs().length > 0} fallback={<Empty />}>
+                <box
+                  width={railWidth()}
+                  flexShrink={0}
+                  border={["right"]}
+                  borderColor={palette.border}
+                  paddingRight={1}
+                >
+                  <Rail
+                    bulbs={props.model.bulbs()}
+                    states={props.model.states()}
+                    stateErrors={props.model.stateErrors()}
+                    selectedId={props.model.selectedId()}
+                    height={mainHeight()}
+                    width={railWidth() - 2}
+                    onSelect={props.model.select}
+                    active={props.pane === "bulbs"}
                   />
-                )}
-              </Show>
-            </box>
-          </Show>
-        </Show>
-      </box>
+                </box>
 
-      <box flexDirection="column" flexShrink={0}>
-        <text fg={palette.border} height={1}>
-          {Str.repeat(contentWidth())("─")}
-        </text>
-        <box flexDirection="row" justifyContent="space-between" height={1} gap={2}>
-          <StatusLine notice={props.notice} fallback={hint()} />
-          <text fg={palette.muted} truncate wrapMode="none" flexShrink={0}>
-            {globalHint()}
-          </text>
+                <box flexGrow={1} paddingLeft={2} minWidth={0}>
+                  <Show when={props.model.selected()}>
+                    {(bulb) => (
+                      <Detail
+                        bulb={bulb()}
+                        state={props.model.selectedState()}
+                        error={props.model.selectedError()}
+                        focus={props.focus}
+                        active={props.pane === "controls"}
+                        width={detailWidth()}
+                        meterWidth={meterWidth()}
+                        onFocus={props.onFocus}
+                      />
+                    )}
+                  </Show>
+                </box>
+              </Show>
+            </Show>
+          </box>
+
+          <box flexDirection="column" flexShrink={0}>
+            <text fg={palette.border} height={1}>
+              {Str.repeat(shellWidth())("─")}
+            </text>
+            <box flexDirection="row" justifyContent="space-between" height={1} gap={2}>
+              <StatusLine notice={props.notice} fallback={hint()} />
+              <text fg={palette.muted} truncate wrapMode="none" flexShrink={0}>
+                {globalHint()}
+              </text>
+            </box>
+          </box>
         </box>
       </box>
     </Show>
