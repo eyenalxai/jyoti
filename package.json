@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json.schemastore.org/package.json",
+  "name": "jyoti",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "bun run src/main.tsx",
+    "dev": "bun --watch run src/main.tsx",
+    "format": "oxfmt",
+    "format:check": "oxfmt --check",
+    "lint": "oxlint --type-aware",
+    "lint:fix": "oxlint --type-aware --fix",
+    "tsc": "tsc --noEmit",
+    "check": "bun run format:check && bun run lint && bun run tsc",
+    "prepare": "effect-tsgo patch --no-typescript --oxlint"
+  },
+  "dependencies": {
+    "@opentui/core": "0.7.0",
+    "@opentui/solid": "0.7.0",
+    "effect": "4.0.7",
+    "solid-js": "1.9.12"
+  },
+  "devDependencies": {
+    "@effect/tsgo": "0.63.0",
+    "@types/bun": "1.4.4",
+    "oxfmt": "0.75.0",
+    "oxlint": "1.90.0",
+    "oxlint-tsgolint": "7.0.2005",
+    "typescript": "7.0.2"
+  }
+}
