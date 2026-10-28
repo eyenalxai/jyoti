@@ -51,3 +51,17 @@ The recommended Effect lint rules come from `@effect/tsgo` through `oxlint.confi
 - A file named exactly after the prefix (or its plural) stays as the entry file next to the group directory: `bulb.ts` next to `bulb/`.
 - Solid hook files keep the `use-` prefix; only the domain prefix after it is grouped or dropped: `use-bulb-power.ts` becomes `bulb/use-power.ts`.
 - Cross-directory imports use the `@/*` alias.
+
+## Agent skills
+
+### Issue tracker
+
+Issues live in Linear (team JYO, personal workspace), driven with the `rata` CLI; PRs carry `JYO-<n>` and `Closes JYO-<n>`. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+The five canonical triage roles use their default label strings. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: `GLOSSARY.md` and `docs/adr/` at the repository root. See `docs/agents/domain.md`.
