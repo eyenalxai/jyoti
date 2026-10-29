@@ -66,7 +66,7 @@ const Modals = (props: ModalsProps) => (
     </Show>
 
     <Show when={props.screen === "color" && props.activeBulb !== undefined}>
-      <Modal title="Set color" hint="esc restore" width={58} height={15}>
+      <Modal title="Set color" hint="esc revert" width={58} height={15}>
         <Color
           initial={props.colorInitial}
           busy={props.busy}
@@ -97,7 +97,6 @@ const Modals = (props: ModalsProps) => (
           captured={props.syncModel.status().monitor}
           pending={props.syncModel.status().pendingMonitor}
           busy={props.syncModel.monitorBusy()}
-          error={props.syncModel.monitorError()}
         />
       </Modal>
     </Show>

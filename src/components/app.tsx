@@ -4,9 +4,10 @@ import { createMemo, createSignal, onCleanup } from "solid-js"
 import type { ControlFocus } from "@/components/bulb/controls"
 import type { Pane } from "@/components/bulb/dashboard"
 import type { Screen } from "@/components/bulb/modals"
-import type { Bulb, BulbId, BulbState } from "@/lib/bulbs/schema"
+import type { Bulb } from "@/lib/bulbs/schema"
 
 import { initialColor } from "@/components/bulb/color/initial"
+import { useColorSession } from "@/components/bulb/color/use-session"
 import { Dashboard } from "@/components/bulb/dashboard"
 import { Modals } from "@/components/bulb/modals"
 import { useBulbActions } from "@/components/bulb/use-actions"
@@ -35,15 +36,13 @@ const App = () => {
   const [focus, setFocus] = createSignal<ControlFocus>("power")
   const [pane, setPane] = createSignal<Pane>("bulbs")
   const { toasts, notify, dismiss: dismissToast } = useToasts()
-  const [colorSnapshot, setColorSnapshot] = createSignal<ReadonlyMap<BulbId, BulbState>>(new Map())
-  const [colorDirty, setColorDirty] = createSignal(false)
   let quitting = false
 
   const fail = (message: string) => {
     notify({ kind: "error", message })
   }
 
-  const preview = useCapturePreview()
+  const preview = useCapturePreview({ onError: fail })
   const sync = useScreenSyncModel({ onNotice: notify, onError: fail })
   const model = useBulbs({ onError: fail, onPower: sync.notePowers })
   const syncActive = createMemo(() => sync.status().phase !== "idle")
@@ -55,6 +54,7 @@ const App = () => {
       notify({ kind: "info", message })
     },
   })
+  const colorSession = useColorSession({ model, controls, notify })
   const quit = () => {
     if (quitting) {
       return
@@ -71,17 +71,15 @@ const App = () => {
     syncActive,
     busy,
     notify,
+    captureColor: colorSession.capture,
     setActiveBulb,
-    setColorDirty,
-    setColorSnapshot,
     setScreen,
   })
   const forms = useForms({
     model,
-    controls,
+    sendColor: colorSession.commit,
     activeBulb,
     busy,
-    colorSnapshot,
     setActiveBulb,
     setBusy,
     setScreen,
@@ -93,23 +91,18 @@ const App = () => {
     if (busy()) {
       return
     }
-    if (screen() === "color" && colorDirty()) {
-      forms.revertColor()
+    if (screen() === "color" && colorSession.dirty()) {
+      colorSession.revert()
     }
     setScreen("dashboard")
     setActiveBulb(null)
-    setColorDirty(false)
+    colorSession.reset()
   }
 
   const dismissColor = () => {
     setScreen("dashboard")
     setActiveBulb(null)
-    setColorDirty(false)
-  }
-
-  const previewColor = (hex: string): Promise<boolean> => {
-    setColorDirty(true)
-    return controls.setColor(hex).then((outcome) => outcome.error === null)
+    colorSession.reset()
   }
 
   const selectAll = () => {
@@ -284,7 +277,7 @@ const App = () => {
         onSubmitEdit={forms.submitEdit}
         onConfirmRemove={forms.confirmRemove}
         onSubmitColor={forms.submitColor}
-        onPreviewColor={previewColor}
+        onPreviewColor={colorSession.preview}
         onDismissColor={dismissColor}
       />
       <Toaster toasts={toasts()} onDismiss={dismissToast} />

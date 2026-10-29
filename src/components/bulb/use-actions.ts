@@ -3,7 +3,7 @@ import type { Accessor, Setter } from "solid-js"
 import type { Screen } from "@/components/bulb/modals"
 import type { BulbsModel } from "@/components/bulb/use-bulbs"
 import type { Notice } from "@/components/ui/toast"
-import type { Bulb, BulbId, BulbState } from "@/lib/bulbs/schema"
+import type { Bulb } from "@/lib/bulbs/schema"
 
 import { SYNC_BLOCKS_BULBS, SYNC_OWNS_CONTROLS } from "@/lib/screen/sync/copy"
 
@@ -12,9 +12,8 @@ interface UseBulbActionsOptions {
   readonly syncActive: Accessor<boolean>
   readonly busy: Accessor<boolean>
   readonly notify: (notice: Notice) => void
+  readonly captureColor: () => void
   readonly setActiveBulb: Setter<Bulb | null>
-  readonly setColorDirty: Setter<boolean>
-  readonly setColorSnapshot: Setter<ReadonlyMap<BulbId, BulbState>>
   readonly setScreen: Setter<Screen>
 }
 
@@ -88,25 +87,12 @@ const useBulbActions = (options: UseBulbActionsOptions): BulbActions => {
     if (options.busy()) {
       return
     }
-    const all = options.model.allSelected()
-    const selected = options.model.selected()
-    if (!all && selected === null) {
+    if (!options.model.allSelected() && options.model.selected() === null) {
       return
     }
 
-    const targets = all ? options.model.bulbs() : selected === null ? [] : [selected]
-    const states = options.model.states()
-    const snapshot = new Map<BulbId, BulbState>()
-    for (const bulb of targets) {
-      const state = states.get(bulb.id)
-      if (state !== undefined) {
-        snapshot.set(bulb.id, state)
-      }
-    }
-
-    options.setColorSnapshot(snapshot)
-    options.setColorDirty(false)
-    options.setActiveBulb(selected)
+    options.captureColor()
+    options.setActiveBulb(options.model.selected())
     options.setScreen("color")
   }
 

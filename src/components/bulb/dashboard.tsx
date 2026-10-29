@@ -11,7 +11,6 @@ import { Detail } from "@/components/bulb/detail"
 import { Empty } from "@/components/bulb/empty"
 import { Rail } from "@/components/bulb/rail"
 import { SyncStrip } from "@/components/screen/strip"
-import { StatusLine } from "@/components/ui/status"
 import { aggregateState } from "@/lib/bulbs/aggregate"
 import { SYNC_OWNS_CONTROLS, syncKeys } from "@/lib/screen/sync/copy"
 import { palette } from "@/lib/theme"
@@ -252,7 +251,9 @@ const Dashboard = (props: DashboardProps) => {
               {Str.repeat(shellWidth())("─")}
             </text>
             <box flexDirection="row" justifyContent="space-between" height={1} gap={2}>
-              <StatusLine fallback={hint()} />
+              <text fg={palette.muted} truncate wrapMode="none" flexGrow={1}>
+                {hint()}
+              </text>
               <text fg={palette.muted} truncate wrapMode="none" flexShrink={0}>
                 {globalHint()}
               </text>

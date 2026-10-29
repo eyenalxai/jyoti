@@ -83,7 +83,7 @@ const Color = (props: ColorProps) => {
       if (next === lastSent()) {
         return
       }
-      Effect.runFork(sendPreview(next))
+      Effect.runFork(sendPreview(next).pipe(Effect.ignoreCause))
     })
   }
 
@@ -283,7 +283,7 @@ const Color = (props: ColorProps) => {
 
       <box flexDirection="row" justifyContent="space-between" height={1}>
         <text bg={palette.surfaceRaised} fg={palette.faint}>
-          esc restore · tab mode · ↑↓ move
+          esc revert · tab mode · ↑↓ move
         </text>
         <text bg={palette.surfaceRaised} fg={props.busy ? palette.faint : palette.accent}>
           {props.busy ? "applying…" : "enter done"}

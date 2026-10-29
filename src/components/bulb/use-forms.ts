@@ -2,18 +2,17 @@ import type { Setter } from "solid-js"
 
 import { String as Str } from "effect"
 
+import type { ColorOutcome } from "@/components/bulb/color/outcome"
 import type { Screen } from "@/components/bulb/modals"
 import type { BulbsModel } from "@/components/bulb/use-bulbs"
-import type { ControlsModel } from "@/components/bulb/use-controls"
 import type { Notice } from "@/components/ui/toast"
-import type { Bulb, BulbDraft, BulbId, BulbPatch, BulbState } from "@/lib/bulbs/schema"
+import type { Bulb, BulbDraft, BulbPatch } from "@/lib/bulbs/schema"
 
 interface UseFormsOptions {
   readonly model: BulbsModel
-  readonly controls: ControlsModel
+  readonly sendColor: (hex: string) => Promise<ColorOutcome>
   readonly activeBulb: () => Bulb | null
   readonly busy: () => boolean
-  readonly colorSnapshot: () => ReadonlyMap<BulbId, BulbState>
   readonly setActiveBulb: Setter<Bulb | null>
   readonly setBusy: Setter<boolean>
   readonly setScreen: Setter<Screen>
@@ -25,7 +24,6 @@ interface FormsModel {
   readonly submitEdit: (draft: BulbDraft) => void
   readonly confirmRemove: () => void
   readonly submitColor: (hex: string) => void
-  readonly revertColor: () => void
 }
 
 const useForms = (options: UseFormsOptions): FormsModel => {
@@ -96,7 +94,7 @@ const useForms = (options: UseFormsOptions): FormsModel => {
     }
     const label = all ? "All bulbs" : (bulb?.name ?? "The bulb")
     options.setBusy(true)
-    void options.controls.setColor(hex).then((outcome) => {
+    void options.sendColor(hex).then((outcome) => {
       options.setBusy(false)
       if (outcome.error !== null && !outcome.partial) {
         return null
@@ -110,16 +108,7 @@ const useForms = (options: UseFormsOptions): FormsModel => {
     })
   }
 
-  const revertColor = () => {
-    const snapshot = options.colorSnapshot()
-    if (snapshot.size === 0) {
-      options.notify({ kind: "info", message: "No previous colour was known to restore." })
-      return
-    }
-    void options.controls.revertColors(snapshot)
-  }
-
-  return { submitAdd, submitEdit, confirmRemove, submitColor, revertColor }
+  return { submitAdd, submitEdit, confirmRemove, submitColor }
 }
 
 export { useForms, type FormsModel }

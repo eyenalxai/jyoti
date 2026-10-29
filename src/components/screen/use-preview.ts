@@ -31,7 +31,6 @@ interface CapturePreviewModel {
   readonly running: Accessor<boolean>
   readonly busy: Accessor<boolean>
   readonly loading: Accessor<boolean>
-  readonly error: Accessor<string | null>
   readonly derived: Accessor<DerivedColor | null>
   readonly frame: Accessor<PreviewFrame | null>
   readonly open: () => void
@@ -40,13 +39,16 @@ interface CapturePreviewModel {
   readonly close: () => void
 }
 
-const useCapturePreview = (): CapturePreviewModel => {
+interface UseCapturePreviewOptions {
+  readonly onError: (message: string) => void
+}
+
+const useCapturePreview = (options: UseCapturePreviewOptions): CapturePreviewModel => {
   const [monitors, setMonitors] = createSignal<readonly Monitor[]>([])
   const [selected, setSelected] = createSignal(0)
   const [running, setRunning] = createSignal(false)
   const [busy, setBusy] = createSignal(false)
   const [loading, setLoading] = createSignal(false)
-  const [error, setError] = createSignal<string | null>(null)
   const [derived, setDerived] = createSignal<DerivedColor | null>(null)
   const [frame, setFrame] = createSignal<PreviewFrame | null>(null)
   let reducerState = createReducerState()
@@ -56,7 +58,7 @@ const useCapturePreview = (): CapturePreviewModel => {
 
   const reportFailure = (failure: ScreenCaptureError): Effect.Effect<void> =>
     Effect.sync(() => {
-      setError(failure.message)
+      options.onError(failure.message)
     })
 
   const clearTimer = () => {
@@ -130,11 +132,10 @@ const useCapturePreview = (): CapturePreviewModel => {
   const startCapture = () => {
     const monitor = monitors()[selected()]
     if (monitor === undefined) {
-      setError("No monitor to capture.")
+      options.onError("No monitor to capture.")
       return
     }
     setBusy(true)
-    setError(null)
     forkScreen(
       Effect.gen(function* startPreview() {
         const capture = yield* ScreenCapture
@@ -158,7 +159,6 @@ const useCapturePreview = (): CapturePreviewModel => {
   }
 
   const open = () => {
-    setError(null)
     setLoading(true)
     forkScreen(
       Effect.gen(function* listPreviewMonitors() {
@@ -202,7 +202,6 @@ const useCapturePreview = (): CapturePreviewModel => {
     stopCapture()
     setDerived(null)
     setFrame(null)
-    setError(null)
   }
 
   onCleanup(() => {
@@ -215,7 +214,6 @@ const useCapturePreview = (): CapturePreviewModel => {
     running,
     busy,
     loading,
-    error,
     derived,
     frame,
     open,
