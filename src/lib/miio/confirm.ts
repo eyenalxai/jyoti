@@ -4,12 +4,12 @@ import type { MiioError } from "@/lib/miio/error"
 
 const CONFIRMED_ATTEMPTS = 3
 
-const confirmed = <A>(
+const confirmSend = <A>(
   attempt: () => Effect.Effect<A, MiioError>,
-  fallback: () => MiioError,
+  fallbackError: () => MiioError,
 ): Effect.Effect<A, MiioError> =>
-  Effect.gen(function* confirmedSend() {
-    let lastError = fallback()
+  Effect.fn("Miio.confirmSend")(function* confirmSendEffect() {
+    let lastError = fallbackError()
     for (let count = 1; count <= CONFIRMED_ATTEMPTS; count += 1) {
       const outcome = yield* attempt().pipe(Effect.result)
       if (Result.isSuccess(outcome)) {
@@ -21,6 +21,6 @@ const confirmed = <A>(
       lastError = outcome.failure
     }
     return yield* lastError
-  })
+  })()
 
-export { confirmed }
+export { confirmSend }

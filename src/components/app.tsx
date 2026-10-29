@@ -76,7 +76,8 @@ const App = () => {
       renderer.destroy()
     })
   }
-  const ownsControls = () => syncActive() && (focus() === "brightness" || focus() === "temperature")
+  const syncOwnsControls = () =>
+    syncActive() && (focus() === "brightness" || focus() === "temperature")
   const actions = useBulbActions({
     model,
     syncActive,
@@ -97,7 +98,6 @@ const App = () => {
     setScreen,
     notify,
   })
-
   const colorInitial = createMemo(() => {
     if (!model.allSelected()) {
       return model.selectedState()?.color ?? "#FFFFFF"
@@ -149,7 +149,7 @@ const App = () => {
     if (pane() !== "controls") {
       return
     }
-    if (ownsControls()) {
+    if (syncOwnsControls()) {
       notify({ kind: "info", message: SYNC_OWNS_CONTROLS })
       return
     }
@@ -173,7 +173,7 @@ const App = () => {
       actions.openColor()
       return
     }
-    if (ownsControls()) {
+    if (syncOwnsControls()) {
       notify({ kind: "info", message: SYNC_OWNS_CONTROLS })
       return
     }

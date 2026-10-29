@@ -1,7 +1,7 @@
+import { Array as Arr } from "effect"
+
 import type { RestoreReport } from "@/lib/screen/sync/restore"
 import type { SyncPhase } from "@/lib/screen/sync/status"
-
-import { nameList } from "@/lib/format"
 
 const SYNC_OWNS_CONTROLS = "sync owns colour, brightness and temperature"
 const SYNC_BLOCKS_BULBS = "stop sync to change bulbs"
@@ -31,7 +31,7 @@ const stoppedMessage = (report: RestoreReport): string => {
   if (report.notRestored.length === 0) {
     return `Screen sync stopped · ${restored}`
   }
-  return `Screen sync stopped · ${restored} · not restored: ${nameList(report.notRestored)}`
+  return `Screen sync stopped · ${restored} · not restored: ${Arr.join(report.notRestored, ", ")}`
 }
 
 export { SYNC_BLOCKS_BULBS, SYNC_CANCELLED_MESSAGE, SYNC_OWNS_CONTROLS, stoppedMessage, syncKeys }

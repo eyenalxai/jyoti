@@ -83,11 +83,21 @@ class ScreenSyncEngine extends Context.Service<ScreenSyncEngine, ScreenSyncShape
         return yield* Effect.void
       })
 
+      const resetIdle = Effect.fn("ScreenSync.resetIdle")(function* resetIdle(keep?: SyncStatus) {
+        yield* Ref.set(pendingMonitor, null)
+        yield* Ref.set(runState, idleState)
+        yield* SubscriptionRef.set(
+          status,
+          keep === undefined
+            ? idleSyncStatus
+            : { ...idleSyncStatus, bulbs: keep.bulbs, total: keep.total },
+        )
+      })
+
       const stopLocked = Effect.fn("ScreenSync.stopLocked")(function* stopLocked() {
         const current = yield* Ref.get(runState)
         if (current.status === "idle") {
-          yield* Ref.set(pendingMonitor, null)
-          yield* SubscriptionRef.set(status, idleSyncStatus)
+          yield* resetIdle()
           return emptyRestoreReport
         }
 
@@ -96,9 +106,7 @@ class ScreenSyncEngine extends Context.Service<ScreenSyncEngine, ScreenSyncShape
             yield* Fiber.interrupt(current.fiber)
           }
           yield* capture.stop()
-          yield* Ref.set(pendingMonitor, null)
-          yield* Ref.set(runState, idleState)
-          yield* SubscriptionRef.set(status, idleSyncStatus)
+          yield* resetIdle()
           return emptyRestoreReport
         }
 
@@ -120,13 +128,7 @@ class ScreenSyncEngine extends Context.Service<ScreenSyncEngine, ScreenSyncShape
         yield* publishLive(deps, current.handle, { phase: "stopping" })
         const report = yield* restoreRun(deps, current.handle)
         const final = yield* SubscriptionRef.get(status)
-        yield* Ref.set(pendingMonitor, null)
-        yield* Ref.set(runState, idleState)
-        yield* SubscriptionRef.set(status, {
-          ...idleSyncStatus,
-          bulbs: final.bulbs,
-          total: final.total,
-        })
+        yield* resetIdle(final)
         return report
       })
 
@@ -139,7 +141,8 @@ class ScreenSyncEngine extends Context.Service<ScreenSyncEngine, ScreenSyncShape
         if (current.status !== "idle") {
           return yield* Effect.void
         }
-        yield* SubscriptionRef.set(status, idleSyncStatus)
+        const latest = yield* SubscriptionRef.get(status)
+        yield* SubscriptionRef.set(status, { ...latest, bulbs: [], total: 0 })
         return yield* Effect.void
       })
 

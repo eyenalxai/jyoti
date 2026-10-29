@@ -40,6 +40,14 @@ The last values read from a bulb: power, brightness, color temperature, packed c
 
 A bulb that did not answer its hello or command before the timeout. The panel keeps the bulb and its metadata, shows the failure inline and offers `r` to retry.
 
+## Restored
+
+A bulb whose pre-sync colour or temperature was written and acknowledged during stop. The rail marks it with a check and the stop notice counts it.
+
+## Not restored
+
+A bulb that stopped without a confirmed snapshot, without a restore value, or with a failed confirmed send. The stop notice names it and the rail marks it with a cross; the other bulbs still restore.
+
 ## Power
 
 The boolean `siid 2 / piid 1` property: a bulb is either on or off.
