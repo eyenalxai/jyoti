@@ -34,6 +34,8 @@ const screenLayer = ScreenCapture.layer.pipe(Layer.provide(configLayer))
 const appLayer = Layer.mergeAll(bulbsLayer, screenLayer)
 
 const runtime = ManagedRuntime.make(appLayer)
+// One runtime, two typed views: each alias hides the other service so a caller
+// Only has to name the service it uses.
 const bulbRuntime: ManagedRuntime.ManagedRuntime<Bulbs, Config.ConfigError> = runtime
 const screenRuntime: ManagedRuntime.ManagedRuntime<ScreenCapture, Config.ConfigError> = runtime
 

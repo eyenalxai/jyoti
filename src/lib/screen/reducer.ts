@@ -38,7 +38,6 @@ interface DerivedColor {
 interface Reduction {
   readonly derived: DerivedColor
   readonly state: ReducerState
-  readonly blackout: boolean
   readonly p90Chroma: number
 }
 
@@ -135,8 +134,11 @@ const temperatureFallback = (sceneL: number): DerivedColor => {
   }
 }
 
-const reduceFrame = (frame: ScreenFrame, state: ReducerState, elapsedMs: number): Reduction => {
-  const prepared = prepareFrame(frame)
+const reducePrepared = (
+  prepared: PreparedFrame,
+  state: ReducerState,
+  elapsedMs: number,
+): Reduction => {
   const neutral = state.primed
     ? state.neutral
       ? prepared.p90Chroma <= NEUTRAL_EXIT_CHROMA
@@ -160,15 +162,17 @@ const reduceFrame = (frame: ScreenFrame, state: ReducerState, elapsedMs: number)
         color: derived.lab,
         sceneL,
       },
-      blackout: prepared.blackout,
       p90Chroma: prepared.p90Chroma,
     }
   }
 
   const clustering = cluster(prepared.lab, prepared.pixelCount, state.centroids)
   const target = chooseTarget(prepared, clustering.assignments, clustering.centroids.length)
+  const targetSrgb = oklchToSrgb(oklchFromLab(target))
+  const targetLab = labFromOklch(targetSrgb.oklch)
   const alpha = state.primed && !state.neutral ? smoothing(COLOR_TAU_MS, elapsedMs) : 1
-  const smoothed = state.color === null || alpha >= 1 ? target : mixLab(state.color, target, alpha)
+  const smoothed =
+    state.color === null || alpha >= 1 ? targetLab : mixLab(state.color, targetLab, alpha)
   const srgb = oklchToSrgb(oklchFromLab(smoothed))
   const lab = labFromOklch(srgb.oklch)
 
@@ -187,10 +191,12 @@ const reduceFrame = (frame: ScreenFrame, state: ReducerState, elapsedMs: number)
       color: lab,
       sceneL,
     },
-    blackout: prepared.blackout,
     p90Chroma: prepared.p90Chroma,
   }
 }
+
+const reduceFrame = (frame: ScreenFrame, state: ReducerState, elapsedMs: number): Reduction =>
+  reducePrepared(prepareFrame(frame), state, elapsedMs)
 
 const shouldPublish = (
   next: DerivedColor,
@@ -205,5 +211,5 @@ const shouldPublish = (
   return deltaEOk(next.lab, last.lab) > DEADBAND
 }
 
-export { createReducerState, reduceFrame, shouldPublish }
+export { createReducerState, reduceFrame, reducePrepared, shouldPublish }
 export type { DerivedColor, Reduction, ReducerState }

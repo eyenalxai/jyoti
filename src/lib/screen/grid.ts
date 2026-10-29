@@ -1,6 +1,7 @@
 import type { ScreenFrame } from "@/lib/screen/frame"
 
 import { rgbToOklch } from "@/lib/color"
+import { labFromOklch } from "@/lib/screen/lab"
 
 const BAR_DARK_THRESHOLD = 8
 const BAR_COVERAGE = 0.97
@@ -126,12 +127,12 @@ const prepareFrame = (frame: ScreenFrame): PreparedFrame => {
         green: pixels[offset + 1] ?? 0,
         blue: pixels[offset + 2] ?? 0,
       })
-      const radians = (color.hue * Math.PI) / 180
-      lab[cursor * 3] = color.lightness / 100
-      lab[cursor * 3 + 1] = color.chroma * Math.cos(radians)
-      lab[cursor * 3 + 2] = color.chroma * Math.sin(radians)
+      const converted = labFromOklch(color)
+      lab[cursor * 3] = converted.l
+      lab[cursor * 3 + 1] = converted.a
+      lab[cursor * 3 + 2] = converted.b
       chroma[cursor] = color.chroma
-      sumL += color.lightness / 100
+      sumL += converted.l
       cursor += 1
     }
   }

@@ -78,7 +78,7 @@ A sync run that keeps capture, sessions and state but publishes nothing. The bul
 
 ## Captured monitor
 
-The monitor a sync run reads. The default is the monitor that does not show jyoti; `m` can choose another.
+The monitor a sync run reads.
 
 ## Derived colour
 

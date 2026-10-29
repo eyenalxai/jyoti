@@ -8,7 +8,8 @@ One Bun package at the repository root:
 
 - `src/main.tsx` — the process entry point; it renders the Solid app.
 - `src/components/` — Solid UI components.
-- `src/lib/` — domain and protocol code (miIO packets, bulb state, config parsing) and shared helpers.
+- `src/lib/` — domain and protocol code (miIO packets, bulb state, config parsing, screen capture and colour reduction) and shared helpers.
+- `native/` — the C11 screen-capture library, the vendored Wayland protocol XML and `build.sh`. It is not part of the Bun package's TypeScript.
 
 Inside `src`, import through the `@/*` alias. `tsconfig.json` holds the compiler options.
 
@@ -16,6 +17,7 @@ Inside `src`, import through the `@/*` alias. `tsconfig.json` holds the compiler
 
 - `bun start` — run the TUI.
 - `bun run dev` — run the TUI in watch mode.
+- `bun run build:native` — build the C11 capture library with `cc`, `pkg-config` and `wayland-scanner`.
 - `bun run check` — format check, type-aware oxlint (including the Effect rules) and `tsc`. Run it before committing.
 - `bun run format`, `bun run lint`, `bun run lint:fix`, `bun run tsc`.
 

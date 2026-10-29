@@ -3,6 +3,7 @@ import type { Accessor } from "solid-js"
 import { Effect, Option } from "effect"
 import { createSignal, onCleanup } from "solid-js"
 
+import type { ScreenCaptureError } from "@/lib/screen/error"
 import type { Monitor } from "@/lib/screen/frame"
 import type { DerivedColor } from "@/lib/screen/reducer"
 import type { Timer } from "@/lib/timers"
@@ -10,7 +11,8 @@ import type { Timer } from "@/lib/timers"
 import { forkScreen } from "@/lib/runtime"
 import { ScreenCapture } from "@/lib/screen/capture"
 import { DEFAULT_GRID } from "@/lib/screen/frame"
-import { createReducerState, reduceFrame } from "@/lib/screen/reducer"
+import { prepareFrame } from "@/lib/screen/grid"
+import { createReducerState, reducePrepared, shouldPublish } from "@/lib/screen/reducer"
 import { after, cancel } from "@/lib/timers"
 
 const PREVIEW_TICK_MS = 667
@@ -19,6 +21,7 @@ interface PreviewFrame {
   readonly sequence: number
   readonly ageMs: number
   readonly blackout: boolean
+  readonly published: boolean
   readonly p90Chroma: number
 }
 
@@ -47,8 +50,14 @@ const useCapturePreview = (): CapturePreviewModel => {
   const [derived, setDerived] = createSignal<DerivedColor | null>(null)
   const [frame, setFrame] = createSignal<PreviewFrame | null>(null)
   let reducerState = createReducerState()
+  let lastPublished: DerivedColor | null = null
   let lastTick = 0
   let timer: Timer | null = null
+
+  const reportFailure = (failure: ScreenCaptureError): Effect.Effect<void> =>
+    Effect.sync(() => {
+      setError(failure.message)
+    })
 
   const clearTimer = () => {
     if (timer !== null) {
@@ -80,15 +89,29 @@ const useCapturePreview = (): CapturePreviewModel => {
         const now = performance.now()
         const elapsed = Math.max(0, now - lastTick)
         lastTick = now
-        const reduction = reduceFrame(next, reducerState, elapsed)
+        const prepared = prepareFrame(next)
+        if (prepared.blackout) {
+          setFrame({
+            sequence: next.sequence,
+            ageMs: next.ageMs,
+            blackout: true,
+            published: false,
+            p90Chroma: prepared.p90Chroma,
+          })
+          return
+        }
+        const reduction = reducePrepared(prepared, reducerState, elapsed)
         reducerState = reduction.state
-        if (!reduction.blackout) {
+        const published = shouldPublish(reduction.derived, lastPublished)
+        if (published) {
           setDerived(reduction.derived)
+          lastPublished = reduction.derived
         }
         setFrame({
           sequence: next.sequence,
           ageMs: next.ageMs,
-          blackout: reduction.blackout,
+          blackout: false,
+          published,
           p90Chroma: reduction.p90Chroma,
         })
       }),
@@ -117,17 +140,14 @@ const useCapturePreview = (): CapturePreviewModel => {
         const capture = yield* ScreenCapture
         yield* capture.start({ monitor: monitor.name, grid: DEFAULT_GRID })
         reducerState = createReducerState()
+        lastPublished = null
         lastTick = performance.now()
         setDerived(null)
         setFrame(null)
         setRunning(true)
         schedule()
       }).pipe(
-        Effect.catchTag("ScreenCaptureError", (failure) =>
-          Effect.sync(() => {
-            setError(failure.message)
-          }),
-        ),
+        Effect.catchTag("ScreenCaptureError", reportFailure),
         Effect.ensuring(
           Effect.sync(() => {
             setBusy(false)
@@ -147,11 +167,7 @@ const useCapturePreview = (): CapturePreviewModel => {
         setMonitors(listed)
         setSelected((current) => Math.min(current, Math.max(0, listed.length - 1)))
       }).pipe(
-        Effect.catchTag("ScreenCaptureError", (failure) =>
-          Effect.sync(() => {
-            setError(failure.message)
-          }),
-        ),
+        Effect.catchTag("ScreenCaptureError", reportFailure),
         Effect.ensuring(
           Effect.sync(() => {
             setLoading(false)

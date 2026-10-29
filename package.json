@@ -7,7 +7,7 @@
   "scripts": {
     "start": "bun run src/main.tsx",
     "dev": "bun --watch run src/main.tsx",
-    "build:native": "bun run native/build.ts",
+    "build:native": "bash native/build.sh",
     "format": "oxfmt",
     "format:check": "oxfmt --check",
     "lint": "oxlint --type-aware",

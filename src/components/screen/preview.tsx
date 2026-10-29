@@ -9,8 +9,6 @@ interface PreviewProps {
   readonly model: CapturePreviewModel
 }
 
-const swatch = (hex: string): RGBA => RGBA.fromHex(hex)
-
 const Preview = (props: PreviewProps) => {
   const derived = () => props.model.derived()
   const frame = () => props.model.frame()
@@ -78,7 +76,7 @@ const Preview = (props: PreviewProps) => {
         {(color) => (
           <>
             <box flexDirection="row" gap={1} height={1} flexShrink={0}>
-              <text fg={swatch(color().hex)}>██████</text>
+              <text fg={RGBA.fromHex(color().hex)}>██████</text>
               <text fg={palette.text}>{color().hex}</text>
               <Show when={color().kelvin !== null}>
                 <text fg={palette.muted}>{color().kelvin} K</text>
@@ -93,6 +91,9 @@ const Preview = (props: PreviewProps) => {
                     <text fg={palette.muted}>frame {current().ageMs} ms</text>
                     <text fg={palette.faint}>#{current().sequence}</text>
                     <text fg={palette.faint}>p90 {current().p90Chroma.toFixed(3)}</text>
+                    <Show when={!current().published && !current().blackout}>
+                      <text fg={palette.warning}>deadband</text>
+                    </Show>
                   </>
                 )}
               </Show>

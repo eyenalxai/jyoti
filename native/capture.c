@@ -769,14 +769,11 @@ static int gpu_resize_target(struct gpu *gpu, int width, int height) {
   return 0;
 }
 
-static int gpu_render(struct gpu *gpu, struct gbm_bo *bo, uint32_t format, int width, int height,
-                      int y_invert, uint8_t *output, int grid_width, int grid_height) {
-  if (!gpu->ready || gpu_resize_target(gpu, grid_width, grid_height) != 0) {
-    return -1;
-  }
+static EGLImage gpu_image_from_bo(struct gpu *gpu, struct gbm_bo *bo, uint32_t format,
+                                  int width, int height) {
   int fd = gbm_bo_get_fd(bo);
   if (fd < 0) {
-    return -1;
+    return EGL_NO_IMAGE;
   }
   uint64_t modifier = gbm_bo_get_modifier(bo);
   EGLint attributes[20];
@@ -801,18 +798,23 @@ static int gpu_render(struct gpu *gpu, struct gbm_bo *bo, uint32_t format, int w
   }
   attributes[cursor++] = EGL_NONE;
 
-  EGLImage image = gpu->create_image(gpu->display, EGL_NO_CONTEXT, EGL_LINUX_DMA_BUF_EXT, NULL,
-                                     attributes);
+  EGLImage image =
+      gpu->create_image(gpu->display, EGL_NO_CONTEXT, EGL_LINUX_DMA_BUF_EXT, NULL, attributes);
   close(fd);
   if (image == EGL_NO_IMAGE) {
+    return EGL_NO_IMAGE;
+  }
+  gpu->gl.bind_texture(GL_TEXTURE_2D, gpu->source_texture);
+  gpu->gl.image_target_texture(GL_TEXTURE_2D, image);
+  return image;
+}
+
+static int gpu_render(struct gpu *gpu, int grid_width, int grid_height, int y_invert,
+                      uint8_t *output) {
+  if (!gpu->ready || gpu_resize_target(gpu, grid_width, grid_height) != 0) {
     return -1;
   }
-
   struct gl_api *gl = &gpu->gl;
-  gl->bind_texture(GL_TEXTURE_2D, gpu->source_texture);
-  gl->image_target_texture(GL_TEXTURE_2D, image);
-  gpu->destroy_image(gpu->display, image);
-
   gl->bind_framebuffer(GL_FRAMEBUFFER, gpu->framebuffer);
   gl->viewport(0, 0, grid_width, grid_height);
   gl->clear_color(0.0f, 0.0f, 0.0f, 1.0f);
@@ -870,6 +872,16 @@ struct capture {
   struct gpu gpu;
   int use_dmabuf;
   int gpu_attempted;
+  struct wl_buffer *frame_buffer;
+  struct gbm_bo *frame_bo;
+  EGLImage frame_image;
+  void *shm_data;
+  size_t shm_size;
+  uint32_t frame_format;
+  int32_t frame_width;
+  int32_t frame_height;
+  int32_t frame_stride;
+  int frame_is_dmabuf;
 };
 
 struct frame {
@@ -888,11 +900,6 @@ struct frame {
   uint32_t dmabuf_width;
   uint32_t dmabuf_height;
   int have_dmabuf;
-  struct wl_buffer *buffer;
-  struct wl_shm_pool *pool;
-  struct gbm_bo *bo;
-  void *data;
-  size_t data_size;
 };
 
 static void frame_handle_buffer(void *data, struct zwlr_screencopy_frame_v1 *proxy,
@@ -949,66 +956,115 @@ static void frame_handle_linux_dmabuf(void *data, struct zwlr_screencopy_frame_v
   frame->have_dmabuf = 1;
 }
 
-static struct wl_buffer *create_shm_buffer(struct capture *capture, struct frame *frame) {
-  if (!frame->have_shm) {
-    return NULL;
+static void destroy_frame_buffer(struct capture *capture) {
+  if (capture->frame_image != EGL_NO_IMAGE) {
+    if (capture->gpu.destroy_image != NULL && capture->gpu.display != EGL_NO_DISPLAY) {
+      capture->gpu.destroy_image(capture->gpu.display, capture->frame_image);
+    }
+    capture->frame_image = EGL_NO_IMAGE;
   }
+  if (capture->frame_buffer != NULL) {
+    wl_buffer_destroy(capture->frame_buffer);
+    capture->frame_buffer = NULL;
+  }
+  if (capture->frame_bo != NULL) {
+    gbm_bo_destroy(capture->frame_bo);
+    capture->frame_bo = NULL;
+  }
+  if (capture->shm_data != NULL) {
+    munmap(capture->shm_data, capture->shm_size);
+    capture->shm_data = NULL;
+    capture->shm_size = 0;
+  }
+  capture->frame_is_dmabuf = 0;
+  capture->frame_format = 0;
+  capture->frame_width = 0;
+  capture->frame_height = 0;
+  capture->frame_stride = 0;
+}
+
+static int ensure_shm_buffer(struct capture *capture, struct frame *frame) {
+  if (!frame->have_shm) {
+    return -1;
+  }
+  if (capture->frame_buffer != NULL && !capture->frame_is_dmabuf &&
+      capture->frame_format == frame->shm_format &&
+      capture->frame_width == (int32_t)frame->shm_width &&
+      capture->frame_height == (int32_t)frame->shm_height &&
+      capture->frame_stride == (int32_t)frame->shm_stride) {
+    return 0;
+  }
+  destroy_frame_buffer(capture);
+
   size_t size = (size_t)frame->shm_stride * frame->shm_height;
   int fd = memfd_create("jyoti-capture", MFD_CLOEXEC);
   if (fd < 0) {
-    return NULL;
+    return -1;
   }
   if (ftruncate(fd, (off_t)size) < 0) {
     close(fd);
-    return NULL;
+    return -1;
   }
   void *data = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
   if (data == MAP_FAILED) {
     close(fd);
-    return NULL;
+    return -1;
   }
   struct wl_shm_pool *pool = wl_shm_create_pool(capture->shm, fd, (int32_t)size);
   if (pool == NULL) {
     munmap(data, size);
     close(fd);
-    return NULL;
+    return -1;
   }
   struct wl_buffer *buffer = wl_shm_pool_create_buffer(
       pool, 0, (int32_t)frame->shm_width, (int32_t)frame->shm_height, (int32_t)frame->shm_stride,
       frame->shm_format);
-  if (buffer == NULL) {
-    wl_shm_pool_destroy(pool);
-    munmap(data, size);
-    close(fd);
-    return NULL;
-  }
-  frame->data = data;
-  frame->data_size = size;
-  frame->pool = pool;
+  wl_shm_pool_destroy(pool);
   close(fd);
-  return buffer;
+  if (buffer == NULL) {
+    munmap(data, size);
+    return -1;
+  }
+
+  capture->frame_buffer = buffer;
+  capture->shm_data = data;
+  capture->shm_size = size;
+  capture->frame_is_dmabuf = 0;
+  capture->frame_format = frame->shm_format;
+  capture->frame_width = (int32_t)frame->shm_width;
+  capture->frame_height = (int32_t)frame->shm_height;
+  capture->frame_stride = (int32_t)frame->shm_stride;
+  return 0;
 }
 
-static struct wl_buffer *create_dmabuf_buffer(struct capture *capture, struct frame *frame) {
+static int ensure_dmabuf_buffer(struct capture *capture, struct frame *frame) {
   if (!frame->have_dmabuf || capture->dmabuf == NULL || !capture->gpu.ready) {
-    return NULL;
+    return -1;
   }
+  if (capture->frame_buffer != NULL && capture->frame_is_dmabuf &&
+      capture->frame_format == frame->dmabuf_format &&
+      capture->frame_width == (int32_t)frame->dmabuf_width &&
+      capture->frame_height == (int32_t)frame->dmabuf_height) {
+    return 0;
+  }
+  destroy_frame_buffer(capture);
+
   struct gbm_bo *bo = gbm_bo_create(capture->gpu.gbm, frame->dmabuf_width, frame->dmabuf_height,
                                     frame->dmabuf_format, GBM_BO_USE_LINEAR | GBM_BO_USE_RENDERING);
   if (bo == NULL) {
-    return NULL;
+    return -1;
   }
   int fd = gbm_bo_get_fd(bo);
   if (fd < 0) {
     gbm_bo_destroy(bo);
-    return NULL;
+    return -1;
   }
   struct zwp_linux_buffer_params_v1 *params =
       zwp_linux_dmabuf_v1_create_params(capture->dmabuf);
   if (params == NULL) {
     close(fd);
     gbm_bo_destroy(bo);
-    return NULL;
+    return -1;
   }
   uint64_t modifier = gbm_bo_get_modifier(bo);
   zwp_linux_buffer_params_v1_add(params, fd, 0, gbm_bo_get_offset(bo, 0),
@@ -1020,30 +1076,40 @@ static struct wl_buffer *create_dmabuf_buffer(struct capture *capture, struct fr
   close(fd);
   if (buffer == NULL) {
     gbm_bo_destroy(bo);
-    return NULL;
+    return -1;
   }
-  frame->bo = bo;
-  return buffer;
+
+  EGLImage image = gpu_image_from_bo(&capture->gpu, bo, frame->dmabuf_format,
+                                     (int)frame->dmabuf_width, (int)frame->dmabuf_height);
+  if (image == EGL_NO_IMAGE) {
+    wl_buffer_destroy(buffer);
+    gbm_bo_destroy(bo);
+    return -1;
+  }
+
+  capture->frame_buffer = buffer;
+  capture->frame_bo = bo;
+  capture->frame_image = image;
+  capture->frame_is_dmabuf = 1;
+  capture->frame_format = frame->dmabuf_format;
+  capture->frame_width = (int32_t)frame->dmabuf_width;
+  capture->frame_height = (int32_t)frame->dmabuf_height;
+  capture->frame_stride = 0;
+  return 0;
 }
 
 static void frame_handle_buffer_done(void *data, struct zwlr_screencopy_frame_v1 *proxy) {
   (void)proxy;
   struct frame *frame = data;
   struct capture *capture = frame->capture;
-  if (capture->use_dmabuf) {
-    frame->buffer = create_dmabuf_buffer(capture, frame);
-    if (frame->buffer == NULL) {
-      capture->use_dmabuf = 0;
-    }
+  if (capture->use_dmabuf && ensure_dmabuf_buffer(capture, frame) != 0) {
+    capture->use_dmabuf = 0;
   }
-  if (frame->buffer == NULL) {
-    frame->buffer = create_shm_buffer(capture, frame);
-  }
-  if (frame->buffer == NULL) {
+  if (!capture->use_dmabuf && ensure_shm_buffer(capture, frame) != 0) {
     frame->failed = 1;
     return;
   }
-  zwlr_screencopy_frame_v1_copy(frame->proxy, frame->buffer);
+  zwlr_screencopy_frame_v1_copy(frame->proxy, capture->frame_buffer);
   frame->copied = 1;
 }
 
@@ -1060,18 +1126,6 @@ static const struct zwlr_screencopy_frame_v1_listener frame_listener = {
 static void frame_release(struct frame *frame) {
   if (frame->proxy != NULL) {
     zwlr_screencopy_frame_v1_destroy(frame->proxy);
-  }
-  if (frame->buffer != NULL) {
-    wl_buffer_destroy(frame->buffer);
-  }
-  if (frame->pool != NULL) {
-    wl_shm_pool_destroy(frame->pool);
-  }
-  if (frame->bo != NULL) {
-    gbm_bo_destroy(frame->bo);
-  }
-  if (frame->data != NULL && frame->data_size > 0) {
-    munmap(frame->data, frame->data_size);
   }
 }
 
@@ -1169,17 +1223,16 @@ static int capture_frame(struct capture *capture, uint8_t *grid, int grid_width,
   }
 
   int rendered = -1;
-  if (frame.bo != NULL) {
-    rendered = gpu_render(&capture->gpu, frame.bo, frame.dmabuf_format,
-                          (int)frame.dmabuf_width, (int)frame.dmabuf_height, frame.y_invert, grid,
-                          grid_width, grid_height);
+  if (capture->frame_is_dmabuf && capture->frame_image != EGL_NO_IMAGE) {
+    rendered = gpu_render(&capture->gpu, grid_width, grid_height, frame.y_invert, grid);
     if (rendered != 0) {
       capture->use_dmabuf = 0;
     }
   }
-  if (rendered != 0 && frame.data != NULL) {
-    sample_shm(frame.data, (int)frame.shm_stride, (int)frame.shm_width, (int)frame.shm_height,
-               frame.shm_format, frame.y_invert, grid, grid_width, grid_height);
+  if (rendered != 0 && capture->shm_data != NULL) {
+    sample_shm(capture->shm_data, capture->frame_stride, capture->frame_width,
+               capture->frame_height, capture->frame_format, frame.y_invert, grid, grid_width,
+               grid_height);
     rendered = 0;
   }
 
@@ -1301,6 +1354,7 @@ static int capture_connect(struct capture *capture) {
 }
 
 static void capture_disconnect(struct capture *capture) {
+  destroy_frame_buffer(capture);
   free_outputs(&capture->outputs);
   if (capture->manager != NULL) {
     zwlr_screencopy_manager_v1_destroy(capture->manager);
@@ -1416,11 +1470,11 @@ finish:
     pthread_cond_broadcast(&g_cond);
     pthread_mutex_unlock(&g_lock);
   }
+  capture_disconnect(capture);
   if (capture->gpu.drm_fd >= 0 || capture->gpu.gbm != NULL ||
       capture->gpu.display != EGL_NO_DISPLAY) {
     gpu_finish(&capture->gpu);
   }
-  capture_disconnect(capture);
   return NULL;
 }
 

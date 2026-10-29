@@ -12,7 +12,11 @@ import { DEFAULT_RATE_HZ } from "@/lib/screen/frame"
 
 const MONITOR_NAME_MAX = 64
 const MONITOR_DESCRIPTION_MAX = 128
-const MONITOR_STRUCT_SIZE = 204
+/* Mirrors jyoti_monitor in native/capture.c: two fixed char arrays, then three int32. */
+const MONITOR_WIDTH_OFFSET = MONITOR_NAME_MAX + MONITOR_DESCRIPTION_MAX
+const MONITOR_HEIGHT_OFFSET = MONITOR_WIDTH_OFFSET + 4
+const MONITOR_REFRESH_OFFSET = MONITOR_HEIGHT_OFFSET + 4
+const MONITOR_STRUCT_SIZE = MONITOR_REFRESH_OFFSET + 4
 const MONITOR_CAPACITY = 16
 const FRAME_INFO_SIZE = 16
 const FIRST_FRAME_ATTEMPTS = 100
@@ -65,9 +69,9 @@ const decodeMonitor = (buffer: Uint8Array, index: number): Monitor => {
   return {
     name: decodeText(buffer, base, MONITOR_NAME_MAX),
     description: decodeText(buffer, base + MONITOR_NAME_MAX, MONITOR_DESCRIPTION_MAX),
-    width: view.getInt32(base + 192, true),
-    height: view.getInt32(base + 196, true),
-    refreshHz: view.getInt32(base + 200, true) / 1000,
+    width: view.getInt32(base + MONITOR_WIDTH_OFFSET, true),
+    height: view.getInt32(base + MONITOR_HEIGHT_OFFSET, true),
+    refreshHz: view.getInt32(base + MONITOR_REFRESH_OFFSET, true) / 1000,
     focused: null,
   }
 }

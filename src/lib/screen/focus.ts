@@ -10,32 +10,42 @@ const HyprlandMonitorSchema = Schema.Struct({
 })
 const HyprlandMonitorsSchema = Schema.Array(HyprlandMonitorSchema)
 
-const readSocket = (socketPath: string): Effect.Effect<string, Error> =>
-  Effect.raceFirst(
-    Effect.callback<string, Error>((resume) => {
-      const chunks: Buffer[] = []
-      const socket = createConnection(socketPath)
+class HyprlandError extends Schema.TaggedError<HyprlandError>()("HyprlandError", {
+  message: Schema.String,
+  cause: Schema.optionalKey(Schema.Defect()),
+}) {}
 
-      socket.on("connect", () => {
-        socket.write("j/monitors")
-      })
-      socket.on("data", (chunk: Buffer) => {
-        chunks.push(chunk)
-      })
-      socket.on("end", () => {
-        resume(Effect.succeed(Buffer.concat(chunks).toString("utf8")))
-      })
-      socket.on("error", (error: Error) => {
-        resume(Effect.fail(error))
-      })
+const readSocket = (socketPath: string): Effect.Effect<string, HyprlandError> =>
+  Effect.callback<string, HyprlandError>((resume) => {
+    const chunks: Buffer[] = []
+    const socket = createConnection(socketPath)
 
-      return Effect.sync(() => {
-        socket.destroy()
-      })
+    socket.on("connect", () => {
+      socket.write("j/monitors")
+    })
+    socket.on("data", (chunk: Buffer) => {
+      chunks.push(chunk)
+    })
+    socket.on("end", () => {
+      resume(Effect.succeed(Buffer.concat(chunks).toString("utf8")))
+    })
+    socket.on("error", (cause: Error) => {
+      resume(
+        Effect.fail(
+          new HyprlandError({ message: "Could not read Hyprland's monitor focus.", cause }),
+        ),
+      )
+    })
+
+    return Effect.sync(() => {
+      socket.destroy()
+    })
+  }).pipe(
+    Effect.timeoutOrElse({
+      duration: SOCKET_TIMEOUT_MS,
+      orElse: () =>
+        Effect.fail(new HyprlandError({ message: "Hyprland did not answer the focus query." })),
     }),
-    Effect.sleep(SOCKET_TIMEOUT_MS).pipe(
-      Effect.flatMap(() => Effect.fail(new Error("Hyprland did not answer."))),
-    ),
   )
 
 const parseFocused = (text: string): string | null => {

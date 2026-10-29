@@ -124,7 +124,6 @@ const disabledEffectRules: RuleConfig = {
 const ignorePatterns = [
   "**/node_modules/**",
   "**/dist/**",
-  "native/**",
   "**/*.d.ts",
   "**/*.config.{js,ts,mjs,cjs}",
   "**/tsconfig.tsbuildinfo",
