@@ -1,4 +1,4 @@
-import type { ColorHex } from "@/lib/bulbs/schema"
+import type { ColorHex, Rgb } from "@/lib/bulbs/schema"
 import type { ScreenFrame } from "@/lib/screen/frame"
 import type { PreparedFrame } from "@/lib/screen/grid"
 import type { Lab } from "@/lib/screen/lab"
@@ -22,6 +22,7 @@ interface ReducerState {
 
 interface DerivedColor {
   readonly hex: ColorHex
+  readonly rgb: Rgb
   readonly lab: Lab
   readonly sceneBrightness: number
 }
@@ -136,6 +137,7 @@ const reducePrepared = (
   return {
     derived: {
       hex: srgb.hex,
+      rgb: srgb.rgb,
       lab,
       sceneBrightness,
     },

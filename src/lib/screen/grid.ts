@@ -50,9 +50,7 @@ const darkFraction = (
   return dark / count
 }
 
-const detectContentRect = (
-  frame: ScreenFrame,
-): { readonly rect: ContentRect; readonly rejected: boolean } => {
+const detectContentRect = (frame: ScreenFrame): ContentRect => {
   const { width, height, pixels } = frame
   let top = 0
   let bottom = height - 1
@@ -79,16 +77,13 @@ const detectContentRect = (
     candidateHeight <= 0 ||
     candidateWidth * candidateHeight < width * height * MINIMUM_SURVIVAL
   ) {
-    return { rect: { x: 0, y: 0, width, height }, rejected: true }
+    return { x: 0, y: 0, width, height }
   }
-  return {
-    rect: { x: left, y: top, width: candidateWidth, height: candidateHeight },
-    rejected: false,
-  }
+  return { x: left, y: top, width: candidateWidth, height: candidateHeight }
 }
 
 const prepareFrame = (frame: ScreenFrame): PreparedFrame => {
-  const { rect } = detectContentRect(frame)
+  const rect = detectContentRect(frame)
   const pixelCount = rect.width * rect.height
   const lab = new Float32Array(pixelCount * 3)
   const chroma = new Float32Array(pixelCount)

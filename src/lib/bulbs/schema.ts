@@ -128,8 +128,6 @@ const parseColor = (value: string): Rgb | null => {
 
 const packColor = (rgb: Rgb): number => rgb.red * 65_536 + rgb.green * 256 + rgb.blue
 
-const packHex = (hex: ColorHex): number => Number.parseInt(Str.slice(1, 7)(hex), 16)
-
 const formatColor = (value: number): ColorHex => {
   const hex = Str.padStart(6, "0")(Str.toUpperCase(value.toString(16)))
   return `#${hex}`
@@ -210,7 +208,6 @@ export {
   formatColor,
   isToken,
   packColor,
-  packHex,
   parseColor,
   validateDraft,
 }

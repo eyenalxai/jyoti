@@ -4,7 +4,7 @@ import type { PropertyParam } from "@/lib/miio/properties"
 import type { DerivedColor } from "@/lib/screen/reducer"
 import type { BulbSyncPhase } from "@/lib/screen/sync/status"
 
-import { PIID_BRIGHTNESS, PIID_COLOR, packHex } from "@/lib/bulbs/schema"
+import { PIID_BRIGHTNESS, PIID_COLOR, packColor } from "@/lib/bulbs/schema"
 import { propertiesWithValue } from "@/lib/miio/properties"
 import { shouldPublish } from "@/lib/screen/reducer"
 import { slewBrightness } from "@/lib/screen/sync/brightness"
@@ -32,11 +32,8 @@ interface SendPlan {
   readonly targetBrightness: number
 }
 
-const controlProperties = (target: DerivedColor): readonly PropertyParam[] =>
-  propertiesWithValue(PIID_COLOR, packHex(target.hex))
-
 const propertiesFor = (target: DerivedColor, plan: SendPlan): readonly PropertyParam[] => {
-  const control = plan.publishColor ? controlProperties(target) : []
+  const control = plan.publishColor ? propertiesWithValue(PIID_COLOR, packColor(target.rgb)) : []
   const brightnessProperties =
     plan.brightness === null ? [] : propertiesWithValue(PIID_BRIGHTNESS, plan.brightness)
   return [...control, ...brightnessProperties]
