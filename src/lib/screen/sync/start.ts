@@ -1,4 +1,4 @@
-import { Cause, Deferred, Effect, Exit, Fiber, Ref, SubscriptionRef } from "effect"
+import { Array as Arr, Cause, Deferred, Effect, Exit, Fiber, Ref, SubscriptionRef } from "effect"
 
 import type { BulbId, BulbState } from "@/lib/bulbs/schema"
 import type { MiioSession } from "@/lib/miio/session"
@@ -11,17 +11,37 @@ import { DEFAULT_GRID } from "@/lib/screen/frame"
 import { createReducerState } from "@/lib/screen/reducer"
 import { SYNC_CANCELLED_MESSAGE } from "@/lib/screen/sync/copy"
 import { bulbFailure, captureFailure } from "@/lib/screen/sync/failure"
+import { initialFlashGuard } from "@/lib/screen/sync/flash"
 import { findMonitor, resolveMonitor, selfCaptureFor } from "@/lib/screen/sync/monitor"
 import { switchMonitor } from "@/lib/screen/sync/monitor/switch"
-import { initialProgress } from "@/lib/screen/sync/progress"
-import { idleState, patchStatus, publishLive, runLoop } from "@/lib/screen/sync/run"
+import { initialProgress, setPowers } from "@/lib/screen/sync/progress"
+import { patchStatus, publishLive } from "@/lib/screen/sync/publish"
+import { idleState, runLoop } from "@/lib/screen/sync/run"
 import { snapshotBulbs } from "@/lib/screen/sync/snapshot"
 import { idleSyncStatus } from "@/lib/screen/sync/status"
 
 interface StartContext extends RunDeps {
   readonly runState: Ref.Ref<RunState>
   readonly pendingMonitor: Ref.Ref<string | null>
+  readonly powerTargets: Ref.Ref<ReadonlyMap<BulbId, boolean | null> | null>
 }
+
+const applyPowerTargets = Effect.fn("ScreenSync.applyPowerTargets")(function* applyPowerTargets(
+  context: StartContext,
+  handle: RunHandle,
+) {
+  const targets = yield* Ref.modify(
+    context.powerTargets,
+    (current): readonly [ReadonlyMap<BulbId, boolean | null> | null, null] => [current, null],
+  )
+  if (
+    targets === null ||
+    !Arr.some(Arr.fromIterable(targets.values()), (power) => power !== null)
+  ) {
+    return
+  }
+  yield* Ref.update(handle.progress, (progress) => setPowers(progress, targets))
+})
 
 const startRun = Effect.fn("ScreenSync.startRun")(function* startRun(context: StartContext) {
   const claimed = yield* Ref.modify(context.runState, (current): readonly [boolean, RunState] =>
@@ -74,10 +94,13 @@ const startRun = Effect.fn("ScreenSync.startRun")(function* startRun(context: St
         monitor: yield* Ref.make(monitor),
         switching: yield* Ref.make(false),
         reducer: yield* Ref.make(createReducerState()),
+        flash: yield* Ref.make(initialFlashGuard()),
         progress: yield* Ref.make<ReadonlyMap<BulbId, BulbProgress>>(
-          initialProgress(listed, snapshot.reachable),
+          initialProgress(listed, snapshot.reachable, snapshot.states),
         ),
       }
+
+      yield* applyPowerTargets(context, handle)
 
       yield* Effect.addFinalizer(() => Ref.set(context.runState, idleState))
       yield* Effect.addFinalizer(() => context.capture.stop())
@@ -153,6 +176,8 @@ const startRun = Effect.fn("ScreenSync.startRun")(function* startRun(context: St
       })
     }
 
+    yield* applyPowerTargets(context, handle)
+
     const pending = yield* Ref.get(context.pendingMonitor)
     if (pending !== null) {
       const target = findMonitor(handle.monitors, pending)
@@ -181,6 +206,7 @@ const startRun = Effect.fn("ScreenSync.startRun")(function* startRun(context: St
             if (current.status === "starting" || current.status === "idle") {
               yield* Ref.set(context.runState, idleState)
             }
+            yield* Ref.set(context.powerTargets, null)
             const pending = yield* Ref.get(context.pendingMonitor)
             const failedStatus: SyncStatus =
               pending === null ? idleSyncStatus : { ...idleSyncStatus, pendingMonitor: pending }

@@ -13,7 +13,7 @@ import {
 } from "@/lib/bulbs/schema"
 import { propertiesWithValue } from "@/lib/miio/properties"
 import { markRestored } from "@/lib/screen/sync/progress"
-import { publishLive } from "@/lib/screen/sync/run"
+import { publishLive } from "@/lib/screen/sync/publish"
 import { RESTORE_TIMEOUT_MS } from "@/lib/screen/sync/timing"
 
 interface RestoreReport {
@@ -58,7 +58,6 @@ const restoreProperties = (
       : color.length > 0
         ? color
         : temperature
-  // Brightness joins the restore only once the stream has written it; JYO-30 stays colour-only.
   const brightness =
     droveBrightness && state.brightness !== null
       ? propertiesWithValue(PIID_BRIGHTNESS, state.brightness)

@@ -43,10 +43,10 @@ const Help = () => (
       screen sync
     </text>
     <KeyRow keys="s  x" label="Start or stop (restores) · pause" />
-    <KeyRow keys="m" label="Choose the captured monitor" />
-    <KeyRow keys="v" label="Capture preview (dev)" />
+    <KeyRow keys="m  v" label="Monitor · capture preview (dev)" />
     <NoteRow label={SYNC_OWNS_CONTROLS} />
-    <NoteRow label="power untouched · 4000 K · 5 s recovery" />
+    <NoteRow label="8–80% · ±8/tick · flash hold 2 s" />
+    <NoteRow label="power untouched · 4000 K · 5 s lost" />
 
     <text fg={palette.faint} bg={palette.surfaceRaised} height={1} flexShrink={0}>
       app

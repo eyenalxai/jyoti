@@ -1,7 +1,7 @@
 import type { Accessor } from "solid-js"
 
 import { Array as Arr, Effect, Option, Result } from "effect"
-import { createMemo, createSignal, onMount } from "solid-js"
+import { createEffect, createMemo, createSignal, onMount } from "solid-js"
 
 import type { Bulb, BulbDraft, BulbId, BulbPatch, BulbState } from "@/lib/bulbs/schema"
 import type { BulbSelection } from "@/lib/bulbs/selection"
@@ -12,6 +12,7 @@ import { run } from "@/lib/runtime"
 
 interface UseBulbsOptions {
   readonly onError: (message: string) => void
+  readonly onPower: (powers: ReadonlyMap<BulbId, boolean | null>) => void
 }
 
 interface BulbsModel {
@@ -128,7 +129,6 @@ const useBulbs = (options: UseBulbsOptions): BulbsModel => {
       setStateErrors((previous) => new Map(previous).set(id, result.message))
       return result.message
     })
-
   const refresh = () => {
     sequence += 1
     const token = sequence
@@ -262,7 +262,12 @@ const useBulbs = (options: UseBulbsOptions): BulbsModel => {
       }
       return null
     })
-
+  createEffect(() => {
+    const current = states()
+    options.onPower(
+      new Map(Arr.map(bulbs(), (bulb) => [bulb.id, current.get(bulb.id)?.power ?? null] as const)),
+    )
+  })
   onMount(() => {
     refresh()
   })

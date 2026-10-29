@@ -18,6 +18,7 @@ interface SyncStatus {
   readonly pendingMonitor: string | null
   readonly color: DerivedColor | null
   readonly syncBrightness: number | null
+  readonly flashing: boolean
   readonly frameAgeMs: number | null
   readonly reachable: number
   readonly total: number
@@ -34,6 +35,7 @@ const idleSyncStatus: SyncStatus = {
   pendingMonitor: null,
   color: null,
   syncBrightness: null,
+  flashing: false,
   frameAgeMs: null,
   reachable: 0,
   total: 0,

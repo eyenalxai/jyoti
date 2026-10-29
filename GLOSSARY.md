@@ -78,7 +78,7 @@ The mode that drives the configured bulbs from one captured monitor. It is off u
 
 ## Sync run
 
-One start-to-stop period of screen sync. A run is not a miIO session: it covers the configured bulb set and keeps its own snapshot, filter state and 1.5 Hz tick.
+One start-to-stop period of screen sync. A run is not a miIO session: it covers the configured bulb set and keeps its own snapshot, filter state, flash guard and 1.5 Hz tick.
 
 ## Paused
 
@@ -103,6 +103,14 @@ The mean OKLab lightness of the captured frame, from 0 to 1, published separatel
 ## Sync brightness
 
 The bulb brightness derived from scene brightness through the 8–80% envelope.
+
+## Flash guard
+
+The rule that watches the last three target sync brightness values. A direction flip with a three-target peak-to-peak greater than 25 holds the applied brightness for two seconds. A trigger disarms the guard; it re-arms only after three same-direction targets or a peak-to-peak of 25 or less.
+
+## Flashing scene
+
+A sync run whose flash guard is holding brightness. Colour keeps updating; the strip says `flashing scene` until the hold ends.
 
 ## Blackout hold
 
