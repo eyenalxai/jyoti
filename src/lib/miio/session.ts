@@ -202,29 +202,28 @@ const openMiioSession = Effect.fn("MiioSession.open")(function* openSession(
         )
       }
 
-      return Effect.gen(function* exchangeRequest() {
-        yield* send(
-          buildRequest({
-            token: target.token,
-            deviceId,
-            stamp,
-            messageId,
-            method,
-            params,
-          }),
-        )
-        const incoming = yield* nextReply(messageId)
-        const receivedAt = performance.now()
-        state.deviceId = incoming.packet.deviceId
-        state.stamp = incoming.packet.stamp
-        state.stampAt = receivedAt
-        state.lastPacketAt = receivedAt
-        return incoming.reply
-      }).pipe(
-        Effect.timeoutOrElse({
-          duration: STREAM_TIMEOUT,
-          orElse: () => Effect.fail(timeoutError(target.address, "stream")),
+      return within(
+        Effect.gen(function* exchangeRequest() {
+          yield* send(
+            buildRequest({
+              token: target.token,
+              deviceId,
+              stamp,
+              messageId,
+              method,
+              params,
+            }),
+          )
+          const incoming = yield* nextReply(messageId)
+          const receivedAt = performance.now()
+          state.deviceId = incoming.packet.deviceId
+          state.stamp = incoming.packet.stamp
+          state.stampAt = receivedAt
+          state.lastPacketAt = receivedAt
+          return incoming.reply
         }),
+        STREAM_TIMEOUT,
+        timeoutError(target.address, "stream"),
       )
     }
 

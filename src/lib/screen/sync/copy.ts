@@ -23,15 +23,23 @@ const syncKeys = (phase: SyncPhase): string => {
   return "s sync"
 }
 
+const restoreSummary = (restored: number, total: number, names: readonly string[]): string => {
+  const count = `${restored}/${total} restored`
+  return names.length === 0 ? count : `${count} · not restored: ${Arr.join(names, ", ")}`
+}
+
 const stoppedMessage = (report: RestoreReport): string => {
   if (report.total === 0) {
     return "Screen sync stopped."
   }
-  const restored = `${report.restored}/${report.total} restored`
-  if (report.notRestored.length === 0) {
-    return `Screen sync stopped · ${restored}`
-  }
-  return `Screen sync stopped · ${restored} · not restored: ${Arr.join(report.notRestored, ", ")}`
+  return `Screen sync stopped · ${restoreSummary(report.restored, report.total, report.notRestored)}`
 }
 
-export { SYNC_BLOCKS_BULBS, SYNC_CANCELLED_MESSAGE, SYNC_OWNS_CONTROLS, stoppedMessage, syncKeys }
+export {
+  SYNC_BLOCKS_BULBS,
+  SYNC_CANCELLED_MESSAGE,
+  SYNC_OWNS_CONTROLS,
+  restoreSummary,
+  stoppedMessage,
+  syncKeys,
+}

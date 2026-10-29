@@ -5,7 +5,7 @@ import { createMemo } from "solid-js"
 import type { CaptureHealth, SyncPhase, SyncStatus } from "@/lib/screen/sync/status"
 
 import { truncate } from "@/lib/format"
-import { syncKeys } from "@/lib/screen/sync/copy"
+import { restoreSummary, syncKeys } from "@/lib/screen/sync/copy"
 import { palette } from "@/lib/theme"
 
 interface SyncStripProps {
@@ -111,9 +111,7 @@ const SyncStrip = (props: SyncStripProps) => {
     if (props.status.phase !== "stopping") {
       return null
     }
-    const names = notRestored()
-    const count = `${restored()}/${props.status.total} restored`
-    return names.length === 0 ? count : `${count} · not restored: ${Arr.join(names, ", ")}`
+    return restoreSummary(restored(), props.status.total, notRestored())
   })
   const restoreTone = createMemo(() => {
     if (notRestored().length > 0) {
