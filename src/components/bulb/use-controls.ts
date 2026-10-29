@@ -10,6 +10,7 @@ import type { BulbsError } from "@/lib/bulbs/error"
 import type { Bulb, BulbId, BulbState } from "@/lib/bulbs/schema"
 import type { Timer } from "@/lib/timers"
 
+import { revertColors as revertColorBatch } from "@/components/bulb/color/revert"
 import { useGroupControls } from "@/components/bulb/use-group-controls"
 import {
   BRIGHTNESS_MAX,
@@ -236,12 +237,15 @@ const useControls = (options: UseControlsOptions): ControlsModel => {
     )
   }
 
+  const revertColors = (snapshot: ColorSnapshot): Promise<ColorOutcome> =>
+    revertColorBatch({ model: options.model, onError: options.onError }, snapshot)
+
   return {
     togglePower,
     adjustBrightness,
     adjustTemperature,
     setColor,
-    revertColors: group.revertColors,
+    revertColors,
     flushPending,
   }
 }

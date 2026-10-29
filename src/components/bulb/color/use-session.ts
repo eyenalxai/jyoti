@@ -16,7 +16,7 @@ interface UseColorSessionOptions {
 const useColorSession = (options: UseColorSessionOptions) => {
   const [snapshot, setSnapshot] = createSignal<ColorSnapshot>(new Map())
   const [dirty, setDirty] = createSignal(false)
-  let send: Promise<unknown> = Promise.resolve()
+  let queue: Promise<unknown> = Promise.resolve()
 
   const capture = () => {
     const all = options.model.allSelected()
@@ -33,8 +33,9 @@ const useColorSession = (options: UseColorSessionOptions) => {
 
   const commit = (hex: string): Promise<ColorOutcome> => {
     setDirty(true)
-    const result = send.then(() => options.controls.setColor(hex))
-    send = result.then(
+    const result = queue.then(() => options.controls.setColor(hex))
+    // Keep the queue moving after a failed send so a later revert still runs.
+    queue = result.then(
       () => null,
       () => null,
     )
@@ -50,7 +51,12 @@ const useColorSession = (options: UseColorSessionOptions) => {
       options.notify({ kind: "info", message: "No previous colour was known to revert." })
       return
     }
-    void send.then(() => options.controls.revertColors(current))
+    const result = queue.then(() => options.controls.revertColors(current))
+    queue = result.then(
+      () => null,
+      () => null,
+    )
+    void result
   }
 
   const reset = () => {

@@ -3,14 +3,12 @@ import type { Effect } from "effect"
 import { Array as Arr, Result, Schema, String as Str } from "effect"
 
 import type { ColorOutcome } from "@/components/bulb/color/outcome"
-import type { ColorSnapshot } from "@/components/bulb/color/snapshot"
 import type { BulbsModel } from "@/components/bulb/use-bulbs"
 import type { ValueSpan } from "@/lib/bulbs/aggregate"
 import type { BulbsError } from "@/lib/bulbs/error"
 import type { Bulb, BulbId, BulbState } from "@/lib/bulbs/schema"
 import type { BulbsShape } from "@/lib/bulbs/service"
 
-import { revertColors as revertColorBatch } from "@/components/bulb/color/revert"
 import { absoluteStep, aggregateState } from "@/lib/bulbs/aggregate"
 import { failuresOf, runBatch } from "@/lib/bulbs/batch"
 import {
@@ -29,7 +27,6 @@ interface GroupControlsModel {
   readonly adjustBrightness: (delta: number) => void
   readonly adjustTemperature: (delta: number) => void
   readonly setColor: (hex: string) => Promise<ColorOutcome>
-  readonly revertColors: (snapshot: ColorSnapshot) => Promise<ColorOutcome>
 }
 
 type Schedule = (id: BulbId, control: string, send: () => void) => void
@@ -232,10 +229,7 @@ const useGroupControls = (options: UseGroupControlsOptions): GroupControlsModel 
     })
   }
 
-  const revertColors = (snapshot: ColorSnapshot): Promise<ColorOutcome> =>
-    revertColorBatch({ model: options.model, onError: options.onError }, snapshot)
-
-  return { togglePower, adjustBrightness, adjustTemperature, setColor, revertColors }
+  return { togglePower, adjustBrightness, adjustTemperature, setColor }
 }
 
 export { useGroupControls, type GroupControlsModel }

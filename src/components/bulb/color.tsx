@@ -20,6 +20,7 @@ import {
   rgbToOklch,
 } from "@/lib/color"
 import { clamp } from "@/lib/format"
+import { forkEffect } from "@/lib/runtime"
 import { palette } from "@/lib/theme"
 import { after, cancel } from "@/lib/timers"
 
@@ -41,10 +42,11 @@ const Color = (props: ColorProps) => {
   const [mode, setMode] = createSignal<Mode>("oklch")
   const [focus, setFocus] = createSignal<PickerFocus>(0)
   const [hexDraft, setHexDraft] = createSignal(seededHex)
-  const [lastSent, setLastSent] = createSignal(seededHex)
+  const [appliedHex, setAppliedHex] = createSignal(seededHex)
   const [issue, setIssue] = createSignal<string | null>(null)
   const [ready, setReady] = createSignal(false)
   let previewTimer: Timer | null = null
+  let generation = 0
 
   onMount(() => {
     const timer = after(10, () => {
@@ -67,9 +69,11 @@ const Color = (props: ColorProps) => {
   const clipped = () => preview().clipped
 
   const sendPreview = Effect.fn("Color.sendPreview")(function* sendPreview(next: string) {
+    generation += 1
+    const current = generation
     const applied = yield* Effect.promise(() => props.onPreview(next))
-    if (applied && hex() === next) {
-      setLastSent(next)
+    if (applied && current === generation && hex() === next) {
+      setAppliedHex(next)
     }
   })
 
@@ -79,11 +83,7 @@ const Color = (props: ColorProps) => {
     }
     previewTimer = after(PREVIEW_DELAY_MS, () => {
       previewTimer = null
-      const next = hex()
-      if (next === lastSent()) {
-        return
-      }
-      Effect.runFork(sendPreview(next).pipe(Effect.ignoreCause))
+      forkEffect(sendPreview(hex()).pipe(Effect.ignoreCause))
     })
   }
 
@@ -185,7 +185,7 @@ const Color = (props: ColorProps) => {
     }
     setIssue(null)
     const next = oklchToSrgb(parsed).hex
-    if (next === lastSent()) {
+    if (next === appliedHex()) {
       props.onDismiss()
       return
     }

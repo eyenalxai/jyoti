@@ -129,4 +129,4 @@ const Toaster = (props: ToasterProps) => (
 )
 
 export { Toaster }
-export type { Notice, NoticeKind }
+export type { Notice }

@@ -3,6 +3,8 @@ import { Array as Arr, Effect } from "effect"
 import type { ColorOutcome } from "@/components/bulb/color/outcome"
 import type { ColorSnapshot } from "@/components/bulb/color/snapshot"
 import type { BulbsModel } from "@/components/bulb/use-bulbs"
+import type { RestoreControl } from "@/lib/bulbs/restore"
+import type { Bulb, BulbState } from "@/lib/bulbs/schema"
 
 import { failuresOf, runBatch } from "@/lib/bulbs/batch"
 import { restoreControl } from "@/lib/bulbs/restore"
@@ -13,51 +15,61 @@ interface RevertContext {
   readonly onError: (message: string) => void
 }
 
-const revertColors = (context: RevertContext, snapshot: ColorSnapshot): Promise<ColorOutcome> => {
-  const bulbs = context.model.bulbs()
-  const targets = Arr.filter(bulbs, (bulb) => {
-    const state = snapshot.get(bulb.id)
-    return state !== null && state !== undefined && restoreControl(state) !== null
-  })
-  const missing = Arr.filter(bulbs, (bulb) => {
-    const state = snapshot.get(bulb.id)
-    return state === null || (state !== undefined && restoreControl(state) === null)
-  })
-  if (missing.length > 0) {
-    context.onError(
-      `${nameList(Arr.map(missing, (bulb) => bulb.name))} had no previous colour to revert.`,
-    )
-  }
-  if (targets.length === 0) {
-    return Promise.resolve({ error: null, partial: false })
-  }
+interface RevertPlan {
+  readonly bulb: Bulb
+  readonly state: BulbState
+  readonly control: RestoreControl
+}
 
-  for (const bulb of targets) {
+const revertColors = (context: RevertContext, snapshot: ColorSnapshot): Promise<ColorOutcome> => {
+  const plans: RevertPlan[] = []
+  const missing: string[] = []
+
+  for (const bulb of context.model.bulbs()) {
     const state = snapshot.get(bulb.id)
-    if (state === null || state === undefined) {
+    if (state === null) {
+      missing.push(bulb.name)
+      continue
+    }
+    if (state === undefined) {
       continue
     }
     const control = restoreControl(state)
     if (control === null) {
+      missing.push(bulb.name)
       continue
     }
-    context.model.patchState(bulb.id, { ...state, mode: control.kind })
+    plans.push({ bulb, state, control })
   }
 
-  return runBatch(targets, (service, bulb) => {
-    const state = snapshot.get(bulb.id)
-    const control = state === null || state === undefined ? null : restoreControl(state)
-    if (control === null) {
-      return Effect.void
-    }
-    return control.kind === "color"
-      ? service.setColor(bulb.id, control.hex)
-      : service.setTemperature(bulb.id, control.kelvin)
-  }).then((result) => {
+  if (missing.length > 0) {
+    context.onError(`${nameList(missing)} had no previous colour to revert.`)
+  }
+  if (plans.length === 0) {
+    return Promise.resolve({ error: null, partial: false })
+  }
+
+  const byId = new Map(Arr.map(plans, (plan) => [plan.bulb.id, plan] as const))
+  for (const plan of plans) {
+    context.model.patchState(plan.bulb.id, { ...plan.state, mode: plan.control.kind })
+  }
+
+  return runBatch(
+    Arr.map(plans, (plan) => plan.bulb),
+    (service, bulb) => {
+      const plan = byId.get(bulb.id)
+      if (plan === undefined) {
+        return Effect.void
+      }
+      return plan.control.kind === "color"
+        ? service.setColor(bulb.id, plan.control.hex)
+        : service.setTemperature(bulb.id, plan.control.kelvin)
+    },
+  ).then((result) => {
     if (!result.ok) {
       context.onError(result.message)
-      for (const bulb of targets) {
-        void context.model.readOne(bulb.id)
+      for (const plan of plans) {
+        void context.model.readOne(plan.bulb.id)
       }
       return { error: result.message, partial: false }
     }

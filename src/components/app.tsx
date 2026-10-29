@@ -87,11 +87,8 @@ const App = () => {
   })
   const colorInitial = createMemo(() => initialColor(model))
 
-  const closeScreen = () => {
-    if (busy()) {
-      return
-    }
-    if (screen() === "color" && colorSession.dirty()) {
+  const closeColor = (revert: boolean) => {
+    if (revert && colorSession.dirty()) {
       colorSession.revert()
     }
     setScreen("dashboard")
@@ -99,10 +96,20 @@ const App = () => {
     colorSession.reset()
   }
 
-  const dismissColor = () => {
+  const closeScreen = () => {
+    if (busy()) {
+      return
+    }
+    if (screen() === "color") {
+      closeColor(true)
+      return
+    }
     setScreen("dashboard")
     setActiveBulb(null)
-    colorSession.reset()
+  }
+
+  const dismissColor = () => {
+    closeColor(false)
   }
 
   const selectAll = () => {

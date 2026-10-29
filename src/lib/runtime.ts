@@ -78,11 +78,16 @@ const cancelFiber = <A, E>(fiber: Fiber.Fiber<A, E>): void => {
   Effect.runFork(Fiber.interrupt(fiber))
 }
 
+const forkEffect = <A, E>(effect: Effect.Effect<A, E>): void => {
+  Effect.runFork(effect)
+}
+
 const dispose = (): Promise<void> => runtime.dispose()
 
 export {
   cancelFiber,
   dispose,
+  forkEffect,
   forkScreen,
   forkSyncEffect,
   messageOf,
