@@ -54,7 +54,11 @@ const startRun = Effect.fn("ScreenSync.startRun")(function* startRun(context: St
     })
   }
 
-  const startingStatus: SyncStatus = { ...idleSyncStatus, phase: "starting" }
+  const startingStatus: SyncStatus = {
+    ...idleSyncStatus,
+    phase: "starting",
+    brightnessGain: yield* Ref.get(context.gain),
+  }
   yield* SubscriptionRef.set(context.status, startingStatus)
 
   return yield* Effect.gen(function* startRunEffect() {
@@ -123,6 +127,7 @@ const startRun = Effect.fn("ScreenSync.startRun")(function* startRun(context: St
         pendingMonitor: null,
         color: null,
         syncBrightness: null,
+        brightnessGain: yield* Ref.get(context.gain),
         frameAgeMs: null,
         selfCapture: selfCaptureFor(monitor, monitors.length === 1),
         error: null,

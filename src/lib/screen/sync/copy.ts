@@ -12,13 +12,13 @@ const syncKeys = (phase: SyncPhase): string => {
     return "s cancel · m monitor"
   }
   if (phase === "paused") {
-    return "s stop · x resume · m monitor"
+    return "s stop · x resume · m monitor · +/- gain"
   }
   if (phase === "stopping") {
     return "stopping…"
   }
   if (phase === "syncing") {
-    return "s stop · x pause · m monitor"
+    return "s stop · x pause · m monitor · +/- gain"
   }
   return "s sync"
 }

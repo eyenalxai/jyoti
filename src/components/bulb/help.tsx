@@ -32,6 +32,7 @@ const Help = () => (
 
     <Section label="screen sync" />
     <KeyRow keys="s  x" label="Start or stop · pause" />
+    <KeyRow keys="+ -  =" label="Sync brightness gain" />
     <KeyRow keys="m  v" label="Monitor · capture preview" />
 
     <Section label="app" />

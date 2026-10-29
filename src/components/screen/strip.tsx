@@ -66,9 +66,16 @@ const SyncStrip = (props: SyncStripProps) => {
     const current = color()
     return current === null ? palette.faint : RGBA.fromHex(current.hex)
   })
-  const brightness = createMemo(() =>
-    props.status.syncBrightness === null ? "—" : `${props.status.syncBrightness}%`,
+  const gainLabel = createMemo(() =>
+    props.status.brightnessGain === 1 ? "" : ` ×${props.status.brightnessGain.toFixed(1)}`,
   )
+  const brightness = createMemo(() => {
+    const value = props.status.syncBrightness === null ? "—" : `${props.status.syncBrightness}%`
+    if (props.status.phase === "paused" && gainLabel().length > 0) {
+      return `${value} · gain${gainLabel()}`
+    }
+    return `${value}${gainLabel()}`
+  })
   const frameAge = createMemo(() =>
     props.status.frameAgeMs === null ? "—" : `${props.status.frameAgeMs} ms`,
   )

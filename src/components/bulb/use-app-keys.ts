@@ -2,6 +2,7 @@ import { useKeyboard } from "@opentui/solid"
 
 import type { ControlFocus } from "@/components/bulb/controls"
 import type { Screen } from "@/components/bulb/modals"
+import type { SyncGainDirection } from "@/lib/screen/sync/brightness"
 
 interface AppKeysOptions {
   readonly screen: () => Screen
@@ -14,6 +15,7 @@ interface AppKeysOptions {
   readonly onRefresh: () => void
   readonly onSyncToggle: () => void
   readonly onSyncPause: () => void
+  readonly onSyncGain: (direction: SyncGainDirection) => void
   readonly onMonitor: () => void
   readonly onHelp: () => void
   readonly onTogglePower: () => void
@@ -202,6 +204,14 @@ const handleAction = (key: KeyLike, options: AppKeysOptions): boolean => {
   }
   if (key.name === "x") {
     options.onSyncPause()
+    return true
+  }
+  if (key.name === "-") {
+    options.onSyncGain(-1)
+    return true
+  }
+  if (key.name === "+" || key.name === "=") {
+    options.onSyncGain(1)
     return true
   }
   if (key.name === "m") {

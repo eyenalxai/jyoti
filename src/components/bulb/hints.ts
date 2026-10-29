@@ -45,7 +45,7 @@ const footerHints = (input: FooterInput): readonly Hint[] => {
     { keys: "s", label: input.syncActive ? "stop" : "sync" },
   )
   if (input.syncActive) {
-    hints.push({ keys: "x", label: "pause" })
+    hints.push({ keys: "x", label: "pause" }, { keys: "+/-", label: "gain" })
   }
   hints.push({ keys: "?", label: "keys" }, { keys: "q", label: "quit" })
   return hints

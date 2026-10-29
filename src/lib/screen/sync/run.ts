@@ -68,6 +68,7 @@ interface RunDeps {
   readonly capture: ScreenCaptureShape
   readonly status: SubscriptionRef.SubscriptionRef<SyncStatus>
   readonly bulbs: BulbsShape
+  readonly gain: Ref.Ref<number>
 }
 
 const healthPatch = (
@@ -216,7 +217,7 @@ const tick = Effect.fn("ScreenSync.tick")(function* tick(deps: RunDeps, handle: 
   yield* Ref.set(handle.reducer, reduction.state)
 
   const target = reduction.derived
-  const targetBrightness = syncBrightnessFor(target.sceneBrightness)
+  const targetBrightness = syncBrightnessFor(target.sceneBrightness, yield* Ref.get(deps.gain))
   const guarded = guardFlash(yield* Ref.get(handle.flash), targetBrightness, performance.now())
   yield* Ref.set(handle.flash, guarded.guard)
   yield* publishLive(deps, handle, {

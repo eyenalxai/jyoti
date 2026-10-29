@@ -6,6 +6,7 @@ import { createSignal, onCleanup, onMount } from "solid-js"
 import type { Notice } from "@/components/ui/toast"
 import type { BulbId } from "@/lib/bulbs/schema"
 import type { Monitor } from "@/lib/screen/frame"
+import type { SyncGainDirection } from "@/lib/screen/sync/brightness"
 import type { RestoreReport } from "@/lib/screen/sync/restore"
 import type { SyncStatus } from "@/lib/screen/sync/status"
 
@@ -28,6 +29,7 @@ interface ScreenSyncModel {
   readonly monitorBusy: Accessor<boolean>
   readonly toggle: () => void
   readonly togglePause: () => void
+  readonly adjustGain: (direction: SyncGainDirection) => void
   readonly stop: () => Promise<RestoreReport | null>
   readonly clearRestore: () => void
   readonly notePowers: (powers: ReadonlyMap<BulbId, boolean | null>) => void
@@ -104,6 +106,17 @@ const useScreenSyncModel = (options: UseScreenSyncOptions): ScreenSyncModel => {
       }
       return null
     })
+  }
+
+  const adjustGain = (direction: SyncGainDirection) => {
+    void runScreen(ScreenSyncEngine.use((service) => service.adjustGain(direction))).then(
+      (result) => {
+        if (!result.ok) {
+          options.onError(result.message)
+        }
+        return null
+      },
+    )
   }
 
   const togglePause = () => {
@@ -241,6 +254,7 @@ const useScreenSyncModel = (options: UseScreenSyncOptions): ScreenSyncModel => {
     monitorBusy,
     toggle,
     togglePause,
+    adjustGain,
     stop,
     clearRestore,
     notePowers,
