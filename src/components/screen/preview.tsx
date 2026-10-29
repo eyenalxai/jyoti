@@ -94,10 +94,6 @@ const Preview = (props: PreviewProps) => {
         )}
       </Show>
 
-      <Show when={props.model.error()}>
-        {(message) => <text fg={palette.danger}>{message()}</text>}
-      </Show>
-
       <text fg={palette.faint} height={1} flexShrink={0}>
         ↑/↓ monitor · enter start or stop · esc close
       </text>

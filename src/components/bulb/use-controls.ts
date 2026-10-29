@@ -3,12 +3,14 @@ import type { Accessor } from "solid-js"
 
 import { Result, Schema, String as Str } from "effect"
 
+import type { ColorOutcome } from "@/components/bulb/color/outcome"
+import type { ColorSnapshot } from "@/components/bulb/color/snapshot"
 import type { BulbsModel } from "@/components/bulb/use-bulbs"
-import type { ColorOutcome } from "@/components/bulb/use-group-controls"
 import type { BulbsError } from "@/lib/bulbs/error"
 import type { Bulb, BulbId, BulbState } from "@/lib/bulbs/schema"
 import type { Timer } from "@/lib/timers"
 
+import { revertColors as revertColorBatch } from "@/components/bulb/color/revert"
 import { useGroupControls } from "@/components/bulb/use-group-controls"
 import {
   BRIGHTNESS_MAX,
@@ -35,6 +37,7 @@ interface ControlsModel {
   readonly adjustBrightness: (delta: number) => void
   readonly adjustTemperature: (delta: number) => void
   readonly setColor: (hex: string) => Promise<ColorOutcome>
+  readonly revertColors: (snapshot: ColorSnapshot) => Promise<ColorOutcome>
   readonly flushPending: () => void
 }
 
@@ -234,11 +237,15 @@ const useControls = (options: UseControlsOptions): ControlsModel => {
     )
   }
 
+  const revertColors = (snapshot: ColorSnapshot): Promise<ColorOutcome> =>
+    revertColorBatch({ model: options.model, onError: options.onError }, snapshot)
+
   return {
     togglePower,
     adjustBrightness,
     adjustTemperature,
     setColor,
+    revertColors,
     flushPending,
   }
 }

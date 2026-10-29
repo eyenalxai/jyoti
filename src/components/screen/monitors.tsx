@@ -10,7 +10,6 @@ interface MonitorsProps {
   readonly captured: string | null
   readonly pending: string | null
   readonly busy: boolean
-  readonly error: string | null
 }
 
 const VISIBLE_MONITORS = 6
@@ -90,14 +89,6 @@ const Monitors = (props: MonitorsProps) => {
       <text fg={palette.faint} height={1} flexShrink={0}>
         ↑/↓ monitor · enter choose · esc cancel
       </text>
-
-      <Show when={props.error !== null}>
-        {(message) => (
-          <text fg={palette.danger} truncate wrapMode="none">
-            ✗ {message()}
-          </text>
-        )}
-      </Show>
     </box>
   )
 }

@@ -5,7 +5,6 @@ import { palette } from "@/lib/theme"
 interface RemoveProps {
   readonly bulb: Bulb
   readonly busy: boolean
-  readonly error: string | null
 }
 
 const Remove = (props: RemoveProps) => (
@@ -19,15 +18,6 @@ const Remove = (props: RemoveProps) => (
     <text bg={palette.surfaceRaised} fg={palette.warning}>
       This cannot be undone.
     </text>
-    <box height={1}>
-      <text
-        bg={palette.surfaceRaised}
-        fg={props.error === null ? palette.background : palette.danger}
-        truncate
-      >
-        {props.error ?? " "}
-      </text>
-    </box>
     <box flexDirection="row" justifyContent="space-between" height={1}>
       <text bg={palette.surfaceRaised} fg={palette.faint}>
         esc cancel

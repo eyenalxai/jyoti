@@ -2,6 +2,7 @@ import type { Effect } from "effect"
 
 import { Array as Arr, Result, Schema, String as Str } from "effect"
 
+import type { ColorOutcome } from "@/components/bulb/color/outcome"
 import type { BulbsModel } from "@/components/bulb/use-bulbs"
 import type { ValueSpan } from "@/lib/bulbs/aggregate"
 import type { BulbsError } from "@/lib/bulbs/error"
@@ -20,11 +21,6 @@ import {
 import { Bulbs } from "@/lib/bulbs/service"
 import { nameList } from "@/lib/format"
 import { run } from "@/lib/runtime"
-
-interface ColorOutcome {
-  readonly error: string | null
-  readonly partial: boolean
-}
 
 interface GroupControlsModel {
   readonly togglePower: () => Promise<string | null>
@@ -236,4 +232,4 @@ const useGroupControls = (options: UseGroupControlsOptions): GroupControlsModel 
   return { togglePower, adjustBrightness, adjustTemperature, setColor }
 }
 
-export { useGroupControls, type ColorOutcome, type GroupControlsModel }
+export { useGroupControls, type GroupControlsModel }

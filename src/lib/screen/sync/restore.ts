@@ -4,6 +4,7 @@ import type { Bulb, BulbState } from "@/lib/bulbs/schema"
 import type { PropertyParam } from "@/lib/miio/properties"
 import type { RunDeps, RunHandle } from "@/lib/screen/sync/run"
 
+import { restoreControl } from "@/lib/bulbs/restore"
 import {
   PIID_BRIGHTNESS,
   PIID_COLOR,
@@ -48,21 +49,18 @@ const restoreProperties = (
   state: BulbState,
   droveBrightness: boolean,
 ): readonly PropertyParam[] | null => {
-  const color = colorParams(state.color)
-  const temperature = temperatureParams(state.temperature)
-  const control =
-    state.mode === "temperature"
-      ? temperature.length > 0
-        ? temperature
-        : color
-      : color.length > 0
-        ? color
-        : temperature
+  const control = restoreControl(state)
+  const controlParams =
+    control === null
+      ? []
+      : control.kind === "color"
+        ? colorParams(control.hex)
+        : temperatureParams(control.kelvin)
   const brightness =
     droveBrightness && state.brightness !== null
       ? propertiesWithValue(PIID_BRIGHTNESS, state.brightness)
       : []
-  const params = [...control, ...brightness]
+  const params = [...controlParams, ...brightness]
   return params.length === 0 ? null : params
 }
 
