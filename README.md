@@ -44,34 +44,36 @@ The build writes `native/build/libjyoti-capture.so` and the generated Wayland pr
 
 ## Keys
 
-| Key               | Action                                       |
-| ----------------- | -------------------------------------------- |
-| `↑` `↓` / `j` `k` | Select a bulb, or move the focused control   |
-| `A`               | Select all bulbs (two or more)               |
-| `tab`             | Switch between the bulb list and controls    |
-| `←` `→` / `h` `l` | Adjust the focused control                   |
-| `space` / `p`     | Toggle power                                 |
-| `enter`           | Open controls, or act on the focused control |
-| `w`               | Switch to white light                        |
-| `c`               | Switch to colour and open the picker         |
-| `a`               | Add a bulb                                   |
-| `e`               | Edit the selected bulb                       |
-| `d`               | Remove the selected bulb                     |
-| `r`               | Refresh the list and all states              |
-| `s`               | Start or stop screen sync                    |
-| `x`               | Pause or resume screen sync                  |
-| `m`               | Choose the monitor screen sync captures      |
-| `v`               | Capture preview (development preview)        |
-| `?`               | Show the key map                             |
-| `q` / `ctrl+c`    | Quit                                         |
+| Key               | Action                                                                           |
+| ----------------- | -------------------------------------------------------------------------------- |
+| `↑` `↓` / `j` `k` | Select a bulb, or move the focused control                                       |
+| `A`               | Select all bulbs (two or more)                                                   |
+| `tab`             | Switch between the bulb list and controls, or between panes in a narrow terminal |
+| `←` `→` / `h` `l` | Adjust the focused control                                                       |
+| `space` / `p`     | Toggle power                                                                     |
+| `enter`           | Open controls, or act on the focused control                                     |
+| `w`               | Switch to white light                                                            |
+| `c`               | Switch to colour and open the picker                                             |
+| `a`               | Add a bulb                                                                       |
+| `e`               | Edit the selected bulb                                                           |
+| `d`               | Remove the selected bulb                                                         |
+| `r`               | Refresh the list and all states                                                  |
+| `s`               | Start or stop screen sync                                                        |
+| `x`               | Pause or resume screen sync                                                      |
+| `m`               | Choose the monitor screen sync captures                                          |
+| `v`               | Capture preview (development preview)                                            |
+| `?`               | Show the key map                                                                 |
+| `q` / `ctrl+c`    | Quit                                                                             |
 
 Brightness moves in 5% steps and warmth in 100 K steps. Hue moves in 1° steps and saturation in 1% steps. Changes update immediately and are sent after a short idle; a failed command restores the bulb's real state and reports the failure in a toast.
 
 Notifications and errors appear as transient toasts in the top-right corner. They queue, dismiss on their own, and can be dismissed with a click.
 
-The light has two qualities: **White** (warmth) and **Colour** (packed RGB). The `Light` switch makes the choice explicit, and only the active quality's row is shown. The colour picker edits hue and saturation; every value it can produce is an sRGB colour, so the swatch is exactly what is sent. `tab` switches between hue/saturation and RGB, the hex field accepts an exact colour, `↑` `↓` move between fields, and `←` `→` adjust the focused slider. Each change is sent after a short idle, so the bulb follows the picker. `enter` keeps the colour and closes; `esc` reverts to the colour and mode each target had when the picker opened.
+Each bulb has two modes: **White** (colour temperature) and **Colour** (packed RGB). They are mutually exclusive on the bulb, so the panel shows the mode first and then that mode's own settings: brightness and warmth for White, brightness and colour for Colour. Brightness belongs to both modes and stays in place when the mode changes. `←` `→` on the mode row switches it, and `w` and `c` do the same from anywhere. The colour picker edits hue and saturation; every value it can produce is an sRGB colour, so the swatch is exactly what is sent. `tab` switches between hue/saturation and RGB, the hex field accepts an exact colour, `↑` `↓` move between fields, and `←` `→` adjust the focused slider. Each change is sent after a short idle, so the bulb follows the picker. `enter` keeps the colour and closes; `esc` reverts to the colour and mode each target had when the picker opened.
 
-With two or more bulbs, **All bulbs** is selected on first load and `A` returns to it. The panel shows the aggregate power, brightness, quality and the active quality value. When the bulbs disagree on quality the switch says `mixed`; choosing White or Colour applies it to every bulb. `space` turns every bulb off when all of them are on, or on otherwise. `←` `→` set the same brightness or warmth on every bulb, starting from the aggregate — right from the brightest, left from the dimmest — and `c` applies one colour to all of them as you adjust; `esc` reverts each bulb's own previous colour. Each bulb is addressed independently, so one slow bulb does not hold up the rest; a partial failure names the bulbs that failed and keeps the successes. Edit and remove stay per bulb.
+The shell is responsive. The bulb list and the controls sit side by side from 72 columns; below that, `tab` switches one full-width pane at a time. The key bar wraps onto as many centred rows as it needs and is never truncated, and the panel asks for at least 40 columns and 14 rows.
+
+With two or more bulbs, **All bulbs** is selected on first load and `A` returns to it. The panel shows the aggregate power, brightness, mode and the mode's value. When the bulbs disagree on the mode the switch shows `mixed`; choosing White or Colour applies it to every bulb. `space` turns every bulb off when all of them are on, or on otherwise. `←` `→` set the same brightness or warmth on every bulb, starting from the aggregate — right from the brightest, left from the dimmest — and `c` applies one colour to all of them as you adjust; `esc` reverts each bulb's own previous colour. Each bulb is addressed independently, so one slow bulb does not hold up the rest; a partial failure names the bulbs that failed and keeps the successes. Edit and remove stay per bulb.
 
 ## Screen sync
 

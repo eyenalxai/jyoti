@@ -4,10 +4,13 @@ import type { LightQuality, LightSide } from "@/lib/bulbs/aggregate"
 
 import { palette } from "@/lib/theme"
 
-interface QualitySwitchProps {
+interface QualityTabsProps {
   readonly quality: LightQuality
+  readonly focused: boolean
   readonly disabled: boolean
-  readonly onQuality: (quality: LightSide) => void
+  readonly hint: string | undefined
+  readonly onFocus: () => void
+  readonly onSelect: (quality: LightSide) => void
 }
 
 const Segment = (props: {
@@ -32,35 +35,44 @@ const Segment = (props: {
   </box>
 )
 
-const QualitySwitch = (props: QualitySwitchProps) => (
-  <box flexDirection="row" justifyContent="space-between" height={1} gap={2}>
-    <text fg={palette.muted}>Light</text>
-    <box flexDirection="row" gap={1} alignItems="center">
+const QualityTabs = (props: QualityTabsProps) => (
+  <box flexDirection="row" gap={1} height={1} width="100%" onMouseDown={props.onFocus}>
+    <text fg={props.focused && !props.disabled ? palette.accent : palette.background}>
+      {props.focused ? "›" : " "}
+    </text>
+    <box flexDirection="row" gap={1}>
       <Segment
         label="White"
         active={props.quality === "white"}
         disabled={props.disabled}
         onSelect={() => {
-          props.onQuality("white")
+          props.onSelect("white")
         }}
       />
-      <text fg={palette.border}>│</text>
       <Segment
         label="Colour"
         active={props.quality === "color"}
         disabled={props.disabled}
         onSelect={() => {
-          props.onQuality("color")
+          props.onSelect("color")
         }}
       />
-      <Show when={props.quality === "mixed"}>
-        <text fg={palette.warning}>mixed</text>
-      </Show>
-      <Show when={props.quality === "unknown"}>
-        <text fg={palette.faint}>unknown</text>
-      </Show>
     </box>
+    <Show when={props.quality === "mixed"}>
+      <text fg={palette.warning}>mixed</text>
+    </Show>
+    <Show when={props.quality === "unknown"}>
+      <text fg={palette.faint}>unknown</text>
+    </Show>
+    <box flexGrow={1} />
+    <Show when={props.hint}>
+      {(hint) => (
+        <text fg={palette.faint} flexShrink={0} wrapMode="none">
+          {hint()}
+        </text>
+      )}
+    </Show>
   </box>
 )
 
-export { QualitySwitch }
+export { QualityTabs, type QualityTabsProps }

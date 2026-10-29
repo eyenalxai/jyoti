@@ -4,12 +4,14 @@ import { createMemo, createSignal, onCleanup, onMount } from "solid-js"
 
 import type { Mode } from "@/components/bulb/color/mode"
 import type { PickerFocus } from "@/components/bulb/color/sliders"
+import type { Hint } from "@/components/ui/key"
 import type { Rgb } from "@/lib/bulbs/schema"
 import type { Timer } from "@/lib/timers"
 
 import { ModeTabs } from "@/components/bulb/color/mode"
 import { ColorSliders } from "@/components/bulb/color/sliders"
 import { Swatch } from "@/components/bulb/color/swatch"
+import { KeyBar } from "@/components/ui/key"
 import { formatColor, packColor, parseColor } from "@/lib/bulbs/schema"
 import { HUE_MAX, PERCENT_MAX, hsbToRgb, rgbToHsb, withHue, withSaturation } from "@/lib/color/hsb"
 import { clamp } from "@/lib/format"
@@ -206,6 +208,13 @@ const Color = (props: ColorProps) => {
 
   const status = (): string => issue() ?? " "
   const statusTone = () => (issue() === null ? palette.faint : palette.danger)
+  const hints = createMemo<readonly Hint[]>(() => [
+    { keys: "esc", label: "revert" },
+    { keys: "tab", label: "mode" },
+    { keys: "↑↓", label: "field" },
+    { keys: "←→", label: "adjust" },
+    { keys: "enter", label: props.busy ? "applying…" : "done" },
+  ])
 
   return (
     <box flexDirection="column" flexGrow={1} gap={0} minHeight={0}>
@@ -257,19 +266,14 @@ const Color = (props: ColorProps) => {
       <Swatch hex={hex()} />
 
       <box height={1}>
-        <text fg={statusTone()} truncate>
+        <text fg={statusTone()} wrapMode="word">
           {status()}
         </text>
       </box>
 
-      <box flexDirection="row" justifyContent="space-between" height={1}>
-        <text bg={palette.surfaceRaised} fg={palette.faint}>
-          esc revert · tab mode · ↑↓ field
-        </text>
-        <text bg={palette.surfaceRaised} fg={props.busy ? palette.faint : palette.accent}>
-          {props.busy ? "applying…" : "enter done"}
-        </text>
-      </box>
+      <box flexGrow={1} />
+
+      <KeyBar hints={hints()} />
     </box>
   )
 }

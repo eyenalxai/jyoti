@@ -46,11 +46,17 @@ interface AppCommands {
   readonly dismissColor: () => void
 }
 
-const focusOrder: readonly ControlFocus[] = ["power", "brightness", "light"]
+const focusOrder = (quality: LightQuality): readonly ControlFocus[] =>
+  quality === "white" || quality === "color"
+    ? ["power", "quality", "brightness", "light"]
+    : ["power", "quality", "brightness"]
 
 const useAppCommands = (options: UseAppCommandsOptions): AppCommands => {
   const syncOwnsControls = () =>
-    options.syncActive() && (options.focus() === "brightness" || options.focus() === "light")
+    options.syncActive() &&
+    (options.focus() === "quality" ||
+      options.focus() === "brightness" ||
+      options.focus() === "light")
 
   const closeScreen = () => {
     if (options.busy()) {
@@ -82,9 +88,10 @@ const useAppCommands = (options: UseAppCommandsOptions): AppCommands => {
   }
 
   const cycleFocus = (direction: number) => {
-    const current = focusOrder.indexOf(options.focus())
+    const order = focusOrder(options.selectedQuality())
+    const current = order.indexOf(options.focus())
     const base = current === -1 ? 0 : current
-    const next = focusOrder[(base + direction + focusOrder.length) % focusOrder.length]
+    const next = order[(base + direction + order.length) % order.length]
     if (next !== undefined) {
       options.setFocus(next)
     }
@@ -109,22 +116,55 @@ const useAppCommands = (options: UseAppCommandsOptions): AppCommands => {
     if (options.focus() === "brightness") {
       options.controls.adjustBrightness(direction * BRIGHTNESS_STEP)
     }
-    if (options.focus() === "light") {
-      if (options.selectedQuality() === "white") {
-        options.controls.adjustTemperature(direction * TEMPERATURE_STEP)
-      } else if (options.selectedQuality() === "unknown") {
-        options.notify({ kind: "info", message: "Choose White or Colour with w or c." })
-      }
+    if (options.focus() === "light" && options.selectedQuality() === "white") {
+      options.controls.adjustTemperature(direction * TEMPERATURE_STEP)
     }
   }
 
-  const openColor = () => {
+  const switchToColor = () => {
     if (options.syncActive()) {
+      options.notify({ kind: "info", message: SYNC_OWNS_CONTROLS })
+      return false
+    }
+    if (!options.colorSession.dirty()) {
+      options.colorSession.capture()
+      void options.colorSession.commit(options.colorInitial())
+    }
+    return true
+  }
+
+  const setQuality = (quality: LightSide) => {
+    options.setPane("controls")
+    options.setFocus("quality")
+    if (quality === "white") {
+      options.controls.setWhite()
+      return
+    }
+    switchToColor()
+  }
+
+  const adjustLight = (direction: number) => {
+    if (options.pane() !== "controls") {
+      return
+    }
+    if (syncOwnsControls()) {
       options.notify({ kind: "info", message: SYNC_OWNS_CONTROLS })
       return
     }
-    options.colorSession.capture()
-    void options.colorSession.commit(options.colorInitial())
+    if (options.focus() === "quality") {
+      const next = direction < 0 ? "white" : "color"
+      if (next !== options.selectedQuality()) {
+        setQuality(next)
+      }
+      return
+    }
+    adjust(direction)
+  }
+
+  const openColor = () => {
+    if (!switchToColor()) {
+      return
+    }
     options.actions.openColor()
   }
 
@@ -143,6 +183,11 @@ const useAppCommands = (options: UseAppCommandsOptions): AppCommands => {
       void options.controls.togglePower()
       return
     }
+    if (options.focus() === "quality") {
+      const next = options.selectedQuality() === "white" ? "color" : "white"
+      setQuality(next)
+      return
+    }
     if (options.focus() === "light") {
       if (options.selectedQuality() === "color") {
         openColor()
@@ -152,7 +197,6 @@ const useAppCommands = (options: UseAppCommandsOptions): AppCommands => {
         options.controls.flushPending()
         return
       }
-      options.notify({ kind: "info", message: "Choose White or Colour with w or c." })
       return
     }
     if (syncOwnsControls()) {
@@ -169,15 +213,6 @@ const useAppCommands = (options: UseAppCommandsOptions): AppCommands => {
   const focusControl = (next: ControlFocus) => {
     options.setPane("controls")
     options.setFocus(next)
-  }
-
-  const setQuality = (quality: LightSide) => {
-    options.setFocus("light")
-    if (quality === "white") {
-      options.controls.setWhite()
-      return
-    }
-    openColor()
   }
 
   const setWhite = () => {
@@ -217,7 +252,7 @@ const useAppCommands = (options: UseAppCommandsOptions): AppCommands => {
     onWhite: setWhite,
     onFocus: focusControl,
     onMove: move,
-    onAdjust: adjust,
+    onAdjust: adjustLight,
     onActivate: activate,
     onConfirmRemove: options.confirmRemove,
     onPreview: () => {

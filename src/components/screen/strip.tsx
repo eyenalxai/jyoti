@@ -99,8 +99,8 @@ const SyncStrip = (props: SyncStripProps) => {
   )
 
   return (
-    <box flexDirection="column" height={2} flexShrink={0}>
-      <text height={1} truncate wrapMode="none">
+    <box flexDirection="column" flexShrink={0} width="100%">
+      <text wrapMode="word">
         <span style={{ fg: view().tone }}>
           {view().glyph} {view().word}
         </span>
@@ -118,7 +118,7 @@ const SyncStrip = (props: SyncStripProps) => {
             `${brightness()} · frame ${frameAge()} · ${props.status.reachable}/${props.status.total}`}
         </span>
       </text>
-      <text fg={palette.faint} height={1} truncate wrapMode="none">
+      <text fg={palette.faint} wrapMode="word">
         {keys()}
       </text>
     </box>

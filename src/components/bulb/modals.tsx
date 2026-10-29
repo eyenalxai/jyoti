@@ -1,4 +1,5 @@
-import { Show } from "solid-js"
+import { useTerminalDimensions } from "@opentui/solid"
+import { Show, createMemo } from "solid-js"
 
 import type { CapturePreviewModel } from "@/components/screen/use-preview"
 import type { ScreenSyncModel } from "@/components/screen/use-sync"
@@ -24,66 +25,76 @@ interface ModalsProps {
   readonly onConfirmRemove: () => void
 }
 
-const Modals = (props: ModalsProps) => (
-  <>
-    <Show when={props.screen === "add"}>
-      <Modal title="Add bulb" hint="esc cancel" width={58} height={16}>
-        <Form
-          mode="add"
-          initial={null}
-          inputWidth={41}
-          busy={props.busy}
-          onSubmit={props.onSubmitAdd}
-        />
-      </Modal>
-    </Show>
+const FORM_WIDTH = 58
 
-    <Show when={props.screen === "edit" && props.activeBulb !== null}>
-      <Modal title="Edit bulb" hint="esc cancel" width={58} height={16}>
-        <Form
-          mode="edit"
-          initial={props.activeBulb}
-          inputWidth={41}
-          busy={props.busy}
-          onSubmit={props.onSubmitEdit}
-        />
-      </Modal>
-    </Show>
+const Modals = (props: ModalsProps) => {
+  const dimensions = useTerminalDimensions()
+  const formWidth = createMemo(() => Math.max(34, Math.min(FORM_WIDTH, dimensions().width - 2)))
+  const inputWidth = createMemo(() => Math.max(12, formWidth() - 17))
 
-    <Show when={props.screen === "remove"}>
-      <Show when={props.activeBulb}>
-        {(bulb) => (
-          <Modal title="Remove bulb" hint="y or n" width={50} height={12}>
-            <Remove bulb={bulb()} busy={props.busy} />
-          </Modal>
-        )}
+  return (
+    <>
+      <Show when={props.screen === "add"}>
+        <Modal title="Add bulb" hint="esc cancel" width={formWidth()} height={16}>
+          <Form
+            mode="add"
+            initial={null}
+            inputWidth={inputWidth()}
+            busy={props.busy}
+            onSubmit={props.onSubmitAdd}
+          />
+        </Modal>
       </Show>
-    </Show>
 
-    <Show when={props.screen === "help"}>
-      <Modal title="Keys" hint="esc close" width={58} height={20}>
-        <Help />
-      </Modal>
-    </Show>
+      <Show when={props.screen === "edit" && props.activeBulb !== null}>
+        <Modal title="Edit bulb" hint="esc cancel" width={formWidth()} height={16}>
+          <Form
+            mode="edit"
+            initial={props.activeBulb}
+            inputWidth={inputWidth()}
+            busy={props.busy}
+            onSubmit={props.onSubmitEdit}
+          />
+        </Modal>
+      </Show>
 
-    <Show when={props.screen === "capture"}>
-      <Modal title="Capture preview (dev)" hint="esc close" width={58} height={18}>
-        <Preview model={props.preview} />
-      </Modal>
-    </Show>
+      <Show when={props.screen === "remove"}>
+        <Show when={props.activeBulb}>
+          {(bulb) => (
+            <Modal title="Remove bulb" hint="y or n" width={50} height={12}>
+              <Remove bulb={bulb()} busy={props.busy} />
+            </Modal>
+          )}
+        </Show>
+      </Show>
 
-    <Show when={props.screen === "monitors"}>
-      <Modal title="Captured monitor" hint="esc cancel" width={64} height={14}>
-        <Monitors
-          monitors={props.syncModel.monitors()}
-          selected={props.syncModel.monitorIndex()}
-          captured={props.syncModel.status().monitor}
-          pending={props.syncModel.status().pendingMonitor}
-          busy={props.syncModel.monitorBusy()}
-        />
-      </Modal>
-    </Show>
-  </>
-)
+      <Show when={props.screen === "help"}>
+        <Modal title="Keys" hint="esc close" width={58} height={20}>
+          <scrollbox flexGrow={1} minHeight={0} focused>
+            <Help />
+          </scrollbox>
+        </Modal>
+      </Show>
+
+      <Show when={props.screen === "capture"}>
+        <Modal title="Capture preview (dev)" hint="esc close" width={58} height={18}>
+          <Preview model={props.preview} />
+        </Modal>
+      </Show>
+
+      <Show when={props.screen === "monitors"}>
+        <Modal title="Captured monitor" hint="esc cancel" width={64} height={14}>
+          <Monitors
+            monitors={props.syncModel.monitors()}
+            selected={props.syncModel.monitorIndex()}
+            captured={props.syncModel.status().monitor}
+            pending={props.syncModel.status().pendingMonitor}
+            busy={props.syncModel.monitorBusy()}
+          />
+        </Modal>
+      </Show>
+    </>
+  )
+}
 
 export { Modals, type Screen }

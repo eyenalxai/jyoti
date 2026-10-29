@@ -2,12 +2,13 @@ import { String as Str } from "effect"
 import { Show } from "solid-js"
 
 import type { ControlFocus } from "@/components/bulb/controls"
-import type { AggregateColor, AggregateState, LightQuality, LightSide } from "@/lib/bulbs/aggregate"
+import type { AggregateColor, AggregateState, LightSide } from "@/lib/bulbs/aggregate"
 
 import { SpanMeter, aggregatePowerTone, spanValue } from "@/components/bulb/aggregate-controls"
 import { Color } from "@/components/bulb/color"
 import { ControlRow } from "@/components/bulb/controls"
-import { QualitySwitch } from "@/components/bulb/quality"
+import { QualityTabs } from "@/components/bulb/quality"
+import { Rule } from "@/components/ui/rule"
 import {
   BRIGHTNESS_MAX,
   BRIGHTNESS_MIN,
@@ -17,38 +18,6 @@ import {
 import { aggregateGlyph, aggregateSummary, truncate } from "@/lib/format"
 import { SYNC_OWNS_CONTROLS } from "@/lib/screen/sync/copy"
 import { palette } from "@/lib/theme"
-
-const colorValue = (color: AggregateColor | null, disabled: boolean) => {
-  if (color === null) {
-    return <text fg={palette.faint}>—</text>
-  }
-  if (color.kind === "mixed") {
-    return <text fg={palette.warning}>colours differ</text>
-  }
-  return (
-    <>
-      <text fg={disabled ? palette.faint : color.hex}>{Str.repeat(10)("█")}</text>
-      <text fg={disabled ? palette.faint : palette.text}>{color.hex}</text>
-    </>
-  )
-}
-
-interface AllDetailProps {
-  readonly aggregate: AggregateState
-  readonly focus: ControlFocus
-  readonly active: boolean
-  readonly syncLocked: boolean
-  readonly width: number
-  readonly meterWidth: number
-  readonly colorOpen: boolean
-  readonly colorBusy: boolean
-  readonly colorInitial: string
-  readonly onFocus: (focus: ControlFocus) => void
-  readonly onQuality: (quality: LightSide) => void
-  readonly onPreviewColor: (hex: string) => Promise<boolean>
-  readonly onSubmitColor: (hex: string) => void
-  readonly onDismissColor: () => void
-}
 
 const reachLine = (aggregate: AggregateState): string => {
   if (aggregate.failed > 0) {
@@ -60,12 +29,52 @@ const reachLine = (aggregate: AggregateState): string => {
   return `${aggregate.total} ${aggregate.total === 1 ? "bulb" : "bulbs"} · all reachable`
 }
 
+const colourValue = (color: AggregateColor | null, width: number, disabled: boolean) => {
+  if (color === null) {
+    return <text fg={palette.faint}>—</text>
+  }
+  if (color.kind === "mixed") {
+    return <text fg={palette.warning}>colours differ</text>
+  }
+  return (
+    <>
+      <text fg={disabled ? palette.faint : color.hex} wrapMode="none">
+        {Str.repeat(Math.max(1, width))("█")}
+      </text>
+    </>
+  )
+}
+
+interface AllDetailProps {
+  readonly aggregate: AggregateState
+  readonly focus: ControlFocus
+  readonly active: boolean
+  readonly syncLocked: boolean
+  readonly width: number
+  readonly meterWidth: number
+  readonly labelWidth: number
+  readonly valueWidth: number
+  readonly controlWidth: number
+  readonly rowHints: boolean
+  readonly colorOpen: boolean
+  readonly colorBusy: boolean
+  readonly colorInitial: string
+  readonly onFocus: (focus: ControlFocus) => void
+  readonly onQuality: (quality: LightSide) => void
+  readonly onPreviewColor: (hex: string) => Promise<boolean>
+  readonly onSubmitColor: (hex: string) => void
+  readonly onDismissColor: () => void
+}
+
+const hintFor = (show: boolean, hint: string): string | undefined => (show ? hint : undefined)
+
 const AllDetail = (props: AllDetailProps) => {
-  const qualityFocused = () => props.active && props.focus === "light"
-  const quality = (): LightQuality => props.aggregate.quality
+  const qualityFocused = () => props.active && props.focus === "quality"
+  const valueFocused = () => props.active && props.focus === "light"
+  const locked = () => props.syncLocked
 
   return (
-    <box flexDirection="column" flexGrow={1} minWidth={0} gap={0}>
+    <box flexDirection="column" flexGrow={1} minWidth={0}>
       <box flexDirection="row" justifyContent="space-between" height={1}>
         <text fg={palette.text} truncate wrapMode="none">
           <strong>{truncate("All bulbs", Math.max(8, props.width - 12))}</strong>
@@ -98,9 +107,7 @@ const AllDetail = (props: AllDetailProps) => {
         </Show>
       </box>
 
-      <text fg={palette.border} height={1}>
-        {Str.repeat(Math.max(0, props.width))("─")}
-      </text>
+      <Rule width={props.width} />
 
       <Show
         when={!props.colorOpen}
@@ -121,22 +128,39 @@ const AllDetail = (props: AllDetailProps) => {
           </text>
         </Show>
 
-        <box flexDirection="column" flexGrow={1} minHeight={0}>
+        <box flexDirection="column" flexGrow={1} minHeight={0} maxWidth={props.controlWidth}>
           <ControlRow
             label="Power"
+            labelWidth={props.labelWidth}
             focused={props.active && props.focus === "power"}
+            hint={hintFor(props.rowHints, "space")}
             onFocus={() => {
               props.onFocus("power")
             }}
             value={
               <text fg={aggregatePowerTone(props.aggregate.power)}>{props.aggregate.power}</text>
             }
-            hint="space"
           />
+
+          <box height={1} />
+
+          <QualityTabs
+            quality={props.aggregate.quality}
+            focused={qualityFocused()}
+            disabled={locked()}
+            hint={hintFor(props.rowHints, "←/→")}
+            onFocus={() => {
+              props.onFocus("quality")
+            }}
+            onSelect={props.onQuality}
+          />
+
           <ControlRow
             label="Brightness"
+            labelWidth={props.labelWidth}
             focused={props.active && props.focus === "brightness"}
-            disabled={props.syncLocked}
+            disabled={locked()}
+            hint={hintFor(props.rowHints, "←/→")}
             onFocus={() => {
               props.onFocus("brightness")
             }}
@@ -147,31 +171,22 @@ const AllDetail = (props: AllDetailProps) => {
                   min={BRIGHTNESS_MIN}
                   max={BRIGHTNESS_MAX}
                   width={props.meterWidth}
-                  disabled={props.syncLocked}
+                  disabled={locked()}
                 />
-                <text fg={props.syncLocked ? palette.faint : palette.text}>
-                  {spanValue(props.aggregate.brightness, "%", 7)}
+                <text fg={locked() ? palette.faint : palette.text} wrapMode="none">
+                  {spanValue(props.aggregate.brightness, "%", props.valueWidth)}
                 </text>
               </>
             }
-            hint="←/→"
           />
 
-          <text fg={palette.border} height={1}>
-            {Str.repeat(Math.max(0, props.width))("─")}
-          </text>
-
-          <QualitySwitch
-            quality={quality()}
-            disabled={props.syncLocked}
-            onQuality={props.onQuality}
-          />
-
-          <Show when={quality() === "white"}>
+          <Show when={props.aggregate.quality === "white"}>
             <ControlRow
               label="Warmth"
-              focused={qualityFocused()}
-              disabled={props.syncLocked}
+              labelWidth={props.labelWidth}
+              focused={valueFocused()}
+              disabled={locked()}
+              hint={hintFor(props.rowHints, "←/→")}
               onFocus={() => {
                 props.onFocus("light")
               }}
@@ -182,50 +197,37 @@ const AllDetail = (props: AllDetailProps) => {
                     min={TEMPERATURE_MIN}
                     max={TEMPERATURE_MAX}
                     width={props.meterWidth}
-                    disabled={props.syncLocked}
+                    disabled={locked()}
                   />
-                  <text fg={props.syncLocked ? palette.faint : palette.text}>
-                    {spanValue(props.aggregate.temperature, "K", 10)}
+                  <text fg={locked() ? palette.faint : palette.text} wrapMode="none">
+                    {spanValue(props.aggregate.temperature, "K", props.valueWidth)}
                   </text>
                 </>
               }
-              hint="←/→"
             />
           </Show>
-          <Show when={quality() === "color"}>
+
+          <Show when={props.aggregate.quality === "color"}>
             <ControlRow
               label="Colour"
-              focused={qualityFocused()}
-              disabled={props.syncLocked}
+              labelWidth={props.labelWidth}
+              focused={valueFocused()}
+              disabled={locked()}
+              hint={hintFor(props.rowHints, "enter")}
               onFocus={() => {
                 props.onFocus("light")
               }}
-              value={colorValue(props.aggregate.color, props.syncLocked)}
-              hint={props.syncLocked ? "sync owns it" : "enter picks"}
-            />
-          </Show>
-          <Show when={quality() === "mixed"}>
-            <ControlRow
-              label="Quality"
-              focused={qualityFocused()}
-              disabled={props.syncLocked}
-              onFocus={() => {
-                props.onFocus("light")
-              }}
-              value={<text fg={palette.warning}>mixed</text>}
-              hint="w / c"
-            />
-          </Show>
-          <Show when={quality() === "unknown"}>
-            <ControlRow
-              label="Quality"
-              focused={qualityFocused()}
-              disabled={props.syncLocked}
-              onFocus={() => {
-                props.onFocus("light")
-              }}
-              value={<text fg={palette.faint}>unknown</text>}
-              hint="r reads"
+              value={
+                <>
+                  {colourValue(props.aggregate.color, props.meterWidth, locked())}
+                  <text fg={locked() ? palette.faint : palette.text} wrapMode="none">
+                    {Str.padStart(
+                      props.valueWidth,
+                      " ",
+                    )(props.aggregate.color?.kind === "equal" ? props.aggregate.color.hex : "")}
+                  </text>
+                </>
+              }
             />
           </Show>
         </box>

@@ -15,16 +15,18 @@ interface ModalProps {
 
 const Modal = (props: ModalProps) => {
   const dimensions = useTerminalDimensions()
-  const left = createMemo(() => Math.max(0, Math.floor((dimensions().width - props.width) / 2)))
-  const top = createMemo(() => Math.max(0, Math.floor((dimensions().height - props.height) / 2)))
+  const width = createMemo(() => Math.max(20, Math.min(props.width, dimensions().width - 2)))
+  const height = createMemo(() => Math.max(8, Math.min(props.height, dimensions().height - 2)))
+  const left = createMemo(() => Math.max(0, Math.floor((dimensions().width - width()) / 2)))
+  const top = createMemo(() => Math.max(0, Math.floor((dimensions().height - height()) / 2)))
 
   return (
     <box
       position="absolute"
       left={left()}
       top={top()}
-      width={props.width}
-      height={props.height}
+      width={width()}
+      height={height()}
       zIndex={20}
       flexDirection="column"
       gap={1}
