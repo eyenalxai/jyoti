@@ -16,6 +16,10 @@ The operating system's Secret Service store, reached through `secret-tool`. It h
 
 `$XDG_CONFIG_HOME/jyoti/bulbs.json`, falling back to `~/.config/jyoti/bulbs.json`. It holds the bulb list's metadata and a format version. It never holds a token.
 
+## Preferences file
+
+`$XDG_CONFIG_HOME/jyoti/prefs.json`, next to the config file. It holds preferences that survive launches, currently the sync brightness gain. It never holds a token.
+
 ## Token
 
 The 16-byte device key, written as 32 hex characters. It authenticates and encrypts every miIO packet. It is stored in the keyring, never in the config file, never committed and never logged.
@@ -118,7 +122,7 @@ The monitor a sync run reads.
 
 ## Derived colour
 
-The single colour the colour reducer produces for a frame: the colour of the winning OKLab cluster — its mean lightness and hue, with the chroma raised toward the cluster's 75th percentile. It is sent as it is, white, grey and black included.
+The single colour the colour reducer produces for a frame: the colour of the winning OKLab cluster — its mean lightness and hue, with the chroma raised toward the cluster's 75th percentile. At a gain of `1.0` it is sent as it is, white, grey and black included; above `1.0` the gain lifts its lightness and below `1.0` it lowers it.
 
 ## Scene brightness
 
@@ -130,7 +134,7 @@ The bulb brightness derived from scene brightness through the 8–100% envelope 
 
 ## Sync brightness gain
 
-The multiplier applied to the rounded envelope result, from `0.5` to `2.0` in `0.1` steps. It is `1.0` by default, survives stop and start within one process and is never persisted. `+` and `-` adjust it during a run. The gained value is clamped at `100%`; the 8% floor applies to the result, so a gain above `1.0` raises the floor and a gain below `1.0` does not lower it. The flash guard watches the gained value.
+The multiplier applied to the rounded envelope result and to the derived colour's lightness, from `0.5` to `2.0` in `0.1` steps. It is `1.0` on a first run and is remembered across launches in the preferences file. `+` and `-` adjust it during a run. At `1.0` the derived colour is sent unchanged. The gained colour is clamped at white and the gained brightness at `100%`; the 8% floor applies to the brightness result, so a gain above `1.0` raises the floor and a gain below `1.0` does not lower it. Black stays black. The flash guard watches the gained brightness.
 
 ## Flash guard
 

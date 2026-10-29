@@ -11,14 +11,16 @@ import type { ScreenSyncError } from "@/lib/screen/error"
 import type { Monitor } from "@/lib/screen/frame"
 import type { DerivedColor, ReducerState } from "@/lib/screen/reducer"
 import type { FlashGuard } from "@/lib/screen/sync/flash"
-import type { BulbProgress, SendPlan } from "@/lib/screen/sync/progress"
+import type { BulbProgress, SendPlan, SendRequest } from "@/lib/screen/sync/progress"
 import type { SyncStatus } from "@/lib/screen/sync/status"
 
 import { prepareFrame } from "@/lib/screen/grid"
 import { reducePrepared } from "@/lib/screen/reducer"
 import { syncBrightnessFor } from "@/lib/screen/sync/brightness"
+import { gainColor } from "@/lib/screen/sync/color-gain"
 import { guardFlash } from "@/lib/screen/sync/flash"
 import {
+  markForceColor,
   markInflight,
   markProbe,
   markReachable,
@@ -42,6 +44,7 @@ interface RunHandle {
   readonly switching: Ref.Ref<boolean>
   readonly reducer: Ref.Ref<ReducerState>
   readonly flash: Ref.Ref<FlashGuard>
+  readonly lastGain: Ref.Ref<number>
   readonly progress: Ref.Ref<ReadonlyMap<BulbId, BulbProgress>>
 }
 
@@ -100,9 +103,7 @@ const settleDefect = Effect.fn("ScreenSync.settleDefect")(function* settleDefect
 const sendTarget = Effect.fn("ScreenSync.sendTarget")(function* sendTarget(
   deps: RunDeps,
   handle: RunHandle,
-  target: DerivedColor,
-  targetBrightness: number,
-  flashHold: boolean,
+  request: SendRequest,
 ) {
   const progress = yield* Ref.get(handle.progress)
   const sessions = yield* Ref.get(handle.sessions)
@@ -112,16 +113,16 @@ const sendTarget = Effect.fn("ScreenSync.sendTarget")(function* sendTarget(
     if (entry === undefined || session === undefined) {
       continue
     }
-    const plan = planSend(entry, target, targetBrightness, flashHold)
+    const plan = planSend(entry, request)
     if (plan === null) {
       continue
     }
     yield* Ref.update(handle.progress, (current) => markInflight(current, bulb.id))
     yield* Effect.forkScoped(
-      session.setProperties(propertiesFor(target, plan)).pipe(
+      session.setProperties(propertiesFor(request.target, plan)).pipe(
         Effect.matchEffect({
-          onFailure: (error) => settle(deps, handle, bulb.id, target, plan, error),
-          onSuccess: () => settle(deps, handle, bulb.id, target, plan, null),
+          onFailure: (error) => settle(deps, handle, bulb.id, request.target, plan, error),
+          onSuccess: () => settle(deps, handle, bulb.id, request.target, plan, null),
         }),
         Effect.catchCauseIf(
           (cause) => !Cause.hasInterruptsOnly(cause),
@@ -216,8 +217,15 @@ const tick = Effect.fn("ScreenSync.tick")(function* tick(deps: RunDeps, handle: 
   const reduction = reducePrepared(prepared, yield* Ref.get(handle.reducer))
   yield* Ref.set(handle.reducer, reduction.state)
 
-  const target = reduction.derived
-  const targetBrightness = syncBrightnessFor(target.sceneBrightness, yield* Ref.get(deps.gain))
+  const gain = yield* Ref.get(deps.gain)
+  const lastGain = yield* Ref.get(handle.lastGain)
+  const gainChanged = gain !== lastGain
+  if (gainChanged) {
+    yield* Ref.set(handle.lastGain, gain)
+    yield* Ref.update(handle.progress, (progress) => markForceColor(progress, gain))
+  }
+  const target = gainColor(reduction.derived, gain)
+  const targetBrightness = syncBrightnessFor(target.sceneBrightness, gain)
   const guarded = guardFlash(yield* Ref.get(handle.flash), targetBrightness, performance.now())
   yield* Ref.set(handle.flash, guarded.guard)
   yield* publishLive(deps, handle, {
@@ -226,7 +234,12 @@ const tick = Effect.fn("ScreenSync.tick")(function* tick(deps: RunDeps, handle: 
     capture: "ok",
     frameAgeMs: frame.ageMs,
   })
-  yield* sendTarget(deps, handle, target, targetBrightness, guarded.flashing)
+  yield* sendTarget(deps, handle, {
+    target,
+    brightness: targetBrightness,
+    flashHold: guarded.flashing,
+    gain,
+  })
 })
 
 const runLoop = Effect.fn("ScreenSync.runLoop")(function* runLoop(

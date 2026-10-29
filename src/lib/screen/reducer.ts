@@ -1,4 +1,5 @@
 import type { ColorHex, Rgb } from "@/lib/bulbs/schema"
+import type { SrgbColor } from "@/lib/color"
 import type { PreparedFrame } from "@/lib/screen/grid"
 import type { Lab } from "@/lib/screen/lab"
 
@@ -31,6 +32,13 @@ interface Reduction {
 
 const createReducerState = (): ReducerState => ({
   centroids: null,
+})
+
+const derivedFromSrgb = (srgb: SrgbColor, sceneBrightness: number): DerivedColor => ({
+  hex: srgb.hex,
+  rgb: srgb.rgb,
+  lab: labFromOklch(srgb.oklch),
+  sceneBrightness,
 })
 
 const pickWinner = (
@@ -109,15 +117,9 @@ const reducePrepared = (prepared: PreparedFrame, state: ReducerState): Reduction
   const clustering = cluster(prepared.lab, prepared.pixelCount, state.centroids)
   const target = chooseTarget(prepared, clustering.assignments, clustering.centroids.length)
   const srgb = oklchToSrgb(oklchFromLab(target))
-  const lab = labFromOklch(srgb.oklch)
 
   return {
-    derived: {
-      hex: srgb.hex,
-      rgb: srgb.rgb,
-      lab,
-      sceneBrightness: prepared.meanDrive,
-    },
+    derived: derivedFromSrgb(srgb, prepared.meanDrive),
     state: {
       centroids: clustering.centroids,
     },
@@ -132,5 +134,5 @@ const shouldPublish = (next: DerivedColor, last: Pick<DerivedColor, "lab"> | nul
   return deltaEOk(next.lab, last.lab) > DEADBAND
 }
 
-export { createReducerState, reducePrepared, shouldPublish }
+export { createReducerState, derivedFromSrgb, reducePrepared, shouldPublish }
 export type { DerivedColor, Reduction, ReducerState }

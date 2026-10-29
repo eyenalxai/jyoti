@@ -3,18 +3,20 @@ import type { Stream } from "effect"
 import { Context, Effect, Fiber, Layer, Ref, Semaphore, SubscriptionRef } from "effect"
 
 import type { BulbId } from "@/lib/bulbs/schema"
+import type { PreferencesError } from "@/lib/preferences"
 import type { Monitor } from "@/lib/screen/frame"
-import type { SyncGainDirection } from "@/lib/screen/sync/brightness"
+import type { SyncGainDirection } from "@/lib/screen/sync/gain"
 import type { RestoreReport } from "@/lib/screen/sync/restore"
 import type { RunDeps, RunState } from "@/lib/screen/sync/run"
 import type { StartContext } from "@/lib/screen/sync/start"
 import type { SyncRun, SyncStatus } from "@/lib/screen/sync/status"
 
 import { Bulbs } from "@/lib/bulbs/service"
+import { Preferences } from "@/lib/preferences"
 import { ScreenCapture } from "@/lib/screen/capture"
 import { ScreenSyncError } from "@/lib/screen/error"
-import { SYNC_GAIN_DEFAULT, nextSyncGain } from "@/lib/screen/sync/brightness"
 import { captureFailure } from "@/lib/screen/sync/failure"
+import { nextSyncGain } from "@/lib/screen/sync/gain"
 import { findMonitor } from "@/lib/screen/sync/monitor"
 import { switchMonitor } from "@/lib/screen/sync/monitor/switch"
 import { setPowers } from "@/lib/screen/sync/progress"
@@ -31,7 +33,7 @@ interface ScreenSyncShape {
   readonly resume: () => Effect.Effect<void, ScreenSyncError>
   readonly stop: () => Effect.Effect<RestoreReport>
   readonly clearRestore: () => Effect.Effect<void>
-  readonly adjustGain: (direction: SyncGainDirection) => Effect.Effect<void>
+  readonly adjustGain: (direction: SyncGainDirection) => Effect.Effect<void, PreferencesError>
   readonly notePowers: (powers: ReadonlyMap<BulbId, boolean | null>) => Effect.Effect<void>
   readonly listMonitors: () => Effect.Effect<readonly Monitor[], ScreenSyncError>
   readonly selectMonitor: (name: string) => Effect.Effect<void, ScreenSyncError>
@@ -45,10 +47,12 @@ class ScreenSyncEngine extends Context.Service<ScreenSyncEngine, ScreenSyncShape
     Effect.gen(function* layer() {
       const bulbs = yield* Bulbs
       const capture = yield* ScreenCapture
+      const preferences = yield* Preferences
+      const saved = yield* preferences.load()
       const runState = yield* Ref.make<RunState>(idleState)
       const pendingMonitor = yield* Ref.make<string | null>(null)
       const powerTargets = yield* Ref.make<ReadonlyMap<BulbId, boolean | null> | null>(null)
-      const gain = yield* Ref.make(SYNC_GAIN_DEFAULT)
+      const gain = yield* Ref.make(saved.syncGain)
       const status = yield* SubscriptionRef.make<SyncStatus>(idleSyncStatus)
       const stopLock = yield* Semaphore.make(1)
       const deps: RunDeps = { capture, status, bulbs, gain }
@@ -171,6 +175,7 @@ class ScreenSyncEngine extends Context.Service<ScreenSyncEngine, ScreenSyncShape
         }
         const next = yield* Ref.updateAndGet(gain, (value) => nextSyncGain(value, direction))
         yield* patchStatus(deps, { brightnessGain: next })
+        yield* preferences.save({ syncGain: next })
         return yield* Effect.void
       })
 

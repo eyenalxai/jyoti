@@ -6,7 +6,7 @@ import { createSignal, onCleanup, onMount } from "solid-js"
 import type { Notice } from "@/components/ui/toast"
 import type { BulbId } from "@/lib/bulbs/schema"
 import type { Monitor } from "@/lib/screen/frame"
-import type { SyncGainDirection } from "@/lib/screen/sync/brightness"
+import type { SyncGainDirection } from "@/lib/screen/sync/gain"
 import type { RestoreReport } from "@/lib/screen/sync/restore"
 import type { SyncStatus } from "@/lib/screen/sync/status"
 
@@ -86,7 +86,7 @@ const useScreenSyncModel = (options: UseScreenSyncOptions): ScreenSyncModel => {
       const count = result.value.bulbCount
       options.onNotice({
         kind: "success",
-        message: `Screen sync on · ${count} ${count === 1 ? "bulb" : "bulbs"} · ${result.value.monitorName}`,
+        message: `Screen sync on · ${count} ${count === 1 ? "bulb" : "bulbs"} · ${result.value.monitorName} · +/- gain`,
       })
       return null
     })

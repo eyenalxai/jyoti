@@ -2,7 +2,7 @@
 
 Date: 2026-10-29
 
-Status: Accepted
+Status: Accepted; extended by ADR 0008, which applies the same gain to the derived colour's lightness, and its session-only lifetime is superseded by ADR 0009
 
 ## Context
 

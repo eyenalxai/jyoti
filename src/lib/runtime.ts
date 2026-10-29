@@ -8,6 +8,7 @@ import { AppConfig } from "@/lib/config"
 import { Keyring } from "@/lib/keyring/service"
 import { Miio } from "@/lib/miio/service"
 import { MiioTransport } from "@/lib/miio/transport"
+import { Preferences } from "@/lib/preferences"
 import { ScreenCapture } from "@/lib/screen/capture"
 import { ScreenSyncError } from "@/lib/screen/error"
 import { ScreenSyncEngine } from "@/lib/screen/sync"
@@ -34,7 +35,8 @@ const bulbsLayer = Bulbs.layer.pipe(
   Layer.provide(Layer.mergeAll(keyringLayer, storeLayer, miioLayer, configLayer)),
 )
 const screenLayer = ScreenCapture.layer.pipe(Layer.provide(configLayer))
-const servicesLayer = Layer.mergeAll(bulbsLayer, screenLayer)
+const preferencesLayer = Preferences.layer.pipe(Layer.provide(configLayer))
+const servicesLayer = Layer.mergeAll(bulbsLayer, screenLayer, preferencesLayer)
 const screenSyncLayer = ScreenSyncEngine.layer.pipe(Layer.provideMerge(servicesLayer))
 
 const runtime = ManagedRuntime.make(screenSyncLayer)
