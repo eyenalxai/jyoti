@@ -15,6 +15,7 @@ import { useBulbs } from "@/components/bulb/use-bulbs"
 import { useControls } from "@/components/bulb/use-controls"
 import { useForms } from "@/components/bulb/use-forms"
 import { useTerminalPalette } from "@/components/bulb/use-terminal-palette"
+import { useCapturePreview } from "@/components/screen/use-preview"
 import { aggregateState } from "@/lib/bulbs/aggregate"
 import { BRIGHTNESS_STEP, TEMPERATURE_STEP } from "@/lib/bulbs/schema"
 import { noticeDuration } from "@/lib/format"
@@ -52,6 +53,7 @@ const App = () => {
 
   const model = useBulbs({ onError: fail })
   const controls = useControls({ model, onError: fail })
+  const preview = useCapturePreview()
   const forms = useForms({
     model,
     controls,
@@ -220,6 +222,16 @@ const App = () => {
     onAdjust: adjust,
     onActivate: activate,
     onConfirmRemove: forms.confirmRemove,
+    onPreview: () => {
+      preview.open()
+      setScreen("capture")
+    },
+    onPreviewMove: preview.move,
+    onPreviewToggle: preview.toggle,
+    onPreviewClose: () => {
+      preview.close()
+      setScreen("dashboard")
+    },
   })
 
   onCleanup(() => {
@@ -253,6 +265,7 @@ const App = () => {
         colorInitial={colorInitial()}
         busy={busy()}
         error={formError()}
+        preview={preview}
         onSubmitAdd={forms.submitAdd}
         onSubmitEdit={forms.submitEdit}
         onConfirmRemove={forms.confirmRemove}

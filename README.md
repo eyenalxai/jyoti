@@ -18,8 +18,11 @@ Bulbs are added inside the app. Their tokens go to the OS keyring; only non-secr
 - Bun 1.4 or newer
 - `libsecret-tools` and an unlocked Secret Service keyring (`secret-tool` on `PATH`)
 - Bulbs on the same LAN, with local control enabled and their tokens to hand
+- For screen sync only: `cc`, `pkg-config`, `wayland-scanner`, and the development packages for `wayland-client`, `egl`, `gbm` and `libdrm`
 
 On Debian/Ubuntu: `sudo apt install libsecret-tools`. On Arch: `sudo pacman -S libsecret`.
+
+Screen sync builds a small C library against the local Wayland stack. The rest of jyoti runs without it; a missing library only disables screen sync.
 
 ## Run
 
@@ -29,6 +32,14 @@ bun start
 ```
 
 The first screen is empty. Press `a` and enter the bulb's name, IP address and 32-character token. The token is written to the keyring; the config file receives the name and address.
+
+To use screen sync, build the native capture library first:
+
+```sh
+bun run build:native
+```
+
+The build writes `native/build/libjyoti-capture.so` and the generated Wayland protocol bindings. Both are build artefacts and stay out of git.
 
 ## Keys
 
@@ -45,6 +56,7 @@ The first screen is empty. Press `a` and enter the bulb's name, IP address and 3
 | `e`               | Edit the selected bulb                       |
 | `d`               | Remove the selected bulb                     |
 | `r`               | Refresh the list and all states              |
+| `v`               | Capture preview (development preview)        |
 | `?`               | Show the key map                             |
 | `q` / `ctrl+c`    | Quit                                         |
 
@@ -54,6 +66,14 @@ The colour picker starts in OKLCH mode with L, C and H sliders. `tab` switches t
 
 With two or more bulbs, `A` selects **All bulbs**: the panel shows the aggregate power, brightness, warmth and colour. `space` turns every bulb off when all of them are on, or on otherwise. `←` `→` set the same brightness or warmth on every bulb, starting from the aggregate — right from the brightest, left from the dimmest — and `c` applies one colour to all of them. Each bulb is addressed independently, so one slow bulb does not hold up the rest; a partial failure names the bulbs that failed and keeps the successes. Edit and remove stay per bulb.
 
+## Screen sync (preview)
+
+Screen sync is being built in slices. The capture path and the colour reducer are in place; the shipped sync mode, the strip and the bulb writes arrive in the next tickets.
+
+`v` opens a development preview. It lists the monitors with their resolution, refresh rate and the focused one, captures the selected monitor through the native library, and shows the derived colour, the scene brightness, the frame age and the blackout state. `enter` starts or stops the capture, `↑` `↓` choose a monitor, and `esc` closes the preview. The preview does not write to any bulb.
+
+The capture library is built from source and loaded lazily with `bun:ffi`. A missing library is reported as a typed error at capture start and leaves every other jyoti feature working.
+
 ## Storage and security
 
 - Metadata: `$XDG_CONFIG_HOME/jyoti/bulbs.json`, falling back to `~/.config/jyoti/bulbs.json`. The file is written atomically with mode `0600`.
@@ -62,15 +82,16 @@ With two or more bulbs, `A` selects **All bulbs**: the panel shows the aggregate
 
 ## Commands
 
-| Command          | What it does                     |
-| ---------------- | -------------------------------- |
-| `bun install`    | Install dependencies             |
-| `bun start`      | Run the TUI                      |
-| `bun run dev`    | Run the TUI in watch mode        |
-| `bun run check`  | Format check, lint and typecheck |
-| `bun run format` | Format with oxfmt                |
-| `bun run lint`   | Lint with oxlint                 |
-| `bun run tsc`    | Typecheck                        |
+| Command                | What it does                     |
+| ---------------------- | -------------------------------- |
+| `bun install`          | Install dependencies             |
+| `bun start`            | Run the TUI                      |
+| `bun run dev`          | Run the TUI in watch mode        |
+| `bun run build:native` | Build the screen capture library |
+| `bun run check`        | Format check, lint and typecheck |
+| `bun run format`       | Format with oxfmt                |
+| `bun run lint`         | Lint with oxlint                 |
+| `bun run tsc`          | Typecheck                        |
 
 ## Layout
 
@@ -80,14 +101,20 @@ src/
   components/
     app.tsx                screen state and actions
     bulb/                  dashboard, rail, detail, forms, keyboard
+    screen/                capture preview (development)
     ui/                    modal, meter, status, key hint
   lib/
     bulbs/                 schemas, config file store, repository
     keyring/               Secret Service adapter
     miio/                  packet codec, UDP transport, bulb client
+    screen/                capture service and colour reducer
     config.ts              runtime configuration
     runtime.ts             Effect runtime boundary
     theme.ts               palette
+native/
+  capture.c                C11 wlr-screencopy capture library
+  protocol/                vendored Wayland protocol XML
+  build.ts                 bun run build:native
 ```
 
 `bulbs.py` remains the reference implementation for the wire format; jyoti is a TypeScript port and does not shell out to it.
