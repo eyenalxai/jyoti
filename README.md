@@ -40,7 +40,7 @@ The first screen is empty. Press `a` and enter the bulb's name, IP address and 3
 | `←` `→` / `h` `l` | Adjust the focused control                   |
 | `space` / `p`     | Toggle power                                 |
 | `enter`           | Open controls, or act on the focused control |
-| `c`               | Set a hex color                              |
+| `c`               | Open the colour picker                       |
 | `a`               | Add a bulb                                   |
 | `e`               | Edit the selected bulb                       |
 | `d`               | Remove the selected bulb                     |
@@ -49,6 +49,8 @@ The first screen is empty. Press `a` and enter the bulb's name, IP address and 3
 | `q` / `ctrl+c`    | Quit                                         |
 
 Brightness moves in 5% steps, warmth in 100 K steps. Changes update immediately and are sent after a short idle; a failed command restores the bulb's real state and explains what went wrong.
+
+The colour picker starts in OKLCH mode with L, C and H sliders. `tab` switches to RGB sliders; the hex field stays editable in either mode. The swatch and hex readout follow the sliders, `↑` `↓` move between controls, `←` `→` adjust the focused slider, and `enter` applies. Unsupported chroma is reduced to fit sRGB and marked as clipped.
 
 With two or more bulbs, `A` selects **All bulbs**: the panel shows the aggregate power, brightness, warmth and colour. `space` turns every bulb off when all of them are on, or on otherwise. `←` `→` set the same brightness or warmth on every bulb, starting from the aggregate — right from the brightest, left from the dimmest — and `c` applies one colour to all of them. Each bulb is addressed independently, so one slow bulb does not hold up the rest; a partial failure names the bulbs that failed and keeps the successes. Edit and remove stay per bulb.
 

@@ -61,10 +61,9 @@ const Modals = (props: ModalsProps) => (
     </Show>
 
     <Show when={props.screen === "color" && props.activeBulb !== undefined}>
-      <Modal title="Set color" hint="esc cancel" width={46} height={13}>
+      <Modal title="Set color" hint="esc cancel" width={58} height={15}>
         <Color
           initial={props.colorInitial}
-          inputWidth={20}
           busy={props.busy}
           error={props.error}
           onSubmit={props.onSubmitColor}
