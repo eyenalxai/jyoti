@@ -4,6 +4,7 @@ import { createMemo } from "solid-js"
 import type { CaptureHealth, SyncPhase, SyncStatus } from "@/lib/screen/sync/status"
 
 import { truncate } from "@/lib/format"
+import { syncKeys } from "@/lib/screen/sync/copy"
 import { palette } from "@/lib/theme"
 
 interface SyncStripProps {
@@ -74,19 +75,6 @@ const phaseTone = (phase: SyncPhase, capture: CaptureHealth): RGBA => {
   return palette.muted
 }
 
-const runKeys = (phase: SyncPhase): string => {
-  if (phase === "starting") {
-    return "s cancel · m monitor"
-  }
-  if (phase === "paused") {
-    return "s stop · x resume · m monitor"
-  }
-  if (phase === "stopping") {
-    return ""
-  }
-  return "s stop · x pause · m monitor"
-}
-
 const SyncStrip = (props: SyncStripProps) => {
   const word = createMemo(() => phaseWord(props.status.phase, props.status.capture))
   const glyph = createMemo(() => phaseGlyph(props.status.phase, props.status.capture))
@@ -109,7 +97,7 @@ const SyncStrip = (props: SyncStripProps) => {
   const frameAge = createMemo(() =>
     props.status.frameAgeMs === null ? "—" : `${props.status.frameAgeMs} ms`,
   )
-  const keys = createMemo(() => runKeys(props.status.phase))
+  const keys = createMemo(() => syncKeys(props.status.phase))
   const monitor = createMemo(() =>
     truncate(props.status.monitor ?? "—", Math.max(8, Math.floor(props.width * 0.22))),
   )

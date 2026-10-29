@@ -25,6 +25,7 @@ interface SyncStatus {
   readonly selfCapture: boolean
   readonly bulbs: readonly SyncedBulb[]
   readonly error: string | null
+  readonly rejection: string | null
 }
 
 const idleSyncStatus: SyncStatus = {
@@ -40,6 +41,7 @@ const idleSyncStatus: SyncStatus = {
   selfCapture: false,
   bulbs: [],
   error: null,
+  rejection: null,
 }
 
 interface SyncRun {

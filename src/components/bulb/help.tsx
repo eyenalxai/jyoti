@@ -1,3 +1,4 @@
+import { SYNC_OWNS_CONTROLS } from "@/lib/screen/sync/copy"
 import { palette } from "@/lib/theme"
 
 const KeyRow = (props: { readonly keys: string; readonly label: string }) => (
@@ -44,7 +45,7 @@ const Help = () => (
     <KeyRow keys="s  x" label="Start or stop · pause or resume" />
     <KeyRow keys="m" label="Choose the captured monitor" />
     <KeyRow keys="v" label="Capture preview (dev)" />
-    <NoteRow label="sync owns colour, brightness and warmth" />
+    <NoteRow label={SYNC_OWNS_CONTROLS} />
     <NoteRow label="power untouched · 4000 K neutral · 1.5 Hz" />
 
     <text fg={palette.faint} bg={palette.surfaceRaised} height={1} flexShrink={0}>

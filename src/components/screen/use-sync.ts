@@ -1,15 +1,14 @@
 import type { Accessor } from "solid-js"
 
-import { Array as Arr, Effect, Fiber, Option, Stream } from "effect"
+import { Array as Arr, Effect, Option, Stream } from "effect"
 import { createSignal, onCleanup, onMount } from "solid-js"
 
 import type { Notice } from "@/components/ui/status"
 import type { Monitor } from "@/lib/screen/frame"
 import type { SyncStatus } from "@/lib/screen/sync/status"
 
-import { forkSyncEffect, runScreen } from "@/lib/runtime"
+import { cancelFiber, forkSyncEffect, runScreen } from "@/lib/runtime"
 import { ScreenSyncEngine } from "@/lib/screen/sync"
-import { SYNC_CANCELLED_MESSAGE } from "@/lib/screen/sync/copy"
 import { pickDefaultMonitor } from "@/lib/screen/sync/monitor"
 import { idleSyncStatus } from "@/lib/screen/sync/status"
 
@@ -71,7 +70,7 @@ const useScreenSyncModel = (options: UseScreenSyncOptions): ScreenSyncModel => {
     void runScreen(ScreenSyncEngine.use((service) => service.start())).then((result) => {
       setBusy(false)
       if (!result.ok) {
-        if (result.message !== SYNC_CANCELLED_MESSAGE) {
+        if (result.tag !== "cancelled") {
           options.onError(result.message)
         }
         return null
@@ -199,8 +198,10 @@ const useScreenSyncModel = (options: UseScreenSyncOptions): ScreenSyncModel => {
             Effect.sync(() => {
               const previous = status()
               setStatus(next)
-              if (next.error !== null && next.error !== previous.error) {
-                options.onError(next.error)
+              const nextError = next.error ?? next.rejection
+              const previousError = previous.error ?? previous.rejection
+              if (nextError !== null && nextError !== previousError) {
+                options.onError(nextError)
               }
             }),
           ),
@@ -208,7 +209,7 @@ const useScreenSyncModel = (options: UseScreenSyncOptions): ScreenSyncModel => {
       ),
     )
     onCleanup(() => {
-      Effect.runFork(Fiber.interrupt(fiber))
+      cancelFiber(fiber)
     })
   })
 

@@ -90,7 +90,7 @@ const publishLive = Effect.fn("ScreenSync.publishLive")(function* publishLive(
   yield* SubscriptionRef.update(deps.status, (current) => ({
     ...current,
     ...patch,
-    error: rejection,
+    rejection,
     bulbs: synced,
     reachable,
     total: synced.length,

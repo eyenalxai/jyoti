@@ -104,6 +104,14 @@ Holding the last derived colour and sync brightness while the frame is near-blac
 
 A captured frame older than about one second. The run holds the last colour until a fresh frame arrives.
 
+## Capture lost
+
+A sync run with no fresh frame for about five seconds. Publishing stops but the run stays alive; a fresh frame resumes it.
+
+## Self-capture warning
+
+The `⚠ jyoti` marker in the sync strip when the captured monitor is the one running jyoti: the only monitor, or an unknown focus. Monitor selection is the only self-mask; the run is allowed with the warning.
+
 ## Neutral fallback
 
 The 4000 K temperature mode used when the scene has too little chroma for a colour.

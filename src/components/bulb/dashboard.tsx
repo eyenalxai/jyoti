@@ -14,7 +14,7 @@ import { Rail } from "@/components/bulb/rail"
 import { SyncStrip } from "@/components/screen/strip"
 import { StatusLine } from "@/components/ui/status"
 import { aggregateState } from "@/lib/bulbs/aggregate"
-import { SYNC_OWNS_CONTROLS } from "@/lib/screen/sync/copy"
+import { SYNC_OWNS_CONTROLS, syncKeys } from "@/lib/screen/sync/copy"
 import { palette } from "@/lib/theme"
 
 type Pane = "bulbs" | "controls"
@@ -117,21 +117,7 @@ const Dashboard = (props: DashboardProps) => {
     }
   })
 
-  const syncHint = createMemo(() => {
-    if (props.syncStatus.phase === "starting") {
-      return "s cancel"
-    }
-    if (props.syncStatus.phase === "paused") {
-      return "x resume · m monitor"
-    }
-    if (props.syncStatus.phase === "stopping") {
-      return "stopping…"
-    }
-    if (props.syncStatus.phase === "syncing") {
-      return "s stop · x pause · m monitor"
-    }
-    return "s sync"
-  })
+  const syncHint = createMemo(() => syncKeys(props.syncStatus.phase))
 
   const globalHint = createMemo(() => {
     if (syncActive()) {

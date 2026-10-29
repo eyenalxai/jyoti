@@ -48,31 +48,34 @@ const Monitors = (props: MonitorsProps) => {
         }
       >
         <For each={visible()}>
-          {(monitor, index) => (
-            <box flexDirection="row" gap={1} height={1} flexShrink={0}>
-              <text fg={index() === props.selected ? palette.accent : palette.faint}>
-                {index() === props.selected ? "▸" : " "}
-              </text>
-              <box width={18} flexShrink={0}>
-                <text fg={index() === props.selected ? palette.text : palette.muted} truncate>
-                  {monitor.name}
+          {(monitor, index) => {
+            const selected = () => start() + index() === props.selected
+            return (
+              <box flexDirection="row" gap={1} height={1} flexShrink={0}>
+                <text fg={selected() ? palette.accent : palette.faint}>
+                  {selected() ? "▸" : " "}
                 </text>
+                <box width={18} flexShrink={0}>
+                  <text fg={selected() ? palette.text : palette.muted} truncate>
+                    {monitor.name}
+                  </text>
+                </box>
+                <text fg={palette.muted}>
+                  {monitor.width}×{monitor.height}
+                </text>
+                <text fg={palette.faint}>{Math.round(monitor.refreshHz)} Hz</text>
+                <Show when={focusWord(monitor).length > 0}>
+                  <text fg={palette.warning}>{focusWord(monitor)}</text>
+                </Show>
+                <Show when={captured() === monitor.name}>
+                  <text fg={palette.success}>captured</text>
+                </Show>
+                <Show when={pending() === monitor.name}>
+                  <text fg={palette.warning}>next run</text>
+                </Show>
               </box>
-              <text fg={palette.muted}>
-                {monitor.width}×{monitor.height}
-              </text>
-              <text fg={palette.faint}>{Math.round(monitor.refreshHz)} Hz</text>
-              <Show when={focusWord(monitor).length > 0}>
-                <text fg={palette.warning}>{focusWord(monitor)}</text>
-              </Show>
-              <Show when={captured() === monitor.name}>
-                <text fg={palette.success}>captured</text>
-              </Show>
-              <Show when={pending() === monitor.name}>
-                <text fg={palette.warning}>next run</text>
-              </Show>
-            </box>
-          )}
+            )
+          }}
         </For>
       </Show>
 

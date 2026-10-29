@@ -124,12 +124,7 @@ class ScreenSyncEngine extends Context.Service<ScreenSyncEngine, ScreenSyncShape
         }
 
         const current = yield* Ref.get(runState)
-        if (current.status === "idle") {
-          yield* Ref.set(pendingMonitor, name)
-          yield* patchStatus(deps, { pendingMonitor: name })
-          return yield* Effect.void
-        }
-        if (current.status === "starting") {
+        if (current.status === "idle" || current.status === "starting") {
           yield* Ref.set(pendingMonitor, name)
           yield* patchStatus(deps, { pendingMonitor: name })
           return yield* Effect.void
