@@ -3,7 +3,6 @@ import { Show, createMemo } from "solid-js"
 
 import type { ControlFocus } from "@/components/bulb/controls"
 import type { BulbsModel } from "@/components/bulb/use-bulbs"
-import type { Notice } from "@/components/ui/status"
 import type { BulbId } from "@/lib/bulbs/schema"
 import type { BulbSyncPhase, SyncStatus } from "@/lib/screen/sync/status"
 
@@ -23,7 +22,6 @@ interface DashboardProps {
   readonly model: BulbsModel
   readonly focus: ControlFocus
   readonly pane: Pane
-  readonly notice: Notice | null
   readonly syncStatus: SyncStatus
   readonly width: number
   readonly height: number
@@ -254,7 +252,7 @@ const Dashboard = (props: DashboardProps) => {
               {Str.repeat(shellWidth())("─")}
             </text>
             <box flexDirection="row" justifyContent="space-between" height={1} gap={2}>
-              <StatusLine notice={props.notice} fallback={hint()} />
+              <StatusLine fallback={hint()} />
               <text fg={palette.muted} truncate wrapMode="none" flexShrink={0}>
                 {globalHint()}
               </text>

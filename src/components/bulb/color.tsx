@@ -1,12 +1,16 @@
 import { useKeyboard } from "@opentui/solid"
-import { Show, createMemo, createSignal, onCleanup, onMount } from "solid-js"
+import { Effect } from "effect"
+import { createMemo, createSignal, onCleanup, onMount } from "solid-js"
 
+import type { PickerFocus } from "@/components/bulb/color/focus"
 import type { Mode } from "@/components/bulb/color/mode"
-import type { ChannelRange, Oklch } from "@/lib/color"
+import type { Oklch } from "@/lib/color"
+import type { Timer } from "@/lib/timers"
 
+import { HEX_FOCUS, focusOrder } from "@/components/bulb/color/focus"
 import { ModeTabs } from "@/components/bulb/color/mode"
+import { ColorSliders } from "@/components/bulb/color/sliders"
 import { Swatch } from "@/components/bulb/color/swatch"
-import { Slider } from "@/components/ui/slider"
 import {
   CHROMA_RANGE,
   HUE_RANGE,
@@ -22,30 +26,25 @@ import { after, cancel } from "@/lib/timers"
 interface ColorProps {
   readonly initial: string
   readonly busy: boolean
-  readonly error: string | null
   readonly onSubmit: (hex: string) => void
+  readonly onPreview: (hex: string) => Promise<boolean>
+  readonly onDismiss: () => void
 }
 
-type PickerFocus = 0 | 1 | 2 | 3
-
-const HEX_FOCUS: PickerFocus = 3
-const focusOrder: readonly PickerFocus[] = [0, 1, 2, HEX_FOCUS]
-const RGB_RANGE: ChannelRange = { min: 0, max: 255, step: 1 }
+const PREVIEW_DELAY_MS = 180
 const WHITE: Oklch = { lightness: 100, chroma: 0, hue: 0 }
-
-const formatLightness = (value: number): string => `${Math.round(value)}`
-const formatChroma = (value: number): string => value.toFixed(2)
-const formatHue = (value: number): string => `${Math.round(value)}°`
-const formatChannel = (value: number): string => `${value}`
 
 const Color = (props: ColorProps) => {
   const seeded = hexToOklch(props.initial) ?? WHITE
+  const seededHex = oklchToSrgb(seeded).hex
   const [color, setColor] = createSignal<Oklch>(seeded)
   const [mode, setMode] = createSignal<Mode>("oklch")
   const [focus, setFocus] = createSignal<PickerFocus>(0)
-  const [hexDraft, setHexDraft] = createSignal(oklchToSrgb(seeded).hex)
+  const [hexDraft, setHexDraft] = createSignal(seededHex)
+  const [lastSent, setLastSent] = createSignal(seededHex)
   const [issue, setIssue] = createSignal<string | null>(null)
   const [ready, setReady] = createSignal(false)
+  let previewTimer: Timer | null = null
 
   onMount(() => {
     const timer = after(10, () => {
@@ -56,15 +55,43 @@ const Color = (props: ColorProps) => {
     })
   })
 
+  onCleanup(() => {
+    if (previewTimer !== null) {
+      cancel(previewTimer)
+    }
+  })
+
   const preview = createMemo(() => oklchToSrgb(color()))
   const rgb = () => preview().rgb
   const hex = () => preview().hex
   const clipped = () => preview().clipped
 
+  const sendPreview = Effect.fn("Color.sendPreview")(function* sendPreview(next: string) {
+    const applied = yield* Effect.promise(() => props.onPreview(next))
+    if (applied && hex() === next) {
+      setLastSent(next)
+    }
+  })
+
+  const schedulePreview = () => {
+    if (previewTimer !== null) {
+      cancel(previewTimer)
+    }
+    previewTimer = after(PREVIEW_DELAY_MS, () => {
+      previewTimer = null
+      const next = hex()
+      if (next === lastSent()) {
+        return
+      }
+      Effect.runFork(sendPreview(next))
+    })
+  }
+
   const applyColor = (next: Oklch) => {
     setColor(next)
     setHexDraft(oklchToSrgb(next).hex)
     setIssue(null)
+    schedulePreview()
   }
 
   const adjust = (direction: number) => {
@@ -139,6 +166,7 @@ const Color = (props: ColorProps) => {
     if (parsed !== null) {
       setColor(parsed)
       setIssue(null)
+      schedulePreview()
     }
   }
 
@@ -146,14 +174,23 @@ const Color = (props: ColorProps) => {
     if (props.busy) {
       return
     }
+    if (previewTimer !== null) {
+      cancel(previewTimer)
+      previewTimer = null
+    }
     const parsed = hexToOklch(hexDraft())
     if (parsed === null) {
       setIssue("Enter six hexadecimal digits, for example #FF8800.")
       return
     }
     setIssue(null)
+    const next = oklchToSrgb(parsed).hex
+    if (next === lastSent()) {
+      props.onDismiss()
+      return
+    }
     setColor(parsed)
-    props.onSubmit(oklchToSrgb(parsed).hex)
+    props.onSubmit(next)
   }
 
   useKeyboard((key) => {
@@ -188,31 +225,10 @@ const Color = (props: ColorProps) => {
     }
   })
 
-  const slider = (
-    index: PickerFocus,
-    label: string,
-    value: number,
-    range: ChannelRange,
-    text: string,
-  ) => (
-    <Slider
-      label={label}
-      value={value}
-      min={range.min}
-      max={range.max}
-      text={text}
-      width={27}
-      focused={focus() === index}
-      onFocus={() => {
-        setFocus(index)
-      }}
-    />
-  )
-
   const status = (): string =>
-    props.error ?? issue() ?? (clipped() ? "Chroma reduced until the colour fits sRGB." : " ")
+    issue() ?? (clipped() ? "Chroma reduced until the colour fits sRGB." : " ")
   const statusTone = () => {
-    if (props.error !== null || issue() !== null) {
+    if (issue() !== null) {
       return palette.danger
     }
     return clipped() ? palette.warning : palette.background
@@ -222,28 +238,15 @@ const Color = (props: ColorProps) => {
     <box flexDirection="column" flexGrow={1} gap={0}>
       <ModeTabs mode={mode()} />
 
-      <box flexDirection="column" height={3}>
-        <Show
-          when={mode() === "oklch"}
-          fallback={
-            <>
-              {slider(0, "Red", rgb().red, RGB_RANGE, formatChannel(rgb().red))}
-              {slider(1, "Green", rgb().green, RGB_RANGE, formatChannel(rgb().green))}
-              {slider(2, "Blue", rgb().blue, RGB_RANGE, formatChannel(rgb().blue))}
-            </>
-          }
-        >
-          {slider(
-            0,
-            "Light",
-            color().lightness,
-            LIGHTNESS_RANGE,
-            formatLightness(color().lightness),
-          )}
-          {slider(1, "Chroma", color().chroma, CHROMA_RANGE, formatChroma(color().chroma))}
-          {slider(2, "Hue", color().hue, HUE_RANGE, formatHue(color().hue))}
-        </Show>
-      </box>
+      <ColorSliders
+        mode={mode()}
+        focus={focus()}
+        color={color()}
+        rgb={rgb()}
+        onFocus={(next) => {
+          setFocus(next)
+        }}
+      />
 
       <box height={1} />
 
@@ -280,10 +283,10 @@ const Color = (props: ColorProps) => {
 
       <box flexDirection="row" justifyContent="space-between" height={1}>
         <text bg={palette.surfaceRaised} fg={palette.faint}>
-          esc cancel · tab mode · ↑↓ move
+          esc restore · tab mode · ↑↓ move
         </text>
         <text bg={palette.surfaceRaised} fg={props.busy ? palette.faint : palette.accent}>
-          {props.busy ? "applying…" : "enter apply"}
+          {props.busy ? "applying…" : "enter done"}
         </text>
       </box>
     </box>

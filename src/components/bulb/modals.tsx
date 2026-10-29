@@ -19,13 +19,14 @@ interface ModalsProps {
   readonly activeBulb: Bulb | null
   readonly colorInitial: string
   readonly busy: boolean
-  readonly error: string | null
   readonly preview: CapturePreviewModel
   readonly syncModel: ScreenSyncModel
   readonly onSubmitAdd: (draft: BulbDraft) => void
   readonly onSubmitEdit: (draft: BulbDraft) => void
   readonly onConfirmRemove: () => void
   readonly onSubmitColor: (hex: string) => void
+  readonly onPreviewColor: (hex: string) => Promise<boolean>
+  readonly onDismissColor: () => void
 }
 
 const Modals = (props: ModalsProps) => (
@@ -37,7 +38,6 @@ const Modals = (props: ModalsProps) => (
           initial={null}
           inputWidth={41}
           busy={props.busy}
-          error={props.error}
           onSubmit={props.onSubmitAdd}
         />
       </Modal>
@@ -50,7 +50,6 @@ const Modals = (props: ModalsProps) => (
           initial={props.activeBulb}
           inputWidth={41}
           busy={props.busy}
-          error={props.error}
           onSubmit={props.onSubmitEdit}
         />
       </Modal>
@@ -60,19 +59,20 @@ const Modals = (props: ModalsProps) => (
       <Show when={props.activeBulb}>
         {(bulb) => (
           <Modal title="Remove bulb" hint="y or n" width={50} height={12}>
-            <Remove bulb={bulb()} busy={props.busy} error={props.error} />
+            <Remove bulb={bulb()} busy={props.busy} />
           </Modal>
         )}
       </Show>
     </Show>
 
     <Show when={props.screen === "color" && props.activeBulb !== undefined}>
-      <Modal title="Set color" hint="esc cancel" width={58} height={15}>
+      <Modal title="Set color" hint="esc restore" width={58} height={15}>
         <Color
           initial={props.colorInitial}
           busy={props.busy}
-          error={props.error}
           onSubmit={props.onSubmitColor}
+          onPreview={props.onPreviewColor}
+          onDismiss={props.onDismissColor}
         />
       </Modal>
     </Show>

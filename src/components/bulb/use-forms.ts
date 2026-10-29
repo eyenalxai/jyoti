@@ -5,17 +5,17 @@ import { String as Str } from "effect"
 import type { Screen } from "@/components/bulb/modals"
 import type { BulbsModel } from "@/components/bulb/use-bulbs"
 import type { ControlsModel } from "@/components/bulb/use-controls"
-import type { Notice } from "@/components/ui/status"
-import type { Bulb, BulbDraft, BulbPatch } from "@/lib/bulbs/schema"
+import type { Notice } from "@/components/ui/toast"
+import type { Bulb, BulbDraft, BulbId, BulbPatch, BulbState } from "@/lib/bulbs/schema"
 
 interface UseFormsOptions {
   readonly model: BulbsModel
   readonly controls: ControlsModel
   readonly activeBulb: () => Bulb | null
   readonly busy: () => boolean
+  readonly colorSnapshot: () => ReadonlyMap<BulbId, BulbState>
   readonly setActiveBulb: Setter<Bulb | null>
   readonly setBusy: Setter<boolean>
-  readonly setFormError: Setter<string | null>
   readonly setScreen: Setter<Screen>
   readonly notify: (notice: Notice) => void
 }
@@ -25,16 +25,16 @@ interface FormsModel {
   readonly submitEdit: (draft: BulbDraft) => void
   readonly confirmRemove: () => void
   readonly submitColor: (hex: string) => void
+  readonly revertColor: () => void
 }
 
 const useForms = (options: UseFormsOptions): FormsModel => {
   const submitAdd = (draft: BulbDraft) => {
     options.setBusy(true)
-    options.setFormError(null)
     void options.model.add(draft).then((error) => {
       options.setBusy(false)
       if (error !== null) {
-        options.setFormError(error)
+        options.notify({ kind: "error", message: error })
         return null
       }
       options.setScreen("dashboard")
@@ -56,11 +56,10 @@ const useForms = (options: UseFormsOptions): FormsModel => {
       ...(draft.token.length === 0 ? {} : { token: draft.token }),
     }
     options.setBusy(true)
-    options.setFormError(null)
     void options.model.update(bulb.id, patch).then((error) => {
       options.setBusy(false)
       if (error !== null) {
-        options.setFormError(error)
+        options.notify({ kind: "error", message: error })
         return null
       }
       options.setScreen("dashboard")
@@ -76,11 +75,10 @@ const useForms = (options: UseFormsOptions): FormsModel => {
       return
     }
     options.setBusy(true)
-    options.setFormError(null)
     void options.model.remove(bulb.id).then((error) => {
       options.setBusy(false)
       if (error !== null) {
-        options.setFormError(error)
+        options.notify({ kind: "error", message: error })
         return null
       }
       options.setScreen("dashboard")
@@ -98,11 +96,9 @@ const useForms = (options: UseFormsOptions): FormsModel => {
     }
     const label = all ? "All bulbs" : (bulb?.name ?? "The bulb")
     options.setBusy(true)
-    options.setFormError(null)
     void options.controls.setColor(hex).then((outcome) => {
       options.setBusy(false)
       if (outcome.error !== null && !outcome.partial) {
-        options.setFormError(outcome.error)
         return null
       }
       options.setScreen("dashboard")
@@ -114,7 +110,16 @@ const useForms = (options: UseFormsOptions): FormsModel => {
     })
   }
 
-  return { submitAdd, submitEdit, confirmRemove, submitColor }
+  const revertColor = () => {
+    const snapshot = options.colorSnapshot()
+    if (snapshot.size === 0) {
+      options.notify({ kind: "info", message: "No previous colour was known to restore." })
+      return
+    }
+    void options.controls.revertColors(snapshot)
+  }
+
+  return { submitAdd, submitEdit, confirmRemove, submitColor, revertColor }
 }
 
 export { useForms, type FormsModel }

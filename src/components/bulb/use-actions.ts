@@ -2,8 +2,8 @@ import type { Accessor, Setter } from "solid-js"
 
 import type { Screen } from "@/components/bulb/modals"
 import type { BulbsModel } from "@/components/bulb/use-bulbs"
-import type { Notice } from "@/components/ui/status"
-import type { Bulb } from "@/lib/bulbs/schema"
+import type { Notice } from "@/components/ui/toast"
+import type { Bulb, BulbId, BulbState } from "@/lib/bulbs/schema"
 
 import { SYNC_BLOCKS_BULBS, SYNC_OWNS_CONTROLS } from "@/lib/screen/sync/copy"
 
@@ -13,7 +13,8 @@ interface UseBulbActionsOptions {
   readonly busy: Accessor<boolean>
   readonly notify: (notice: Notice) => void
   readonly setActiveBulb: Setter<Bulb | null>
-  readonly setFormError: Setter<string | null>
+  readonly setColorDirty: Setter<boolean>
+  readonly setColorSnapshot: Setter<ReadonlyMap<BulbId, BulbState>>
   readonly setScreen: Setter<Screen>
 }
 
@@ -37,7 +38,6 @@ const useBulbActions = (options: UseBulbActionsOptions): BulbActions => {
     if (bulbChangeBlocked() || options.busy()) {
       return
     }
-    options.setFormError(null)
     options.setActiveBulb(null)
     options.setScreen("add")
   }
@@ -54,7 +54,6 @@ const useBulbActions = (options: UseBulbActionsOptions): BulbActions => {
     if (bulb === null || options.busy()) {
       return
     }
-    options.setFormError(null)
     options.setActiveBulb(bulb)
     options.setScreen("edit")
   }
@@ -74,7 +73,6 @@ const useBulbActions = (options: UseBulbActionsOptions): BulbActions => {
     if (bulb === null || options.busy()) {
       return
     }
-    options.setFormError(null)
     options.setActiveBulb(bulb)
     options.setScreen("remove")
   }
@@ -90,11 +88,25 @@ const useBulbActions = (options: UseBulbActionsOptions): BulbActions => {
     if (options.busy()) {
       return
     }
-    if (!options.model.allSelected() && options.model.selected() === null) {
+    const all = options.model.allSelected()
+    const selected = options.model.selected()
+    if (!all && selected === null) {
       return
     }
-    options.setFormError(null)
-    options.setActiveBulb(options.model.selected())
+
+    const targets = all ? options.model.bulbs() : selected === null ? [] : [selected]
+    const states = options.model.states()
+    const snapshot = new Map<BulbId, BulbState>()
+    for (const bulb of targets) {
+      const state = states.get(bulb.id)
+      if (state !== undefined) {
+        snapshot.set(bulb.id, state)
+      }
+    }
+
+    options.setColorSnapshot(snapshot)
+    options.setColorDirty(false)
+    options.setActiveBulb(selected)
     options.setScreen("color")
   }
 

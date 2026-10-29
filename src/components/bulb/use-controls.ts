@@ -3,8 +3,8 @@ import type { Accessor } from "solid-js"
 
 import { Result, Schema, String as Str } from "effect"
 
+import type { ColorOutcome } from "@/components/bulb/color/outcome"
 import type { BulbsModel } from "@/components/bulb/use-bulbs"
-import type { ColorOutcome } from "@/components/bulb/use-group-controls"
 import type { BulbsError } from "@/lib/bulbs/error"
 import type { Bulb, BulbId, BulbState } from "@/lib/bulbs/schema"
 import type { Timer } from "@/lib/timers"
@@ -35,6 +35,7 @@ interface ControlsModel {
   readonly adjustBrightness: (delta: number) => void
   readonly adjustTemperature: (delta: number) => void
   readonly setColor: (hex: string) => Promise<ColorOutcome>
+  readonly revertColors: (snapshot: ReadonlyMap<BulbId, BulbState>) => Promise<ColorOutcome>
   readonly flushPending: () => void
 }
 
@@ -239,6 +240,7 @@ const useControls = (options: UseControlsOptions): ControlsModel => {
     adjustBrightness,
     adjustTemperature,
     setColor,
+    revertColors: group.revertColors,
     flushPending,
   }
 }

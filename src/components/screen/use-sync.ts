@@ -3,7 +3,7 @@ import type { Accessor } from "solid-js"
 import { Array as Arr, Effect, Option, Stream } from "effect"
 import { createSignal, onCleanup, onMount } from "solid-js"
 
-import type { Notice } from "@/components/ui/status"
+import type { Notice } from "@/components/ui/toast"
 import type { BulbId } from "@/lib/bulbs/schema"
 import type { Monitor } from "@/lib/screen/frame"
 import type { RestoreReport } from "@/lib/screen/sync/restore"

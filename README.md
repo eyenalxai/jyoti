@@ -63,11 +63,13 @@ The build writes `native/build/libjyoti-capture.so` and the generated Wayland pr
 | `?`               | Show the key map                             |
 | `q` / `ctrl+c`    | Quit                                         |
 
-Brightness moves in 5% steps, warmth in 100 K steps. Changes update immediately and are sent after a short idle; a failed command restores the bulb's real state and explains what went wrong.
+Brightness moves in 5% steps, warmth in 100 K steps. Changes update immediately and are sent after a short idle; a failed command restores the bulb's real state and reports the failure in a toast.
 
-The colour picker starts in OKLCH mode with L, C and H sliders. `tab` switches to RGB sliders; the hex field stays editable in either mode. The swatch and hex readout follow the sliders, `↑` `↓` move between controls, `←` `→` adjust the focused slider, and `enter` applies. Unsupported chroma is reduced to fit sRGB and marked as clipped.
+Notifications and errors appear as transient toasts in the top-right corner. They queue, dismiss on their own, and can be dismissed with a click.
 
-With two or more bulbs, `A` selects **All bulbs**: the panel shows the aggregate power, brightness, warmth and colour. `space` turns every bulb off when all of them are on, or on otherwise. `←` `→` set the same brightness or warmth on every bulb, starting from the aggregate — right from the brightest, left from the dimmest — and `c` applies one colour to all of them. Each bulb is addressed independently, so one slow bulb does not hold up the rest; a partial failure names the bulbs that failed and keeps the successes. Edit and remove stay per bulb.
+The colour picker starts in OKLCH mode with L, C and H sliders. `tab` switches to RGB sliders; the hex field stays editable in either mode. The swatch and hex readout follow the sliders, `↑` `↓` move between controls, and `←` `→` adjust the focused slider. Each change is sent after a short idle, so the bulb follows the picker. `enter` keeps the colour and closes; `esc` restores the colour and mode each target had when the picker opened. Unsupported chroma is reduced to fit sRGB and marked as clipped.
+
+With two or more bulbs, `A` selects **All bulbs**: the panel shows the aggregate power, brightness, warmth and colour. `space` turns every bulb off when all of them are on, or on otherwise. `←` `→` set the same brightness or warmth on every bulb, starting from the aggregate — right from the brightest, left from the dimmest — and `c` applies one colour to all of them as you adjust, and `esc` restores each bulb's own previous colour. Each bulb is addressed independently, so one slow bulb does not hold up the rest; a partial failure names the bulbs that failed and keeps the successes. Edit and remove stay per bulb.
 
 ## Screen sync
 
