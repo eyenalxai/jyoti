@@ -3,15 +3,17 @@ import type { Accessor, Setter } from "solid-js"
 import { createEffect, createSignal } from "solid-js"
 
 import type { Screen } from "@/components/bulb/modals"
-import type { SyncRow } from "@/components/screen/rows"
+import type { SyncRow } from "@/components/screen/sync-rows"
 import type { ScreenSyncModel } from "@/components/screen/use-sync"
 import type { SyncGainDirection } from "@/lib/screen/sync/gain"
 
-import { syncRowsFor } from "@/components/screen/rows"
+import { syncRowsFor } from "@/components/screen/sync-rows"
+import { isSyncRunning } from "@/lib/screen/sync/status"
 
 interface UseSyncPanelOptions {
   readonly sync: ScreenSyncModel
   readonly setScreen: Setter<Screen>
+  readonly onMonitors: () => void
 }
 
 interface SyncPanelModel {
@@ -25,10 +27,7 @@ interface SyncPanelModel {
 
 const useSyncPanel = (options: UseSyncPanelOptions): SyncPanelModel => {
   const [syncRow, setSyncRow] = createSignal<SyncRow>("action")
-  const running = () => {
-    const phase = options.sync.status().phase
-    return phase === "syncing" || phase === "paused"
-  }
+  const running = () => isSyncRunning(options.sync.status().phase)
   const rows = () => syncRowsFor(running())
 
   createEffect(() => {
@@ -58,7 +57,7 @@ const useSyncPanel = (options: UseSyncPanelOptions): SyncPanelModel => {
   const activate = () => {
     const phase = options.sync.status().phase
     if (syncRow() === "action") {
-      if (phase === "idle" || phase === "syncing" || phase === "paused") {
+      if (phase === "idle" || phase === "starting" || phase === "syncing" || phase === "paused") {
         options.sync.toggle()
       }
       return
@@ -68,13 +67,12 @@ const useSyncPanel = (options: UseSyncPanelOptions): SyncPanelModel => {
       return
     }
     if (syncRow() === "monitor" && phase !== "stopping") {
-      options.sync.openMonitors()
-      options.setScreen("monitors")
+      options.onMonitors()
     }
   }
 
   const adjust = (direction: SyncGainDirection) => {
-    if (syncRow() === "gain" && running()) {
+    if (syncRow() === "gain") {
       options.sync.adjustGain(direction)
     }
   }

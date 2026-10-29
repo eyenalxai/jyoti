@@ -154,6 +154,7 @@ const App = () => {
         preview={preview}
         syncModel={sync}
         syncRow={commands.syncRow()}
+        helpContext={commands.helpContext()}
         onSubmitAdd={forms.submitAdd}
         onSubmitEdit={forms.submitEdit}
         onConfirmRemove={forms.confirmRemove}

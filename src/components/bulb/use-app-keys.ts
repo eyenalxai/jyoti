@@ -55,6 +55,10 @@ const isEnter = (key: KeyLike): boolean => key.name === "enter" || key.name === 
 const isEscape = (key: KeyLike): boolean => key.name === "escape"
 
 const handlePreview = (key: KeyLike, options: AppKeysOptions): void => {
+  if (isQuestionMark(key)) {
+    options.onHelp()
+    return
+  }
   if (isEscape(key) || key.name === "v") {
     options.onPreviewClose()
     return
@@ -77,6 +81,10 @@ const handlePreview = (key: KeyLike, options: AppKeysOptions): void => {
 }
 
 const handleMonitors = (key: KeyLike, options: AppKeysOptions): void => {
+  if (isQuestionMark(key)) {
+    options.onHelp()
+    return
+  }
   if (isEscape(key)) {
     options.onClose()
     return
@@ -95,6 +103,10 @@ const handleMonitors = (key: KeyLike, options: AppKeysOptions): void => {
 }
 
 const handleSyncPanel = (key: KeyLike, options: AppKeysOptions): void => {
+  if (isQuestionMark(key)) {
+    options.onHelp()
+    return
+  }
   if (isEscape(key)) {
     options.onSyncPanelClose()
     return
@@ -161,6 +173,10 @@ const handleModal = (key: KeyLike, screen: Screen, options: AppKeysOptions): voi
   }
   if (screen === "remove") {
     handleRemove(key, options)
+    return
+  }
+  if (isQuestionMark(key)) {
+    options.onHelp()
     return
   }
   if (isEscape(key)) {

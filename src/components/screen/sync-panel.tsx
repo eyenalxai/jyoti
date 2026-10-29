@@ -1,10 +1,11 @@
 import { RGBA } from "@opentui/core"
 import { Show, createMemo } from "solid-js"
 
-import type { SyncRow } from "@/components/screen/rows"
+import type { SyncRow } from "@/components/screen/sync-rows"
 import type { ScreenSyncModel } from "@/components/screen/use-sync"
 
 import { truncate } from "@/lib/format"
+import { isSyncRunning } from "@/lib/screen/sync/status"
 import { palette } from "@/lib/theme"
 
 interface SyncPanelProps {
@@ -33,7 +34,7 @@ const Row = (props: {
 
 const SyncPanel = (props: SyncPanelProps) => {
   const phase = createMemo(() => props.model.status().phase)
-  const running = createMemo(() => phase() === "syncing" || phase() === "paused")
+  const running = createMemo(() => isSyncRunning(phase()))
   const stopping = createMemo(() => phase() === "starting" || phase() === "stopping")
   const actionLabel = createMemo(() => {
     if (phase() === "starting") {
@@ -74,12 +75,7 @@ const SyncPanel = (props: SyncPanelProps) => {
         <Row label={pauseLabel()} value={phase()} selected={props.selected === "pause"} />
       </Show>
       <Row label="Monitor" value={monitor()} selected={props.selected === "monitor"} />
-      <Row
-        label="Brightness gain"
-        value={gain()}
-        selected={props.selected === "gain"}
-        muted={!running()}
-      />
+      <Row label="Brightness gain" value={gain()} selected={props.selected === "gain"} />
 
       <box height={1} />
 

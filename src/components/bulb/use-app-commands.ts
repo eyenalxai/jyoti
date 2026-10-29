@@ -2,12 +2,13 @@ import type { Accessor, Setter } from "solid-js"
 
 import type { ColorSessionModel } from "@/components/bulb/color/use-session"
 import type { ControlFocus } from "@/components/bulb/controls"
+import type { HelpContext } from "@/components/bulb/help"
 import type { Screen } from "@/components/bulb/modals"
 import type { Pane } from "@/components/bulb/pane"
 import type { BulbActions } from "@/components/bulb/use-actions"
 import type { BulbsModel } from "@/components/bulb/use-bulbs"
 import type { ControlsModel } from "@/components/bulb/use-controls"
-import type { SyncRow } from "@/components/screen/rows"
+import type { SyncRow } from "@/components/screen/sync-rows"
 import type { CapturePreviewModel } from "@/components/screen/use-preview"
 import type { ScreenSyncModel } from "@/components/screen/use-sync"
 import type { Notice } from "@/components/ui/toast"
@@ -16,6 +17,9 @@ import type { Bulb } from "@/lib/bulbs/schema"
 
 import { canFocus, focusOrder, refusalFor } from "@/components/bulb/focus"
 import { useAppKeys } from "@/components/bulb/use-app-keys"
+import { useCloseScreen } from "@/components/bulb/use-close-screen"
+import { useHelp } from "@/components/bulb/use-help"
+import { useSelectAll } from "@/components/bulb/use-select-all"
 import { useSyncPanel } from "@/components/bulb/use-sync-panel"
 import { BRIGHTNESS_STEP, TEMPERATURE_STEP } from "@/lib/bulbs/schema"
 import { SYNC_OWNS_CONTROLS } from "@/lib/screen/sync/copy"
@@ -48,6 +52,7 @@ interface AppCommands {
   readonly setQuality: (quality: LightSide) => void
   readonly dismissColor: () => void
   readonly syncRow: Accessor<SyncRow>
+  readonly helpContext: Accessor<HelpContext>
 }
 
 const useAppCommands = (options: UseAppCommandsOptions): AppCommands => {
@@ -57,36 +62,33 @@ const useAppCommands = (options: UseAppCommandsOptions): AppCommands => {
       options.focus() === "brightness" ||
       options.focus() === "light")
 
-  const syncPanel = useSyncPanel({ sync: options.sync, setScreen: options.setScreen })
+  const help = useHelp({ screen: options.screen, setScreen: options.setScreen })
 
-  const closeScreen = () => {
-    if (options.busy()) {
-      return
-    }
-    if (options.screen() === "color") {
-      if (options.colorSession.dirty()) {
-        options.colorSession.revert()
-      }
-      options.colorSession.reset()
-    }
-    options.setScreen("dashboard")
-    options.setActiveBulb(null)
-  }
+  const syncPanel = useSyncPanel({
+    sync: options.sync,
+    setScreen: options.setScreen,
+    onMonitors: () => {
+      options.sync.openMonitors()
+      options.setScreen("monitors")
+    },
+  })
 
-  const selectAll = () => {
-    if (!options.model.canSelectAll()) {
-      options.notify({
-        kind: "info",
-        message:
-          options.model.bulbs().length === 0
-            ? "Add a bulb first."
-            : "Add a second bulb to control all of them.",
-      })
-      return
-    }
-    options.model.selectAll()
-    options.setFocus("power")
-  }
+  const closeScreen = useCloseScreen({
+    screen: options.screen,
+    busy: options.busy,
+    setScreen: options.setScreen,
+    colorSession: options.colorSession,
+    setActiveBulb: options.setActiveBulb,
+    help,
+  })
+
+  const selectAll = useSelectAll({
+    model: options.model,
+    setFocus: (focus) => {
+      options.setFocus(focus)
+    },
+    notify: options.notify,
+  })
 
   const cycleFocus = (direction: number) => {
     const order = focusOrder(options.selectedQuality())
@@ -244,9 +246,7 @@ const useAppCommands = (options: UseAppCommandsOptions): AppCommands => {
     onSyncPanelAdjust: syncPanel.adjust,
     onSyncPanelActivate: syncPanel.activate,
     onSyncPanelClose: syncPanel.close,
-    onHelp: () => {
-      options.setScreen("help")
-    },
+    onHelp: help.open,
     onTogglePower: () => {
       void options.controls.togglePower()
     },
@@ -279,14 +279,20 @@ const useAppCommands = (options: UseAppCommandsOptions): AppCommands => {
     onMonitorChoose: () => {
       void options.sync.chooseMonitor().then((chosen) => {
         if (chosen) {
-          options.setScreen("dashboard")
+          options.setScreen("sync")
         }
         return null
       })
     },
   })
 
-  return { focusControl, setQuality, dismissColor, syncRow: syncPanel.syncRow }
+  return {
+    focusControl,
+    setQuality,
+    dismissColor,
+    syncRow: syncPanel.syncRow,
+    helpContext: help.helpContext,
+  }
 }
 
 export { useAppCommands, type AppCommands }
