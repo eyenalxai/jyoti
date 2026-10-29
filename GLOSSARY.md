@@ -76,6 +76,10 @@ One start-to-stop period of screen sync. A run is not a miIO session: it covers 
 
 A sync run that keeps capture, sessions and state but publishes nothing. The bulbs stay on the last derived colour and sync brightness.
 
+## Sync strip
+
+The two-line panel above the status line while a sync run exists. Its first line carries the state, captured monitor, derived colour or neutral fallback, sync brightness, frame age and reachable/total bulbs; its second line carries the run's keys.
+
 ## Captured monitor
 
 The monitor a sync run reads.

@@ -57,6 +57,8 @@ The build writes `native/build/libjyoti-capture.so` and the generated Wayland pr
 | `d`               | Remove the selected bulb                     |
 | `r`               | Refresh the list and all states              |
 | `s`               | Start or stop screen sync                    |
+| `x`               | Pause or resume screen sync                  |
+| `m`               | Choose the monitor screen sync captures      |
 | `v`               | Capture preview (development preview)        |
 | `?`               | Show the key map                             |
 | `q` / `ctrl+c`    | Quit                                         |
@@ -69,13 +71,17 @@ With two or more bulbs, `A` selects **All bulbs**: the panel shows the aggregate
 
 ## Screen sync
 
-Screen sync is being built in slices. `s` starts a sync run that captures the default monitor, derives its colour at 1.5 Hz and sends it to the first configured bulb; `s` again stops the run. A coloured scene writes the packed RGB value, while a low-chroma scene writes 4000 K. The run holds the last colour through a black frame or a stale capture and never writes power. Brightness, restore, all-bulb sync, the strip and the monitor picker arrive in the next tickets.
+Screen sync is being built in slices. `s` starts a sync run that captures one monitor, derives its colour at 1.5 Hz and drives every configured bulb; `s` again stops the run. The bulb set is snapshotted at start, so add, edit and remove are blocked until sync stops. `x` pauses and resumes publishing: pause holds the last derived colour, and resume catches up with the current scene instead of replaying it.
 
-The run captures the first monitor that is not focused, or the first enumerated monitor when focus is unknown. A single monitor is captured as-is.
+The default captured monitor is the only monitor, otherwise the first monitor that is not focused, otherwise the first enumerated monitor. `m` lists the monitors with their name, resolution, refresh rate and focus marker. A choice while stopped applies to the next run only; a choice during a run switches immediately; the choice is never persisted. A single monitor, or unknown focus, is captured with a persistent `⚠ jyoti` warning in the strip.
 
-`v` opens a development preview. It lists the monitors with their resolution, refresh rate and the focused one, captures the selected monitor through the native library, and shows the derived colour, the scene brightness, the frame age and the blackout state. `enter` starts or stops the capture, `↑` `↓` choose a monitor, and `esc` closes the preview. The preview does not write to any bulb.
+The two-line sync strip above the status line shows the state, captured monitor, derived colour or `4000 K`, sync brightness, frame age and reachable/total bulbs. It reports starting, paused, black frame, capture stale, capture lost, switching monitor and stopping, and its second line carries the run keys. Per-bulb dots in the rail show syncing and unreachable. A near-black frame holds the last colour and never sends neutral or touches power. A stale frame holds it too; after five seconds publishing stops but the run stays alive.
+
+A coloured scene writes the packed RGB value, while a low-chroma scene writes 4000 K. The run never writes power. While a run is active, the colour, brightness and warmth controls are disabled and say that sync owns them; power, refresh and navigation keep working. Brightness, restore on stop and unreachable-bulb recovery arrive in later tickets.
 
 The capture library is built from source and loaded lazily with `bun:ffi`. A missing library is reported as a typed error at capture start and leaves every other jyoti feature working.
+
+`v` opens a development preview. It lists the monitors with their resolution, refresh rate and the focused one, captures the selected monitor through the native library, and shows the derived colour, the scene brightness, the frame age and the blackout state. `enter` starts or stops the capture, `↑` `↓` choose a monitor, and `esc` closes the preview. The preview does not write to any bulb.
 
 ## Storage and security
 
@@ -104,7 +110,7 @@ src/
   components/
     app.tsx                screen state and actions
     bulb/                  dashboard, rail, detail, forms, keyboard
-    screen/                capture preview (development)
+    screen/                sync strip, monitor picker, capture preview
     ui/                    modal, meter, status, key hint
   lib/
     bulbs/                 schemas, config file store, repository

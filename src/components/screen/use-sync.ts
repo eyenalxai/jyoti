@@ -1,12 +1,15 @@
 import type { Accessor } from "solid-js"
 
-import { Effect } from "effect"
-import { createSignal } from "solid-js"
+import { Array as Arr, Effect, Fiber, Option, Stream } from "effect"
+import { createSignal, onCleanup, onMount } from "solid-js"
 
 import type { Notice } from "@/components/ui/status"
+import type { Monitor } from "@/lib/screen/frame"
+import type { SyncStatus } from "@/lib/screen/sync/status"
 
-import { runScreen } from "@/lib/runtime"
-import { ScreenSyncEngine } from "@/lib/screen/sync"
+import { forkSyncEffect, runScreen } from "@/lib/runtime"
+import { ScreenSyncEngine } from "@/lib/screen/sync/engine"
+import { idleSyncStatus, pickDefaultMonitor } from "@/lib/screen/sync/status"
 
 interface UseScreenSyncOptions {
   readonly onNotice: (notice: Notice) => void
@@ -14,15 +17,29 @@ interface UseScreenSyncOptions {
 }
 
 interface ScreenSyncModel {
-  readonly running: Accessor<boolean>
+  readonly status: Accessor<SyncStatus>
   readonly busy: Accessor<boolean>
+  readonly monitors: Accessor<readonly Monitor[]>
+  readonly monitorIndex: Accessor<number>
+  readonly monitorBusy: Accessor<boolean>
+  readonly monitorError: Accessor<string | null>
   readonly toggle: () => void
+  readonly togglePause: () => void
   readonly stop: () => Promise<boolean>
+  readonly openMonitors: () => void
+  readonly moveMonitor: (delta: number) => void
+  readonly chooseMonitor: () => Promise<boolean>
 }
 
 const useScreenSyncModel = (options: UseScreenSyncOptions): ScreenSyncModel => {
-  const [running, setRunning] = createSignal(false)
+  const [status, setStatus] = createSignal<SyncStatus>(idleSyncStatus)
   const [busy, setBusy] = createSignal(false)
+  const [monitors, setMonitors] = createSignal<readonly Monitor[]>([])
+  const [monitorIndex, setMonitorIndex] = createSignal(0)
+  const [monitorBusy, setMonitorBusy] = createSignal(false)
+  const [monitorError, setMonitorError] = createSignal<string | null>(null)
+
+  const selectedMonitorName = (): string | null => status().pendingMonitor ?? status().monitor
 
   const stop = (): Promise<boolean> =>
     runScreen(ScreenSyncEngine.use((service) => service.stop())).then((result) => {
@@ -30,7 +47,6 @@ const useScreenSyncModel = (options: UseScreenSyncOptions): ScreenSyncModel => {
         options.onError(result.message)
         return false
       }
-      setRunning(false)
       return true
     })
 
@@ -38,39 +54,175 @@ const useScreenSyncModel = (options: UseScreenSyncOptions): ScreenSyncModel => {
     if (busy()) {
       return
     }
+    if (status().phase !== "idle") {
+      void stop().then((stopped) => {
+        if (stopped) {
+          options.onNotice({ kind: "info", message: "Screen sync stopped." })
+        }
+        return null
+      })
+      return
+    }
+
+    setBusy(true)
+    void runScreen(ScreenSyncEngine.use((service) => service.start())).then((result) => {
+      setBusy(false)
+      if (!result.ok) {
+        if (result.message !== "Screen sync start cancelled.") {
+          options.onError(result.message)
+        }
+        return null
+      }
+      const count = result.value.bulbCount
+      options.onNotice({
+        kind: "success",
+        message: `Screen sync on · ${count} ${count === 1 ? "bulb" : "bulbs"} · ${result.value.monitorName}`,
+      })
+      return null
+    })
+  }
+
+  const togglePause = () => {
+    if (busy()) {
+      return
+    }
+    const phase = status().phase
+    if (phase !== "syncing" && phase !== "paused") {
+      return
+    }
 
     setBusy(true)
     void runScreen(
-      ScreenSyncEngine.use((service) =>
-        Effect.gen(function* toggleSync() {
-          if (yield* service.running()) {
-            yield* service.stop()
-            return { running: false as const }
-          }
-          return { running: true as const, info: yield* service.start() }
-        }),
-      ),
+      ScreenSyncEngine.use((service) => (phase === "syncing" ? service.pause() : service.resume())),
     ).then((result) => {
       setBusy(false)
       if (!result.ok) {
         options.onError(result.message)
-        return false
+        return null
       }
-      if (result.value.running) {
-        setRunning(true)
-        options.onNotice({
-          kind: "success",
-          message: `Screen sync on · ${result.value.info.bulbName} · ${result.value.info.monitorName}`,
-        })
-      } else {
-        setRunning(false)
-        options.onNotice({ kind: "info", message: "Screen sync stopped." })
-      }
-      return true
+      options.onNotice({
+        kind: "info",
+        message: phase === "syncing" ? "Screen sync paused." : "Screen sync resumed.",
+      })
+      return null
     })
   }
 
-  return { running, busy, toggle, stop }
+  const chooseIndex = (listed: readonly Monitor[]): number => {
+    const preferred = selectedMonitorName()
+    if (preferred !== null) {
+      const index = Option.getOrElse(
+        Arr.findFirstIndex(listed, (monitor) => monitor.name === preferred),
+        () => -1,
+      )
+      if (index >= 0) {
+        return index
+      }
+    }
+    const fallback = pickDefaultMonitor(listed)
+    if (fallback === null) {
+      return 0
+    }
+    return Math.max(
+      0,
+      Option.getOrElse(
+        Arr.findFirstIndex(listed, (monitor) => monitor.name === fallback.name),
+        () => 0,
+      ),
+    )
+  }
+
+  const openMonitors = () => {
+    setMonitorError(null)
+    setMonitors([])
+    setMonitorBusy(true)
+    void runScreen(ScreenSyncEngine.use((service) => service.listMonitors())).then((result) => {
+      setMonitorBusy(false)
+      if (!result.ok) {
+        setMonitorError(result.message)
+        return null
+      }
+      setMonitors(result.value)
+      setMonitorIndex(chooseIndex(result.value))
+      return null
+    })
+  }
+
+  const moveMonitor = (delta: number) => {
+    setMonitorIndex((current) => {
+      const count = monitors().length
+      if (count === 0) {
+        return 0
+      }
+      return (current + delta + count) % count
+    })
+  }
+
+  const chooseMonitor = (): Promise<boolean> => {
+    if (monitorBusy()) {
+      return Promise.resolve(false)
+    }
+    const monitor = monitors()[monitorIndex()]
+    if (monitor === undefined) {
+      return Promise.resolve(false)
+    }
+
+    setMonitorBusy(true)
+    return runScreen(ScreenSyncEngine.use((service) => service.selectMonitor(monitor.name))).then(
+      (result) => {
+        setMonitorBusy(false)
+        if (!result.ok) {
+          setMonitorError(result.message)
+          return false
+        }
+        setMonitorError(null)
+        options.onNotice({
+          kind: "info",
+          message:
+            status().phase === "idle"
+              ? `Next run captures ${monitor.name}.`
+              : `Switching to ${monitor.name}.`,
+        })
+        return true
+      },
+    )
+  }
+
+  onMount(() => {
+    const fiber = forkSyncEffect(
+      ScreenSyncEngine.use((service) =>
+        service.status.pipe(
+          Stream.runForEach((next) =>
+            Effect.sync(() => {
+              const previous = status()
+              setStatus(next)
+              if (next.error !== null && next.error !== previous.error) {
+                options.onError(next.error)
+              }
+            }),
+          ),
+        ),
+      ),
+    )
+    onCleanup(() => {
+      Effect.runFork(Fiber.interrupt(fiber))
+    })
+  })
+
+  return {
+    status,
+    busy,
+    monitors,
+    monitorIndex,
+    monitorBusy,
+    monitorError,
+    toggle,
+    togglePause,
+    stop,
+    openMonitors,
+    moveMonitor,
+    chooseMonitor,
+  }
 }
 
-export { useScreenSyncModel }
+export { useScreenSyncModel, type ScreenSyncModel }

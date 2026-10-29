@@ -7,7 +7,16 @@ class ScreenCaptureError extends Schema.TaggedError<ScreenCaptureError>()("Scree
 }) {}
 
 class ScreenSyncError extends Schema.TaggedError<ScreenSyncError>()("ScreenSyncError", {
-  kind: Schema.Literals(["already-running", "no-bulbs", "no-monitor", "capture", "bulb"]),
+  kind: Schema.Literals([
+    "already-running",
+    "cancelled",
+    "no-bulbs",
+    "no-monitor",
+    "not-ready",
+    "not-running",
+    "capture",
+    "bulb",
+  ]),
   message: Schema.String,
   cause: Schema.optionalKey(Schema.Defect()),
 }) {}

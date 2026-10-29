@@ -27,14 +27,16 @@ const Help = () => (
     </text>
     <KeyRow keys="tab" label="Switch bulbs and controls" />
     <KeyRow keys="← →  h l" label="Brightness or warmth" />
-    <KeyRow keys="space  enter" label="Toggle power or act" />
-    <KeyRow keys="c" label="Set color" />
+    <KeyRow keys="space  c" label="Toggle power or set color" />
 
     <text fg={palette.faint} bg={palette.surfaceRaised} height={1} flexShrink={0}>
-      screen
+      screen sync
     </text>
-    <KeyRow keys="s" label="Start or stop screen sync" />
-    <KeyRow keys="v" label="Capture preview" />
+    <KeyRow keys="s" label="Start or stop sync" />
+    <KeyRow keys="x" label="Pause or resume" />
+    <KeyRow keys="m" label="Choose the captured monitor" />
+    <KeyRow keys=" " label="sync owns colour, brightness and warmth" />
+    <KeyRow keys=" " label="power untouched · 4000 K neutral · 1.5 Hz" />
 
     <text fg={palette.faint} bg={palette.surfaceRaised} height={1} flexShrink={0}>
       app

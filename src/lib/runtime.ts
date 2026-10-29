@@ -1,4 +1,4 @@
-import type { Config, Effect } from "effect"
+import type { Config, Effect, Fiber } from "effect"
 
 import { Layer, ManagedRuntime } from "effect"
 
@@ -9,7 +9,7 @@ import { Keyring } from "@/lib/keyring/service"
 import { Miio } from "@/lib/miio/service"
 import { MiioTransport } from "@/lib/miio/transport"
 import { ScreenCapture } from "@/lib/screen/capture"
-import { ScreenSyncEngine } from "@/lib/screen/sync"
+import { ScreenSyncEngine } from "@/lib/screen/sync/engine"
 
 interface UiFailure {
   readonly ok: false
@@ -61,6 +61,10 @@ const forkScreen = <A, E>(effect: Effect.Effect<A, E, ScreenCapture>): void => {
   screenRuntime.runFork(effect)
 }
 
+const forkSyncEffect = <A, E>(
+  effect: Effect.Effect<A, E, ScreenSyncEngine>,
+): Fiber.Fiber<A, E | Config.ConfigError> => syncRuntime.runFork(effect)
+
 const dispose = (): Promise<void> => runtime.dispose()
 
-export { dispose, forkScreen, messageOf, run, runScreen, type UiResult }
+export { dispose, forkScreen, forkSyncEffect, messageOf, run, runScreen, type UiResult }

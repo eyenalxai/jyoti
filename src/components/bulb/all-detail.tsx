@@ -49,6 +49,7 @@ const SpanMeter = (props: {
   readonly min: number
   readonly max: number
   readonly width: number
+  readonly disabled: boolean
 }) => (
   <Switch
     fallback={
@@ -58,21 +59,41 @@ const SpanMeter = (props: {
         min={props.min}
         max={props.max}
         width={props.width}
+        color={props.disabled ? palette.faint : palette.accent}
       />
     }
   >
     <Match when={props.span === null}>
-      <Meter value={null} min={props.min} max={props.max} width={props.width} />
+      <Meter
+        value={null}
+        min={props.min}
+        max={props.max}
+        width={props.width}
+        color={props.disabled ? palette.faint : palette.accent}
+      />
     </Match>
     <Match when={props.span !== null && props.span.low === props.span.high}>
-      <Meter value={props.span?.low ?? null} min={props.min} max={props.max} width={props.width} />
+      <Meter
+        value={props.span?.low ?? null}
+        min={props.min}
+        max={props.max}
+        width={props.width}
+        color={props.disabled ? palette.faint : palette.accent}
+      />
     </Match>
   </Switch>
 )
 
-const ColorSwatch = (props: { readonly color: AggregateColor | null; readonly width: number }) => {
+const ColorSwatch = (props: {
+  readonly color: AggregateColor | null
+  readonly width: number
+  readonly disabled: boolean
+}) => {
   const blocks = () => Str.repeat(Math.max(4, Math.min(12, props.width)))("█")
   const tone = (): string | RGBA => {
+    if (props.disabled) {
+      return palette.faint
+    }
     const color = props.color
     return color?.kind === "equal" ? color.hex : palette.text
   }
@@ -84,7 +105,9 @@ const ColorSwatch = (props: { readonly color: AggregateColor | null; readonly wi
       <Match when={props.color?.kind === "equal"}>
         <text fg={tone()}>
           {blocks()}
-          <span style={{ fg: palette.faint }}> same color</span>
+          <span style={{ fg: palette.faint }}>
+            {props.disabled ? " sync owns it" : " same color"}
+          </span>
         </text>
       </Match>
     </Switch>
@@ -95,6 +118,7 @@ interface AllDetailProps {
   readonly aggregate: AggregateState
   readonly focus: ControlFocus
   readonly active: boolean
+  readonly syncLocked: boolean
   readonly width: number
   readonly meterWidth: number
   readonly onFocus: (focus: ControlFocus) => void
@@ -150,6 +174,12 @@ const AllDetail = (props: AllDetailProps) => {
         {Str.repeat(Math.max(0, props.width))("─")}
       </text>
 
+      <Show when={props.syncLocked}>
+        <text fg={palette.warning} truncate wrapMode="none" height={1}>
+          sync owns colour, brightness and temperature
+        </text>
+      </Show>
+
       <box flexDirection="column" flexGrow={1} minHeight={0}>
         <ControlRow
           label="Power"
@@ -165,47 +195,74 @@ const AllDetail = (props: AllDetailProps) => {
         <ControlRow
           label="Brightness"
           focused={props.active && props.focus === "brightness"}
+          disabled={props.syncLocked}
           onFocus={() => {
             props.onFocus("brightness")
           }}
-          value={<text fg={palette.text}>{spanValue(props.aggregate.brightness, "%", 7)}</text>}
+          value={
+            <text fg={props.syncLocked ? palette.faint : palette.text}>
+              {spanValue(props.aggregate.brightness, "%", 7)}
+            </text>
+          }
           detail={
             <SpanMeter
               span={props.aggregate.brightness}
               min={BRIGHTNESS_MIN}
               max={BRIGHTNESS_MAX}
               width={props.meterWidth}
+              disabled={props.syncLocked}
             />
           }
         />
         <ControlRow
           label="Warmth"
           focused={props.active && props.focus === "temperature"}
+          disabled={props.syncLocked}
           onFocus={() => {
             props.onFocus("temperature")
           }}
-          value={<text fg={palette.text}>{spanValue(props.aggregate.temperature, "K", 10)}</text>}
+          value={
+            <text fg={props.syncLocked ? palette.faint : palette.text}>
+              {spanValue(props.aggregate.temperature, "K", 10)}
+            </text>
+          }
           detail={
             <SpanMeter
               span={props.aggregate.temperature}
               min={TEMPERATURE_MIN}
               max={TEMPERATURE_MAX}
               width={props.meterWidth}
+              disabled={props.syncLocked}
             />
           }
         />
         <ControlRow
           label="Color"
           focused={props.active && props.focus === "color"}
+          disabled={props.syncLocked}
           onFocus={() => {
             props.onFocus("color")
           }}
           value={
-            <text fg={props.aggregate.color?.kind === "mixed" ? palette.warning : palette.text}>
+            <text
+              fg={
+                props.syncLocked
+                  ? palette.faint
+                  : props.aggregate.color?.kind === "mixed"
+                    ? palette.warning
+                    : palette.text
+              }
+            >
               {aggregateColorWord(props.aggregate.color)}
             </text>
           }
-          detail={<ColorSwatch color={props.aggregate.color} width={props.meterWidth} />}
+          detail={
+            <ColorSwatch
+              color={props.aggregate.color}
+              width={props.meterWidth}
+              disabled={props.syncLocked}
+            />
+          }
         />
       </box>
     </box>

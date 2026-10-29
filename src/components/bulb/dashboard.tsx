@@ -4,11 +4,14 @@ import { Show, createMemo } from "solid-js"
 import type { ControlFocus } from "@/components/bulb/controls"
 import type { BulbsModel } from "@/components/bulb/use-bulbs"
 import type { Notice } from "@/components/ui/status"
+import type { BulbId } from "@/lib/bulbs/schema"
+import type { BulbSyncPhase, SyncStatus } from "@/lib/screen/sync/status"
 
 import { AllDetail } from "@/components/bulb/all-detail"
 import { Detail } from "@/components/bulb/detail"
 import { Empty } from "@/components/bulb/empty"
 import { Rail } from "@/components/bulb/rail"
+import { SyncStrip } from "@/components/screen/strip"
 import { StatusLine } from "@/components/ui/status"
 import { aggregateState } from "@/lib/bulbs/aggregate"
 import { palette } from "@/lib/theme"
@@ -20,7 +23,7 @@ interface DashboardProps {
   readonly focus: ControlFocus
   readonly pane: Pane
   readonly notice: Notice | null
-  readonly syncing: boolean
+  readonly sync: SyncStatus
   readonly width: number
   readonly height: number
   readonly onFocus: (focus: ControlFocus) => void
@@ -32,11 +35,19 @@ const Dashboard = (props: DashboardProps) => {
   const railWidth = createMemo(() => (shellWidth() >= 96 ? 30 : 26))
   const detailWidth = createMemo(() => Math.min(76, Math.max(20, shellWidth() - railWidth() - 2)))
   const meterWidth = createMemo(() => Math.min(36, Math.max(10, detailWidth() - 24)))
-  const mainHeight = createMemo(() => Math.max(0, props.height - 4))
+  const syncActive = createMemo(() => props.sync.phase !== "idle")
+  const mainHeight = createMemo(() => Math.max(0, props.height - (syncActive() ? 6 : 4)))
   const aggregate = createMemo(() =>
     aggregateState(props.model.bulbs(), props.model.states(), props.model.stateErrors()),
   )
   const showingAll = createMemo(() => props.model.allSelected() && props.model.canSelectAll())
+  const syncBulbs = createMemo(() => {
+    const map = new Map<BulbId, BulbSyncPhase>()
+    for (const bulb of props.sync.bulbs) {
+      map.set(bulb.id, bulb.status)
+    }
+    return map
+  })
 
   const summary = createMemo(() => {
     if (props.model.loading()) {
@@ -59,6 +70,9 @@ const Dashboard = (props: DashboardProps) => {
     }
     if (props.model.refreshing()) {
       return "refreshing…"
+    }
+    if (props.pane === "controls" && syncActive() && props.focus !== "power") {
+      return "sync owns colour, brightness and temperature"
     }
     if (showingAll()) {
       if (props.pane === "bulbs") {
@@ -102,16 +116,37 @@ const Dashboard = (props: DashboardProps) => {
     }
   })
 
+  const syncHint = createMemo(() => {
+    if (props.sync.phase === "starting") {
+      return "s cancel"
+    }
+    if (props.sync.phase === "paused") {
+      return "x resume · m monitor"
+    }
+    if (props.sync.phase === "stopping") {
+      return "stopping…"
+    }
+    if (props.sync.phase === "syncing") {
+      return "s stop · x pause · m monitor"
+    }
+    return "s sync"
+  })
+
   const globalHint = createMemo(() => {
-    const sync = props.syncing ? "s stop sync" : "s sync"
+    if (syncActive()) {
+      if (shellWidth() < 90) {
+        return `${syncHint()} · ? help · q quit`
+      }
+      return `${syncHint()} · r refresh · ? help · q quit`
+    }
     if (props.model.bulbs().length === 0) {
-      return `${sync} · ? help · q quit`
+      return `${syncHint()} · ? help · q quit`
     }
     const all = props.model.canSelectAll() ? "A all · " : ""
     if (shellWidth() < 90) {
-      return `${all}a add · ${sync} · ? help · q quit`
+      return `${all}a add · ${syncHint()} · ? help · q quit`
     }
-    return `${all}a add · e edit · d remove · r refresh · ${sync} · ? help · q quit`
+    return `${all}a add · e edit · d remove · r refresh · ${syncHint()} · ? help · q quit`
   })
 
   return (
@@ -178,6 +213,8 @@ const Dashboard = (props: DashboardProps) => {
                     selectedId={props.model.selectedId()}
                     allSelected={props.model.allSelected()}
                     canSelectAll={props.model.canSelectAll()}
+                    syncActive={syncActive()}
+                    syncBulbs={syncBulbs()}
                     height={mainHeight()}
                     width={railWidth() - 2}
                     onSelect={props.model.select}
@@ -198,6 +235,7 @@ const Dashboard = (props: DashboardProps) => {
                             error={props.model.selectedError()}
                             focus={props.focus}
                             active={props.pane === "controls"}
+                            syncLocked={syncActive()}
                             width={detailWidth()}
                             meterWidth={meterWidth()}
                             onFocus={props.onFocus}
@@ -210,6 +248,7 @@ const Dashboard = (props: DashboardProps) => {
                       aggregate={aggregate()}
                       focus={props.focus}
                       active={props.pane === "controls"}
+                      syncLocked={syncActive()}
                       width={detailWidth()}
                       meterWidth={meterWidth()}
                       onFocus={props.onFocus}
@@ -219,6 +258,10 @@ const Dashboard = (props: DashboardProps) => {
               </Show>
             </Show>
           </box>
+
+          <Show when={syncActive()}>
+            <SyncStrip status={props.sync} />
+          </Show>
 
           <box flexDirection="column" flexShrink={0}>
             <text fg={palette.border} height={1}>
