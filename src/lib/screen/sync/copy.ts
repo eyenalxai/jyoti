@@ -1,4 +1,7 @@
+import type { RestoreReport } from "@/lib/screen/sync/restore"
 import type { SyncPhase } from "@/lib/screen/sync/status"
+
+import { nameList } from "@/lib/format"
 
 const SYNC_OWNS_CONTROLS = "sync owns colour, brightness and temperature"
 const SYNC_BLOCKS_BULBS = "stop sync to change bulbs"
@@ -20,4 +23,15 @@ const syncKeys = (phase: SyncPhase): string => {
   return "s sync"
 }
 
-export { SYNC_BLOCKS_BULBS, SYNC_CANCELLED_MESSAGE, SYNC_OWNS_CONTROLS, syncKeys }
+const stoppedMessage = (report: RestoreReport): string => {
+  if (report.total === 0) {
+    return "Screen sync stopped."
+  }
+  const restored = `${report.restored}/${report.total} restored`
+  if (report.notRestored.length === 0) {
+    return `Screen sync stopped · ${restored}`
+  }
+  return `Screen sync stopped · ${restored} · not restored: ${nameList(report.notRestored)}`
+}
+
+export { SYNC_BLOCKS_BULBS, SYNC_CANCELLED_MESSAGE, SYNC_OWNS_CONTROLS, stoppedMessage, syncKeys }

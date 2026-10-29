@@ -3,7 +3,6 @@ import type { DerivedColor } from "@/lib/screen/reducer"
 
 type SyncPhase = "idle" | "starting" | "syncing" | "paused" | "stopping"
 type CaptureHealth = "ok" | "switching" | "black" | "stale" | "lost"
-// Restore results arrive with JYO-30; the rail and status already carry their states.
 type BulbSyncPhase = "syncing" | "unreachable" | "restored" | "not-restored"
 
 interface SyncedBulb {

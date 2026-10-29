@@ -2,10 +2,11 @@ import { BunDatagramSocket } from "@effect/platform-bun"
 import { Duration, Effect, Result } from "effect"
 import { NetAddress } from "effect/net"
 
-import type { MiioReply } from "@/lib/bulbs/schema"
+import type { BulbState, MiioReply } from "@/lib/bulbs/schema"
 import type { HelloReply, ParsedPacket } from "@/lib/miio/packet"
 import type { PropertyParam } from "@/lib/miio/properties"
 
+import { confirmed } from "@/lib/miio/confirm"
 import { MiioError, toMiioError } from "@/lib/miio/error"
 import {
   buildHello,
@@ -16,6 +17,7 @@ import {
 } from "@/lib/miio/packet"
 import { commandError } from "@/lib/miio/properties"
 import { decodeReply } from "@/lib/miio/reply"
+import { stateFromReply, stateProperties } from "@/lib/miio/state"
 
 const HELLO_TIMEOUT_MS = 1000
 const STREAM_TIMEOUT_MS = 600
@@ -33,6 +35,9 @@ interface MiioSessionTarget {
 
 interface MiioSession {
   readonly setProperties: (params: readonly PropertyParam[]) => Effect.Effect<void, MiioError>
+  readonly confirmProperties: (params: readonly PropertyParam[]) => Effect.Effect<void, MiioError>
+  readonly getState: () => Effect.Effect<BulbState, MiioError>
+  readonly hello: () => Effect.Effect<void, MiioError>
 }
 
 interface SessionState {
@@ -268,8 +273,22 @@ const openMiioSession = Effect.fn("MiioSession.open")(function* openSession(
     return yield* Effect.void
   })
 
+  const confirmProperties = Effect.fn("MiioSession.confirmProperties")(function* confirmProperties(
+    params: readonly PropertyParam[],
+  ) {
+    yield* confirmed(
+      () => setProperties(params),
+      () => timeout("stream"),
+    )
+  })
+
+  const getState = Effect.fn("MiioSession.getState")(function* getState() {
+    const reply = yield* request("get_properties", stateProperties())
+    return stateFromReply(reply)
+  })
+
   yield* hello()
-  return { setProperties }
+  return { setProperties, confirmProperties, getState, hello }
 })
 
 export { openMiioSession, type MiioSession }

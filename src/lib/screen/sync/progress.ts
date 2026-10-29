@@ -1,7 +1,6 @@
 import type { Bulb, BulbId } from "@/lib/bulbs/schema"
 import type { MiioError } from "@/lib/miio/error"
 import type { PropertyParam } from "@/lib/miio/properties"
-import type { MiioSession } from "@/lib/miio/session"
 import type { DerivedColor } from "@/lib/screen/reducer"
 import type { BulbSyncPhase } from "@/lib/screen/sync/status"
 
@@ -18,11 +17,8 @@ interface BulbProgress {
   readonly inflight: boolean
   readonly misses: number
   readonly status: BulbSyncPhase
-}
-
-interface BulbSession {
-  readonly bulb: Bulb
-  readonly session: MiioSession
+  readonly droveBrightness: boolean
+  readonly probeAt: number | null
 }
 
 const propertiesFor = (target: DerivedColor): readonly PropertyParam[] => {
@@ -49,6 +45,8 @@ const initialProgress = (
       inflight: false,
       misses: 0,
       status: reachable.has(bulb.id) ? "syncing" : "unreachable",
+      droveBrightness: false,
+      probeAt: null,
     })
   }
   return progress
@@ -71,13 +69,14 @@ const withMiss = (
   current: BulbProgress,
 ): ReadonlyMap<BulbId, BulbProgress> => {
   const misses = current.misses + 1
-  const status = misses >= UNREACHABLE_MISSES ? "unreachable" : current.status
+  const unreachable = misses >= UNREACHABLE_MISSES
   return new Map(progress).set(id, {
     ...current,
     inflight: false,
     misses,
-    rejectedMessage: status === "unreachable" ? null : current.rejectedMessage,
-    status,
+    rejectedMessage: unreachable ? null : current.rejectedMessage,
+    status: unreachable ? "unreachable" : current.status,
+    probeAt: unreachable ? null : current.probeAt,
   })
 }
 
@@ -143,13 +142,63 @@ const resetAcked = (
   return next
 }
 
+const probeDue = (entry: BulbProgress, now: number): boolean =>
+  entry.status === "unreachable" && (entry.probeAt === null || now >= entry.probeAt)
+
+const markProbe = (
+  progress: ReadonlyMap<BulbId, BulbProgress>,
+  id: BulbId,
+  nextAt: number,
+): ReadonlyMap<BulbId, BulbProgress> => {
+  const current = progress.get(id)
+  if (current === undefined) {
+    return progress
+  }
+  return new Map(progress).set(id, { ...current, probeAt: nextAt })
+}
+
+const markReachable = (
+  progress: ReadonlyMap<BulbId, BulbProgress>,
+  id: BulbId,
+): ReadonlyMap<BulbId, BulbProgress> => {
+  const current = progress.get(id)
+  if (current === undefined) {
+    return progress
+  }
+  return new Map(progress).set(id, {
+    ...current,
+    last: null,
+    rejected: null,
+    rejectedMessage: null,
+    misses: 0,
+    status: "syncing",
+    probeAt: null,
+  })
+}
+
+const markRestored = (
+  progress: ReadonlyMap<BulbId, BulbProgress>,
+  id: BulbId,
+  status: "restored" | "not-restored",
+): ReadonlyMap<BulbId, BulbProgress> => {
+  const current = progress.get(id)
+  if (current === undefined) {
+    return progress
+  }
+  return new Map(progress).set(id, { ...current, inflight: false, status })
+}
+
 export {
   initialProgress,
   markInflight,
+  markProbe,
+  markReachable,
+  markRestored,
   missProgress,
+  probeDue,
   propertiesFor,
   resetAcked,
   settleProgress,
   shouldSend,
 }
-export type { BulbProgress, BulbSession }
+export type { BulbProgress }

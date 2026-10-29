@@ -1,6 +1,6 @@
-import { Array as Arr, Context, Effect, Layer, Option } from "effect"
+import { Array as Arr, Context, Effect, Layer } from "effect"
 
-import type { BulbEndpoint, BulbState, MiioReply, Rgb } from "@/lib/bulbs/schema"
+import type { BulbEndpoint, BulbState, Rgb } from "@/lib/bulbs/schema"
 import type { PropertyParam } from "@/lib/miio/properties"
 import type { MiioTransportShape } from "@/lib/miio/transport"
 
@@ -9,17 +9,15 @@ import {
   BRIGHTNESS_MIN,
   PIID_BRIGHTNESS,
   PIID_COLOR,
-  PIID_COLOR_MODE,
   PIID_POWER,
   PIID_TEMPERATURE,
-  SIID_LIGHT,
   TEMPERATURE_MAX,
   TEMPERATURE_MIN,
-  formatColor,
   packColor,
 } from "@/lib/bulbs/schema"
 import { MiioError } from "@/lib/miio/error"
-import { commandError, properties, propertiesWithValue } from "@/lib/miio/properties"
+import { commandError, propertiesWithValue } from "@/lib/miio/properties"
+import { stateFromReply, stateProperties } from "@/lib/miio/state"
 import { MiioTransport } from "@/lib/miio/transport"
 
 interface MiioShape {
@@ -31,54 +29,6 @@ interface MiioShape {
     kelvin: number,
   ) => Effect.Effect<void, MiioError>
   readonly setColor: (endpoint: BulbEndpoint, rgb: Rgb) => Effect.Effect<void, MiioError>
-}
-
-const readValue = (reply: MiioReply, piid: number): unknown => {
-  const item = Option.getOrUndefined(
-    Arr.findFirst(reply.result ?? [], (entry) => entry.siid === SIID_LIGHT && entry.piid === piid),
-  )
-  if (item === undefined) {
-    return undefined
-  }
-  if (item.code !== undefined && item.code !== 0) {
-    return undefined
-  }
-  return item.value
-}
-
-const asBoolean = (value: unknown): boolean | null => {
-  if (value === true) {
-    return true
-  }
-  if (value === false) {
-    return false
-  }
-  return null
-}
-
-const asInteger = (value: unknown, min: number, max: number): number | null => {
-  if (typeof value !== "number" || !Number.isInteger(value)) {
-    return null
-  }
-  if (value < min || value > max) {
-    return null
-  }
-  return value
-}
-
-const asColor = (value: unknown) =>
-  typeof value === "number" && Number.isInteger(value) && value >= 0 && value <= 16_777_215
-    ? formatColor(value)
-    : null
-
-const asMode = (value: unknown): BulbState["mode"] => {
-  if (value === 1) {
-    return "color"
-  }
-  if (value === 2) {
-    return "temperature"
-  }
-  return "unknown"
 }
 
 const applyProperties = (
@@ -102,23 +52,8 @@ class Miio extends Context.Service<Miio, MiioShape>()("jyoti/lib/miio/service/Mi
       const transport = yield* MiioTransport
 
       const getState = Effect.fn("Miio.getState")(function* getState(endpoint: BulbEndpoint) {
-        const reply = yield* transport.transact(
-          endpoint,
-          "get_properties",
-          properties([PIID_POWER, PIID_BRIGHTNESS, PIID_TEMPERATURE, PIID_COLOR, PIID_COLOR_MODE]),
-        )
-
-        return {
-          power: asBoolean(readValue(reply, PIID_POWER)),
-          brightness: asInteger(readValue(reply, PIID_BRIGHTNESS), BRIGHTNESS_MIN, BRIGHTNESS_MAX),
-          temperature: asInteger(
-            readValue(reply, PIID_TEMPERATURE),
-            TEMPERATURE_MIN,
-            TEMPERATURE_MAX,
-          ),
-          color: asColor(readValue(reply, PIID_COLOR)),
-          mode: asMode(readValue(reply, PIID_COLOR_MODE)),
-        } satisfies BulbState
+        const reply = yield* transport.transact(endpoint, "get_properties", stateProperties())
+        return stateFromReply(reply)
       })
 
       const setPower = Effect.fn("Miio.setPower")(function* setPower(

@@ -1,18 +1,8 @@
-import {
-  Cause,
-  Deferred,
-  Duration,
-  Effect,
-  Exit,
-  Fiber,
-  Ref,
-  Result,
-  SubscriptionRef,
-} from "effect"
+import { Cause, Deferred, Effect, Exit, Fiber, Ref, SubscriptionRef } from "effect"
 
-import type { BulbId } from "@/lib/bulbs/schema"
-import type { BulbsShape } from "@/lib/bulbs/service"
-import type { BulbProgress, BulbSession } from "@/lib/screen/sync/progress"
+import type { BulbId, BulbState } from "@/lib/bulbs/schema"
+import type { MiioSession } from "@/lib/miio/session"
+import type { BulbProgress } from "@/lib/screen/sync/progress"
 import type { RunDeps, RunHandle, RunState } from "@/lib/screen/sync/run"
 import type { SyncRun, SyncStatus } from "@/lib/screen/sync/status"
 
@@ -25,10 +15,10 @@ import { findMonitor, resolveMonitor, selfCaptureFor } from "@/lib/screen/sync/m
 import { switchMonitor } from "@/lib/screen/sync/monitor/switch"
 import { initialProgress } from "@/lib/screen/sync/progress"
 import { idleState, patchStatus, publishLive, runLoop } from "@/lib/screen/sync/run"
+import { snapshotBulbs } from "@/lib/screen/sync/snapshot"
 import { idleSyncStatus } from "@/lib/screen/sync/status"
 
 interface StartContext extends RunDeps {
-  readonly bulbs: BulbsShape
   readonly runState: Ref.Ref<RunState>
   readonly pendingMonitor: Ref.Ref<string | null>
 }
@@ -72,41 +62,33 @@ const startRun = Effect.fn("ScreenSync.startRun")(function* startRun(context: St
         })
       }
 
-      const opened = yield* Effect.forEach(
-        listed,
-        (bulb) =>
-          context.bulbs.openSession(bulb.id).pipe(
-            Effect.timeout(Duration.seconds(2)),
-            Effect.result,
-            Effect.map((outcome) => ({ bulb, outcome })),
-          ),
-        { concurrency: "unbounded" },
-      )
-      const reachable = new Set<BulbId>()
-      const sessions: BulbSession[] = []
-      for (const entry of opened) {
-        if (Result.isSuccess(entry.outcome)) {
-          reachable.add(entry.bulb.id)
-          sessions.push({ bulb: entry.bulb, session: entry.outcome.success })
-        }
-      }
+      const snapshot = yield* snapshotBulbs(context.bulbs, listed)
 
       const handle: RunHandle = {
         bulbs: listed,
         monitors,
-        sessions,
+        sessions: yield* Ref.make<ReadonlyMap<BulbId, MiioSession>>(snapshot.sessions),
+        snapshots: yield* Ref.make<ReadonlyMap<BulbId, BulbState>>(snapshot.states),
+        armed: yield* Deferred.make<null>(),
         phase: yield* Ref.make<"syncing" | "paused">("syncing"),
         monitor: yield* Ref.make(monitor),
         switching: yield* Ref.make(false),
         reducer: yield* Ref.make(createReducerState()),
         progress: yield* Ref.make<ReadonlyMap<BulbId, BulbProgress>>(
-          initialProgress(listed, reachable),
+          initialProgress(listed, snapshot.reachable),
         ),
       }
 
       yield* Effect.addFinalizer(() => Ref.set(context.runState, idleState))
       yield* Effect.addFinalizer(() => context.capture.stop())
-      yield* Effect.addFinalizer(() => SubscriptionRef.set(context.status, idleSyncStatus))
+      yield* Effect.addFinalizer(() =>
+        Effect.gen(function* resetStatus() {
+          const current = yield* Ref.get(context.runState)
+          if (current.status !== "stopping") {
+            yield* SubscriptionRef.set(context.status, idleSyncStatus)
+          }
+        }),
+      )
       yield* context.capture
         .start({ monitor: monitor.name, grid: DEFAULT_GRID })
         .pipe(Effect.mapError(captureFailure))
@@ -183,6 +165,8 @@ const startRun = Effect.fn("ScreenSync.startRun")(function* startRun(context: St
 
     yield* Ref.set(context.pendingMonitor, null)
     yield* patchStatus(context, { pendingMonitor: null })
+
+    yield* Deferred.succeed(handle.armed, null)
 
     const active = yield* Ref.get(handle.monitor)
     return {
