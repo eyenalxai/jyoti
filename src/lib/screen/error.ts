@@ -6,4 +6,10 @@ class ScreenCaptureError extends Schema.TaggedError<ScreenCaptureError>()("Scree
   cause: Schema.optionalKey(Schema.Defect()),
 }) {}
 
-export { ScreenCaptureError }
+class ScreenSyncError extends Schema.TaggedError<ScreenSyncError>()("ScreenSyncError", {
+  kind: Schema.Literals(["already-running", "no-bulbs", "no-monitor", "capture", "bulb"]),
+  message: Schema.String,
+  cause: Schema.optionalKey(Schema.Defect()),
+}) {}
+
+export { ScreenCaptureError, ScreenSyncError }

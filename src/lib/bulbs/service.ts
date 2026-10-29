@@ -1,3 +1,5 @@
+import type { Scope } from "effect"
+
 import {
   Array as Arr,
   Context,
@@ -5,7 +7,6 @@ import {
   Layer,
   Option,
   Result,
-  Schema,
   Semaphore,
   String as Str,
 } from "effect"
@@ -18,14 +19,17 @@ import type {
   BulbId,
   BulbPatch,
   BulbState,
-  FieldIssue,
 } from "@/lib/bulbs/schema"
+import type { MiioSession } from "@/lib/miio/session"
 
-import { BulbConflict, BulbInvalid, BulbNotFound, BulbTokenMissing } from "@/lib/bulbs/error"
-import { BulbIdSchema, isToken, parseColor, validateDraft } from "@/lib/bulbs/schema"
+import { BulbConflict, BulbInvalid, BulbTokenMissing } from "@/lib/bulbs/error"
+import { findBulb, firstIssue, newId, withModel } from "@/lib/bulbs/helpers"
+import { isToken, parseColor, validateDraft } from "@/lib/bulbs/schema"
 import { BulbStore } from "@/lib/bulbs/store"
+import { AppConfig } from "@/lib/config"
 import { Keyring } from "@/lib/keyring/service"
 import { Miio } from "@/lib/miio/service"
+import { openMiioSession } from "@/lib/miio/session"
 
 interface BulbsShape {
   readonly list: () => Effect.Effect<readonly Bulb[], BulbsError>
@@ -33,36 +37,12 @@ interface BulbsShape {
   readonly update: (id: BulbId, patch: BulbPatch) => Effect.Effect<Bulb, BulbsError>
   readonly remove: (id: BulbId) => Effect.Effect<void, BulbsError>
   readonly readState: (id: BulbId) => Effect.Effect<BulbState, BulbsError>
+  readonly openSession: (id: BulbId) => Effect.Effect<MiioSession, BulbsError, Scope.Scope>
   readonly setPower: (id: BulbId, on: boolean) => Effect.Effect<void, BulbsError>
   readonly setBrightness: (id: BulbId, value: number) => Effect.Effect<void, BulbsError>
   readonly setTemperature: (id: BulbId, kelvin: number) => Effect.Effect<void, BulbsError>
   readonly setColor: (id: BulbId, hex: string) => Effect.Effect<void, BulbsError>
 }
-
-const findBulb = (bulbs: readonly Bulb[], id: BulbId): Effect.Effect<Bulb, BulbNotFound> => {
-  const bulb = Option.getOrUndefined(Arr.findFirst(bulbs, (entry) => entry.id === id))
-  return bulb === undefined
-    ? Effect.fail(new BulbNotFound({ id, message: "That bulb is no longer in the list." }))
-    : Effect.succeed(bulb)
-}
-
-const firstIssue = (issues: readonly FieldIssue[]): BulbInvalid => {
-  const issue = issues[0]
-  if (issue === undefined) {
-    return new BulbInvalid({ field: "name", message: "The bulb details are incomplete." })
-  }
-  return new BulbInvalid({ field: issue.field, message: issue.message })
-}
-
-const newId = Effect.gen(function* newId() {
-  const raw = yield* Effect.sync(() => Bun.randomUUIDv7())
-  return yield* Schema.decodeUnknownEffect(BulbIdSchema)(raw).pipe(Effect.orDie)
-})
-
-const withModel = (
-  base: { readonly id: BulbId; readonly name: string; readonly address: string },
-  model: string,
-): Bulb => (model.length > 0 ? { ...base, model } : base)
 
 class Bulbs extends Context.Service<Bulbs, BulbsShape>()("jyoti/lib/bulbs/service/Bulbs") {
   static readonly layer = Layer.effect(
@@ -71,6 +51,7 @@ class Bulbs extends Context.Service<Bulbs, BulbsShape>()("jyoti/lib/bulbs/servic
       const store = yield* BulbStore
       const keyring = yield* Keyring
       const miio = yield* Miio
+      const config = yield* AppConfig
       const mutation = yield* Semaphore.make(1)
 
       const endpoint = Effect.fn("Bulbs.endpoint")(function* endpoint(bulb: Bulb) {
@@ -233,6 +214,17 @@ class Bulbs extends Context.Service<Bulbs, BulbsShape>()("jyoti/lib/bulbs/servic
         return yield* miio.getState(target)
       })
 
+      const openSession: BulbsShape["openSession"] = Effect.fn("Bulbs.openSession")(
+        function* openSession(id: BulbId) {
+          const bulbs = yield* store.load()
+          const bulb = yield* findBulb(bulbs, id)
+          const target = yield* endpoint(bulb)
+          const session = yield* openMiioSession(target, config.miioPort)
+          yield* session.hello()
+          return session
+        },
+      )
+
       const setPower: BulbsShape["setPower"] = Effect.fn("Bulbs.setPower")(function* setPower(
         id: BulbId,
         on: boolean,
@@ -285,6 +277,7 @@ class Bulbs extends Context.Service<Bulbs, BulbsShape>()("jyoti/lib/bulbs/servic
         update,
         remove,
         readState,
+        openSession,
         setPower,
         setBrightness,
         setTemperature,

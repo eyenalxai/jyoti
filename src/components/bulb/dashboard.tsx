@@ -20,6 +20,7 @@ interface DashboardProps {
   readonly focus: ControlFocus
   readonly pane: Pane
   readonly notice: Notice | null
+  readonly syncing: boolean
   readonly width: number
   readonly height: number
   readonly onFocus: (focus: ControlFocus) => void
@@ -46,7 +47,8 @@ const Dashboard = (props: DashboardProps) => {
       return "no bulbs"
     }
     const on = Arr.filter(list, (bulb) => props.model.states().get(bulb.id)?.power === true).length
-    return `${list.length} ${list.length === 1 ? "bulb" : "bulbs"} · ${on} on`
+    const base = `${list.length} ${list.length === 1 ? "bulb" : "bulbs"} · ${on} on`
+    return props.syncing ? `${base} · sync` : base
   })
 
   const hint = createMemo(() => {
@@ -102,14 +104,15 @@ const Dashboard = (props: DashboardProps) => {
   })
 
   const globalHint = createMemo(() => {
+    const sync = props.syncing ? "s stop sync" : "s sync"
     if (props.model.bulbs().length === 0) {
-      return "? help · q quit"
+      return `${sync} · ? help · q quit`
     }
     const all = props.model.canSelectAll() ? "A all · " : ""
     if (shellWidth() < 90) {
-      return `${all}a add · ? help · q quit`
+      return `${all}a add · ${sync} · ? help · q quit`
     }
-    return `${all}a add · e edit · d remove · r refresh · ? help · q quit`
+    return `${all}a add · e edit · d remove · r refresh · ${sync} · ? help · q quit`
   })
 
   return (

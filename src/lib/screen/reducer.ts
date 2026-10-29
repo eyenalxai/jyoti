@@ -211,5 +211,5 @@ const shouldPublish = (
   return deltaEOk(next.lab, last.lab) > DEADBAND
 }
 
-export { createReducerState, reduceFrame, reducePrepared, shouldPublish }
+export { NEUTRAL_KELVIN, createReducerState, reduceFrame, reducePrepared, shouldPublish }
 export type { DerivedColor, Reduction, ReducerState }

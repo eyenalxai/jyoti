@@ -1,13 +1,12 @@
 import { BunDatagramSocket } from "@effect/platform-bun"
-import { Context, Effect, Layer, Result, Schema } from "effect"
+import { Context, Effect, Layer, Result } from "effect"
 import { NetAddress } from "effect/net"
 import { DatagramSocket } from "effect/socket"
 
 import type { BulbEndpoint, MiioReply } from "@/lib/bulbs/schema"
 
-import { MiioReplySchema } from "@/lib/bulbs/schema"
 import { AppConfig } from "@/lib/config"
-import { MiioError } from "@/lib/miio/error"
+import { MiioError, toMiioError } from "@/lib/miio/error"
 import {
   buildHello,
   buildRequest,
@@ -16,6 +15,8 @@ import {
   parsePacket,
   tokenBytes,
 } from "@/lib/miio/packet"
+import { replyError } from "@/lib/miio/properties"
+import { decodeReply } from "@/lib/miio/reply"
 
 interface MiioTransportShape {
   readonly transact: (
@@ -23,28 +24,6 @@ interface MiioTransportShape {
     method: string,
     params: readonly unknown[],
   ) => Effect.Effect<MiioReply, MiioError>
-}
-
-const JsonUnknown = Schema.fromJsonString(Schema.Unknown)
-
-const toMiioError = (error: unknown, address: string): MiioError => {
-  if (Schema.is(MiioError)(error)) {
-    return error
-  }
-  if (DatagramSocket.isDatagramSocketError(error)) {
-    return new MiioError({
-      kind: "network",
-      address,
-      message: `Could not talk to the bulb at ${address}. Check it is powered and on this network.`,
-      cause: error,
-    })
-  }
-  return new MiioError({
-    kind: "protocol",
-    address,
-    message: `The bulb at ${address} sent a reply jyoti could not read.`,
-    cause: error,
-  })
 }
 
 class MiioTransport extends Context.Service<MiioTransport, MiioTransportShape>()(
@@ -112,46 +91,31 @@ class MiioTransport extends Context.Service<MiioTransport, MiioTransportShape>()
 
             const replyPackets = yield* reader.pull
             const reply = parsePacket(endpoint.token, replyPackets[0].payload)
-            const text = new TextDecoder().decode(reply.body)
-            return yield* Schema.decodeUnknownEffect(JsonUnknown)(text)
+            return yield* decodeReply(reply.body, endpoint.address)
           }),
         )
 
         const reply = yield* exchange.pipe(
           Effect.mapError((error) => toMiioError(error, endpoint.address)),
-          Effect.timeout(config.miioTimeout),
-          Effect.catchTag("TimeoutError", () =>
-            Effect.fail(
-              new MiioError({
-                kind: "timeout",
-                address: endpoint.address,
-                message: `No reply from ${endpoint.address}. Check its power and network.`,
-              }),
-            ),
-          ),
+          Effect.timeoutOrElse({
+            duration: config.miioTimeout,
+            orElse: () =>
+              Effect.fail(
+                new MiioError({
+                  kind: "timeout",
+                  address: endpoint.address,
+                  message: `No reply from ${endpoint.address}. Check its power and network.`,
+                }),
+              ),
+          }),
         )
 
-        const decoded = yield* Schema.decodeUnknownEffect(MiioReplySchema)(reply).pipe(
-          Effect.mapError(
-            (cause) =>
-              new MiioError({
-                kind: "protocol",
-                address: endpoint.address,
-                message: `The bulb at ${endpoint.address} sent a reply jyoti could not read.`,
-                cause,
-              }),
-          ),
-        )
-
-        if (decoded.error !== undefined) {
-          return yield* new MiioError({
-            kind: "device",
-            address: endpoint.address,
-            message: `The bulb at ${endpoint.address} refused the command: ${decoded.error.message} (${decoded.error.code}).`,
-          })
+        const failure = replyError(reply, endpoint.address)
+        if (failure !== null) {
+          return yield* failure
         }
 
-        return decoded
+        return reply
       })
 
       return MiioTransport.of({ transact })

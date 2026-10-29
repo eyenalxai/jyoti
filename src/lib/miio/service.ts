@@ -1,6 +1,7 @@
 import { Array as Arr, Context, Effect, Layer, Option } from "effect"
 
 import type { BulbEndpoint, BulbState, MiioReply, Rgb } from "@/lib/bulbs/schema"
+import type { PropertyParam } from "@/lib/miio/properties"
 import type { MiioTransportShape } from "@/lib/miio/transport"
 
 import {
@@ -18,6 +19,7 @@ import {
   packColor,
 } from "@/lib/bulbs/schema"
 import { MiioError } from "@/lib/miio/error"
+import { commandError, properties, propertiesWithValue } from "@/lib/miio/properties"
 import { MiioTransport } from "@/lib/miio/transport"
 
 interface MiioShape {
@@ -30,23 +32,6 @@ interface MiioShape {
   ) => Effect.Effect<void, MiioError>
   readonly setColor: (endpoint: BulbEndpoint, rgb: Rgb) => Effect.Effect<void, MiioError>
 }
-
-interface PropertyParam {
-  readonly did: string
-  readonly siid: number
-  readonly piid: number
-  readonly value?: unknown
-}
-
-const properties = (piids: readonly number[]): readonly PropertyParam[] =>
-  Arr.map(piids, (piid) => ({
-    did: `${SIID_LIGHT}-${piid}`,
-    siid: SIID_LIGHT,
-    piid,
-  }))
-
-const propertiesWithValue = (piid: number, value: unknown): readonly PropertyParam[] =>
-  Arr.map(properties([piid]), (property) => ({ ...property, value }))
 
 const readValue = (reply: MiioReply, piid: number): unknown => {
   const item = Option.getOrUndefined(
@@ -103,14 +88,9 @@ const applyProperties = (
 ) =>
   Effect.gen(function* setProperties() {
     const reply = yield* transport.transact(endpoint, "set_properties", params)
-    for (const item of reply.result ?? []) {
-      if (item.code !== undefined && item.code !== 0) {
-        return yield* new MiioError({
-          kind: "device",
-          address: endpoint.address,
-          message: `Property ${item.siid}-${item.piid} failed with code ${item.code}.`,
-        })
-      }
+    const failure = commandError(reply, endpoint.address)
+    if (failure !== null) {
+      return yield* failure
     }
     return yield* Effect.void
   })
