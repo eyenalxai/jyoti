@@ -1,7 +1,7 @@
 # Triage Labels
 
 The skills speak in terms of five canonical triage roles. This file maps those
-roles to the label strings used in team JYO.
+roles to the label strings used in team JYOT.
 
 ## State roles
 

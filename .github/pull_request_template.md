@@ -1,6 +1,6 @@
 ## Linear
 
-Closes JYO-
+Closes JYOT-
 
 ## What changed
 

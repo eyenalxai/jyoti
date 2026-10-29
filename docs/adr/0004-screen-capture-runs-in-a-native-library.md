@@ -23,4 +23,4 @@ TypeScript owns all colour reduction. The `.so` only produces pixels, dimensions
 - v1 targets Hyprland on a single DRM device. Multi-GPU import, HDR and `ext-image-copy-capture` are later work.
 - `copy` forces one compositor render per capture. At 10 Hz that is roughly 0.4% of a core in the compositor; a 60 Hz capture would buy nothing the 1.5 Hz tick can use.
 - The colour algorithm and the grid size can change without recompiling C. The grid size is a start parameter.
-- The colour maths stays in TypeScript, where JYO-23 can iterate on real frames without a build step.
+- The colour maths stays in TypeScript, where JYOT-23 can iterate on real frames without a build step.
