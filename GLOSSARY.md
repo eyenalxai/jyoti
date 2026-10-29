@@ -118,7 +118,7 @@ The monitor a sync run reads.
 
 ## Derived colour
 
-The single colour the colour reducer produces for a frame: the colour of the winning OKLab cluster — its mean lightness and hue, with the chroma raised toward the cluster's 75th percentile. It is sent as it is, white, grey and black included.
+The single colour the colour reducer produces for a frame: the colour of the winning OKLab cluster — its mean lightness and hue, with the chroma raised toward the cluster's 75th percentile. At a gain of `1.0` it is sent as it is, white, grey and black included; above `1.0` the gain lifts its lightness and below `1.0` it lowers it.
 
 ## Scene brightness
 
@@ -130,7 +130,7 @@ The bulb brightness derived from scene brightness through the 8–100% envelope 
 
 ## Sync brightness gain
 
-The multiplier applied to the rounded envelope result, from `0.5` to `2.0` in `0.1` steps. It is `1.0` by default, survives stop and start within one process and is never persisted. `+` and `-` adjust it during a run. The gained value is clamped at `100%`; the 8% floor applies to the result, so a gain above `1.0` raises the floor and a gain below `1.0` does not lower it. The flash guard watches the gained value.
+The multiplier applied to the rounded envelope result and to the derived colour's lightness, from `0.5` to `2.0` in `0.1` steps. It is `1.0` by default, survives stop and start within one process and is never persisted. `+` and `-` adjust it during a run. At `1.0` the derived colour is sent unchanged. The gained colour is clamped at white and the gained brightness at `100%`; the 8% floor applies to the brightness result, so a gain above `1.0` raises the floor and a gain below `1.0` does not lower it. Black stays black. The flash guard watches the gained brightness.
 
 ## Flash guard
 

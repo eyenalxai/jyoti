@@ -2,7 +2,7 @@ import { useKeyboard } from "@opentui/solid"
 
 import type { ControlFocus } from "@/components/bulb/controls"
 import type { Screen } from "@/components/bulb/modals"
-import type { SyncGainDirection } from "@/lib/screen/sync/brightness"
+import type { SyncGainDirection } from "@/lib/screen/sync/gain"
 
 interface AppKeysOptions {
   readonly screen: () => Screen

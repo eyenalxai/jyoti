@@ -17,6 +17,7 @@ import type { SyncStatus } from "@/lib/screen/sync/status"
 import { prepareFrame } from "@/lib/screen/grid"
 import { reducePrepared } from "@/lib/screen/reducer"
 import { syncBrightnessFor } from "@/lib/screen/sync/brightness"
+import { gainColor } from "@/lib/screen/sync/color"
 import { guardFlash } from "@/lib/screen/sync/flash"
 import {
   markInflight,
@@ -216,8 +217,9 @@ const tick = Effect.fn("ScreenSync.tick")(function* tick(deps: RunDeps, handle: 
   const reduction = reducePrepared(prepared, yield* Ref.get(handle.reducer))
   yield* Ref.set(handle.reducer, reduction.state)
 
-  const target = reduction.derived
-  const targetBrightness = syncBrightnessFor(target.sceneBrightness, yield* Ref.get(deps.gain))
+  const gain = yield* Ref.get(deps.gain)
+  const target = gainColor(reduction.derived, gain)
+  const targetBrightness = syncBrightnessFor(target.sceneBrightness, gain)
   const guarded = guardFlash(yield* Ref.get(handle.flash), targetBrightness, performance.now())
   yield* Ref.set(handle.flash, guarded.guard)
   yield* publishLive(deps, handle, {

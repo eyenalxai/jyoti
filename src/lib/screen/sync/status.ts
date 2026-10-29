@@ -1,7 +1,7 @@
 import type { BulbId } from "@/lib/bulbs/schema"
 import type { DerivedColor } from "@/lib/screen/reducer"
 
-import { SYNC_GAIN_DEFAULT } from "@/lib/screen/sync/brightness"
+import { SYNC_GAIN_DEFAULT } from "@/lib/screen/sync/gain"
 
 type SyncPhase = "idle" | "starting" | "syncing" | "paused" | "stopping"
 type CaptureHealth = "ok" | "switching" | "stale" | "lost"
