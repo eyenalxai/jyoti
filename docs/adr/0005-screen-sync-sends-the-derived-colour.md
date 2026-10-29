@@ -2,7 +2,7 @@
 
 Date: 2026-10-29
 
-Status: Accepted; the brightness-smoothing clause is superseded by ADR 0006, and the as-is colour rule is qualified by ADR 0008 above a gain of 1
+Status: Accepted; the brightness-smoothing clause is superseded by ADR 0006
 
 ## Context
 

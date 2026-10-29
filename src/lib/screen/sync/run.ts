@@ -17,10 +17,8 @@ import type { SyncStatus } from "@/lib/screen/sync/status"
 import { prepareFrame } from "@/lib/screen/grid"
 import { reducePrepared } from "@/lib/screen/reducer"
 import { syncBrightnessFor } from "@/lib/screen/sync/brightness"
-import { gainColor } from "@/lib/screen/sync/color-gain"
 import { guardFlash } from "@/lib/screen/sync/flash"
 import {
-  markForceColor,
   markInflight,
   markProbe,
   markReachable,
@@ -44,7 +42,6 @@ interface RunHandle {
   readonly switching: Ref.Ref<boolean>
   readonly reducer: Ref.Ref<ReducerState>
   readonly flash: Ref.Ref<FlashGuard>
-  readonly lastGain: Ref.Ref<number>
   readonly progress: Ref.Ref<ReadonlyMap<BulbId, BulbProgress>>
 }
 
@@ -218,13 +215,7 @@ const tick = Effect.fn("ScreenSync.tick")(function* tick(deps: RunDeps, handle: 
   yield* Ref.set(handle.reducer, reduction.state)
 
   const gain = yield* Ref.get(deps.gain)
-  const lastGain = yield* Ref.get(handle.lastGain)
-  const gainChanged = gain !== lastGain
-  if (gainChanged) {
-    yield* Ref.set(handle.lastGain, gain)
-    yield* Ref.update(handle.progress, (progress) => markForceColor(progress, gain))
-  }
-  const target = gainColor(reduction.derived, gain)
+  const target = reduction.derived
   const targetBrightness = syncBrightnessFor(target.sceneBrightness, gain)
   const guarded = guardFlash(yield* Ref.get(handle.flash), targetBrightness, performance.now())
   yield* Ref.set(handle.flash, guarded.guard)
@@ -238,7 +229,6 @@ const tick = Effect.fn("ScreenSync.tick")(function* tick(deps: RunDeps, handle: 
     target,
     brightness: targetBrightness,
     flashHold: guarded.flashing,
-    gain,
   })
 })
 
