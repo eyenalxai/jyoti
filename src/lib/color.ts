@@ -18,6 +18,7 @@ interface ChannelRange {
 interface SrgbColor {
   readonly rgb: Rgb
   readonly hex: ColorHex
+  readonly oklch: Oklch
   readonly clipped: boolean
 }
 
@@ -99,7 +100,12 @@ const oklchToSrgb = (color: Oklch): SrgbColor => {
     green: encodeChannel(linear.green),
     blue: encodeChannel(linear.blue),
   }
-  return { rgb, hex: formatColor(packColor(rgb)), clipped: fitted.clipped }
+  return {
+    rgb,
+    hex: formatColor(packColor(rgb)),
+    oklch: fitted.color,
+    clipped: fitted.clipped,
+  }
 }
 
 const rgbToOklch = (rgb: Rgb): Oklch => {
@@ -121,10 +127,44 @@ const rgbToOklch = (rgb: Rgb): Oklch => {
   }
 }
 
+const kelvinToRgb = (kelvin: number): Rgb => {
+  const temp = kelvin / 100
+  const red = temp <= 66 ? 255 : 329.698727446 * (temp - 60) ** -0.1332047592
+  const green =
+    temp <= 66
+      ? 99.4708025861 * Math.log(temp) - 161.1195681661
+      : 288.1221695283 * (temp - 60) ** -0.0755148492
+  const blue =
+    temp >= 66 ? 255 : temp <= 19 ? 0 : 138.5177312231 * Math.log(temp - 10) - 305.0447927307
+  return {
+    red: Math.round(clamp(red, 0, 255)),
+    green: Math.round(clamp(green, 0, 255)),
+    blue: Math.round(clamp(blue, 0, 255)),
+  }
+}
+
+const kelvinToSrgb = (kelvin: number): SrgbColor => {
+  const rgb = kelvinToRgb(kelvin)
+  return {
+    rgb,
+    hex: formatColor(packColor(rgb)),
+    oklch: rgbToOklch(rgb),
+    clipped: false,
+  }
+}
+
 const hexToOklch = (hex: string): Oklch | null => {
   const rgb = parseColor(hex)
   return rgb === null ? null : rgbToOklch(rgb)
 }
 
-export { CHROMA_RANGE, HUE_RANGE, LIGHTNESS_RANGE, hexToOklch, oklchToSrgb, rgbToOklch }
+export {
+  CHROMA_RANGE,
+  HUE_RANGE,
+  LIGHTNESS_RANGE,
+  hexToOklch,
+  kelvinToSrgb,
+  oklchToSrgb,
+  rgbToOklch,
+}
 export type { ChannelRange, Oklch, SrgbColor }

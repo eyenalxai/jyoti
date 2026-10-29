@@ -21,6 +21,10 @@ interface AppKeysOptions {
   readonly onAdjust: (direction: number) => void
   readonly onActivate: () => void
   readonly onConfirmRemove: () => void
+  readonly onPreview: () => void
+  readonly onPreviewMove: (delta: number) => void
+  readonly onPreviewToggle: () => void
+  readonly onPreviewClose: () => void
 }
 
 interface KeyLike {
@@ -37,6 +41,28 @@ const isSelectAll = (key: KeyLike): boolean =>
   !key.ctrl && (key.name === "A" || (key.shift && key.name === "a"))
 
 const handleModal = (key: KeyLike, screen: Screen, options: AppKeysOptions): void => {
+  if (screen === "capture") {
+    if (key.name === "escape" || key.name === "v") {
+      options.onPreviewClose()
+      return
+    }
+    if (key.name === "q") {
+      options.onQuit()
+      return
+    }
+    if (key.name === "up" || key.name === "k") {
+      options.onPreviewMove(-1)
+      return
+    }
+    if (key.name === "down" || key.name === "j") {
+      options.onPreviewMove(1)
+      return
+    }
+    if (key.name === "enter" || key.name === "return") {
+      options.onPreviewToggle()
+    }
+    return
+  }
   if (screen === "help") {
     if (key.name === "escape" || isQuestionMark(key)) {
       options.onClose()
@@ -119,6 +145,10 @@ const handleAction = (key: KeyLike, options: AppKeysOptions): boolean => {
   }
   if (key.name === "r") {
     options.onRefresh()
+    return true
+  }
+  if (key.name === "v") {
+    options.onPreview()
     return true
   }
   if (isQuestionMark(key)) {

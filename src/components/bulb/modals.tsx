@@ -1,14 +1,16 @@
 import { Show } from "solid-js"
 
+import type { CapturePreviewModel } from "@/components/screen/use-preview"
 import type { Bulb, BulbDraft } from "@/lib/bulbs/schema"
 
 import { Color } from "@/components/bulb/color"
 import { Form } from "@/components/bulb/form"
 import { Help } from "@/components/bulb/help"
 import { Remove } from "@/components/bulb/remove"
+import { Preview } from "@/components/screen/preview"
 import { Modal } from "@/components/ui/modal"
 
-type Screen = "dashboard" | "add" | "edit" | "remove" | "color" | "help"
+type Screen = "dashboard" | "add" | "edit" | "remove" | "color" | "help" | "capture"
 
 interface ModalsProps {
   readonly screen: Screen
@@ -16,6 +18,7 @@ interface ModalsProps {
   readonly colorInitial: string
   readonly busy: boolean
   readonly error: string | null
+  readonly preview: CapturePreviewModel
   readonly onSubmitAdd: (draft: BulbDraft) => void
   readonly onSubmitEdit: (draft: BulbDraft) => void
   readonly onConfirmRemove: () => void
@@ -72,8 +75,14 @@ const Modals = (props: ModalsProps) => (
     </Show>
 
     <Show when={props.screen === "help"}>
-      <Modal title="Keys" hint="esc close" width={58} height={17}>
+      <Modal title="Keys" hint="esc close" width={58} height={19}>
         <Help />
+      </Modal>
+    </Show>
+
+    <Show when={props.screen === "capture"}>
+      <Modal title="Capture preview (dev)" hint="esc close" width={58} height={18}>
+        <Preview model={props.preview} />
       </Modal>
     </Show>
   </>

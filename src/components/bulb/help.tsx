@@ -31,6 +31,11 @@ const Help = () => (
     <KeyRow keys="c" label="Set color" />
 
     <text fg={palette.faint} bg={palette.surfaceRaised} height={1} flexShrink={0}>
+      screen (preview)
+    </text>
+    <KeyRow keys="v" label="Capture a monitor and derive its colour" />
+
+    <text fg={palette.faint} bg={palette.surfaceRaised} height={1} flexShrink={0}>
       app
     </text>
     <KeyRow keys="r  ?  q" label="Refresh, help, quit" />

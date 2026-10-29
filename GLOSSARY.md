@@ -63,3 +63,47 @@ The `siid 2 / piid 6` property that reports which control is active: `1` for col
 ## Tokens file
 
 `~/.local/share/xiaomi-bulbs/tokens.env`, written by the reference setup script. jyoti does not read or write it; it exists for `bulbs.py`.
+
+## Screen sync
+
+The mode that drives every configured bulb from one captured monitor. It is off until a sync run starts.
+
+## Sync run
+
+One start-to-stop period of screen sync. A run is not a miIO session: it covers every configured bulb and keeps its own snapshot, filter state and 1.5 Hz tick.
+
+## Paused
+
+A sync run that keeps capture, sessions and state but publishes nothing. The bulbs stay on the last derived colour and sync brightness.
+
+## Captured monitor
+
+The monitor a sync run reads.
+
+## Derived colour
+
+The single colour the colour reducer produces for a frame: a chroma-weighted OKLab dominant colour, or the neutral fallback.
+
+## Scene brightness
+
+The mean OKLab lightness of the captured frame, from 0 to 1, published separately from the derived colour.
+
+## Sync brightness
+
+The bulb brightness derived from scene brightness through the 8–80% envelope.
+
+## Blackout hold
+
+Holding the last derived colour and sync brightness while the frame is near-black, so a black scene does not pump the room through neutral.
+
+## Stale frame
+
+A captured frame older than about one second. The run holds the last colour until a fresh frame arrives.
+
+## Neutral fallback
+
+The 4000 K temperature mode used when the scene has too little chroma for a colour.
+
+## miIO session
+
+One socket-and-device conversation with a bulb: its own reader, writer, device ID and message counter. A sync run opens one per bulb; it is not the same thing as the run.
