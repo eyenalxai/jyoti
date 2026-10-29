@@ -1,5 +1,6 @@
 import type { Accessor } from "solid-js"
 
+import { Effect } from "effect"
 import { createSignal } from "solid-js"
 
 import type { Notice } from "@/components/ui/status"
@@ -16,14 +17,14 @@ interface ScreenSyncModel {
   readonly running: Accessor<boolean>
   readonly busy: Accessor<boolean>
   readonly toggle: () => void
-  readonly shutdown: () => Promise<boolean>
+  readonly stop: () => Promise<boolean>
 }
 
 const useScreenSyncModel = (options: UseScreenSyncOptions): ScreenSyncModel => {
   const [running, setRunning] = createSignal(false)
   const [busy, setBusy] = createSignal(false)
 
-  const stopRun = (): Promise<boolean> =>
+  const stop = (): Promise<boolean> =>
     runScreen(ScreenSyncEngine.use((service) => service.stop())).then((result) => {
       if (!result.ok) {
         options.onError(result.message)
@@ -38,37 +39,38 @@ const useScreenSyncModel = (options: UseScreenSyncOptions): ScreenSyncModel => {
       return
     }
 
-    if (running()) {
-      setBusy(true)
-      void stopRun().then((stopped) => {
-        setBusy(false)
-        if (stopped) {
-          options.onNotice({ kind: "info", message: "Screen sync stopped." })
-        }
-        return stopped
-      })
-      return
-    }
-
     setBusy(true)
-    void runScreen(ScreenSyncEngine.use((service) => service.start())).then((result) => {
+    void runScreen(
+      ScreenSyncEngine.use((service) =>
+        Effect.gen(function* toggleSync() {
+          if (yield* service.running()) {
+            yield* service.stop()
+            return { running: false as const }
+          }
+          return { running: true as const, info: yield* service.start() }
+        }),
+      ),
+    ).then((result) => {
       setBusy(false)
       if (!result.ok) {
         options.onError(result.message)
         return false
       }
-      setRunning(true)
-      options.onNotice({
-        kind: "success",
-        message: `Screen sync on · ${result.value.bulbName} · ${result.value.monitorName}`,
-      })
+      if (result.value.running) {
+        setRunning(true)
+        options.onNotice({
+          kind: "success",
+          message: `Screen sync on · ${result.value.info.bulbName} · ${result.value.info.monitorName}`,
+        })
+      } else {
+        setRunning(false)
+        options.onNotice({ kind: "info", message: "Screen sync stopped." })
+      }
       return true
     })
   }
 
-  const shutdown = (): Promise<boolean> => stopRun()
-
-  return { running, busy, toggle, shutdown }
+  return { running, busy, toggle, stop }
 }
 
 export { useScreenSyncModel, type ScreenSyncModel }

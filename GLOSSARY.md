@@ -66,11 +66,11 @@ The `siid 2 / piid 6` property that reports which control is active: `1` for col
 
 ## Screen sync
 
-The mode that drives every configured bulb from one captured monitor. It is off until a sync run starts.
+The mode that drives the configured bulbs from one captured monitor. It is off until a sync run starts.
 
 ## Sync run
 
-One start-to-stop period of screen sync. A run is not a miIO session: it covers every configured bulb and keeps its own snapshot, filter state and 1.5 Hz tick.
+One start-to-stop period of screen sync. A run is not a miIO session: it covers the configured bulb set and keeps its own snapshot, filter state and 1.5 Hz tick.
 
 ## Paused
 

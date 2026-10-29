@@ -16,7 +16,7 @@ import { useControls } from "@/components/bulb/use-controls"
 import { useForms } from "@/components/bulb/use-forms"
 import { useTerminalPalette } from "@/components/bulb/use-terminal-palette"
 import { useCapturePreview } from "@/components/screen/use-preview"
-import { useScreenSyncModel } from "@/components/screen/use-screen-sync"
+import { useScreenSyncModel } from "@/components/screen/use-sync"
 import { aggregateState } from "@/lib/bulbs/aggregate"
 import { BRIGHTNESS_STEP, TEMPERATURE_STEP } from "@/lib/bulbs/schema"
 import { noticeDuration } from "@/lib/format"
@@ -248,7 +248,7 @@ const App = () => {
     if (noticeTimer !== null) {
       cancel(noticeTimer)
     }
-    void sync.shutdown().finally(() => {
+    void sync.stop().finally(() => {
       void dispose()
     })
   })

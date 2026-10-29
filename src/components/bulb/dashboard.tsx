@@ -47,8 +47,7 @@ const Dashboard = (props: DashboardProps) => {
       return "no bulbs"
     }
     const on = Arr.filter(list, (bulb) => props.model.states().get(bulb.id)?.power === true).length
-    const base = `${list.length} ${list.length === 1 ? "bulb" : "bulbs"} · ${on} on`
-    return props.syncing ? `${base} · sync` : base
+    return `${list.length} ${list.length === 1 ? "bulb" : "bulbs"} · ${on} on`
   })
 
   const hint = createMemo(() => {

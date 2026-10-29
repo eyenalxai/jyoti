@@ -22,8 +22,8 @@ import type {
 } from "@/lib/bulbs/schema"
 import type { MiioSession } from "@/lib/miio/session"
 
-import { BulbConflict, BulbInvalid, BulbTokenMissing } from "@/lib/bulbs/error"
-import { findBulb, firstIssue, newId, withModel } from "@/lib/bulbs/helpers"
+import { firstIssue, newId, withModel } from "@/lib/bulbs/draft"
+import { BulbConflict, BulbInvalid, BulbNotFound, BulbTokenMissing } from "@/lib/bulbs/error"
 import { isToken, parseColor, validateDraft } from "@/lib/bulbs/schema"
 import { BulbStore } from "@/lib/bulbs/store"
 import { AppConfig } from "@/lib/config"
@@ -42,6 +42,13 @@ interface BulbsShape {
   readonly setBrightness: (id: BulbId, value: number) => Effect.Effect<void, BulbsError>
   readonly setTemperature: (id: BulbId, kelvin: number) => Effect.Effect<void, BulbsError>
   readonly setColor: (id: BulbId, hex: string) => Effect.Effect<void, BulbsError>
+}
+
+const findBulb = (bulbs: readonly Bulb[], id: BulbId): Effect.Effect<Bulb, BulbNotFound> => {
+  const bulb = Option.getOrUndefined(Arr.findFirst(bulbs, (entry) => entry.id === id))
+  return bulb === undefined
+    ? Effect.fail(new BulbNotFound({ id, message: "That bulb is no longer in the list." }))
+    : Effect.succeed(bulb)
 }
 
 class Bulbs extends Context.Service<Bulbs, BulbsShape>()("jyoti/lib/bulbs/service/Bulbs") {
@@ -219,9 +226,7 @@ class Bulbs extends Context.Service<Bulbs, BulbsShape>()("jyoti/lib/bulbs/servic
           const bulbs = yield* store.load()
           const bulb = yield* findBulb(bulbs, id)
           const target = yield* endpoint(bulb)
-          const session = yield* openMiioSession(target, config.miioPort)
-          yield* session.hello()
-          return session
+          return yield* openMiioSession({ ...target, port: config.miioPort })
         },
       )
 

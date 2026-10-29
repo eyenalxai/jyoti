@@ -47,5 +47,5 @@ const propertyError = (reply: MiioReply, address: string): MiioError | null => {
 const commandError = (reply: MiioReply, address: string): MiioError | null =>
   replyError(reply, address) ?? propertyError(reply, address)
 
-export { commandError, properties, propertiesWithValue, propertyError, replyError }
+export { commandError, properties, propertiesWithValue, replyError }
 export type { PropertyParam }

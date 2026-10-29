@@ -4,7 +4,7 @@ import { BunDatagramSocket } from "@effect/platform-bun"
 import { Duration, Effect, Result } from "effect"
 import { NetAddress } from "effect/net"
 
-import type { BulbEndpoint, MiioReply } from "@/lib/bulbs/schema"
+import type { MiioReply } from "@/lib/bulbs/schema"
 import type { HelloReply, ParsedPacket } from "@/lib/miio/packet"
 import type { PropertyParam } from "@/lib/miio/properties"
 
@@ -23,15 +23,22 @@ const HELLO_TIMEOUT = Duration.millis(1000)
 const STREAM_TIMEOUT = Duration.millis(600)
 const REHELLO_AFTER_MS = 120_000
 const MAX_MESSAGE_ID = 9999
+const STAMP_MODULUS = 4_294_967_296
+
+interface MiioSessionTarget {
+  readonly address: string
+  readonly token: string
+  readonly port: number
+}
 
 interface MiioSession {
-  readonly hello: () => Effect.Effect<void, MiioError>
   readonly setProperties: (params: readonly PropertyParam[]) => Effect.Effect<void, MiioError>
 }
 
 interface SessionState {
   deviceId: Uint8Array | null
   stamp: Uint8Array | null
+  stampAt: number | null
   lastPacketAt: number | null
   messageId: number
 }
@@ -41,26 +48,28 @@ interface IncomingReply {
   readonly reply: MiioReply
 }
 
+const stampValue = (stamp: Uint8Array): number =>
+  new DataView(stamp.buffer, stamp.byteOffset, stamp.byteLength).getUint32(0, false)
+
 const openMiioSession = (
-  endpoint: BulbEndpoint,
-  port: number,
+  target: MiioSessionTarget,
 ): Effect.Effect<MiioSession, MiioError, Scope.Scope> =>
   Effect.gen(function* openSession() {
-    const target = NetAddress.inetAddressFromIpString(endpoint.address, port)
-    if (Result.isFailure(target)) {
+    const resolved = NetAddress.inetAddressFromIpString(target.address, target.port)
+    if (Result.isFailure(resolved)) {
       return yield* new MiioError({
         kind: "address",
-        address: endpoint.address,
-        message: `"${endpoint.address}" is not a valid IP address. Edit the bulb and enter its IP.`,
+        address: target.address,
+        message: `"${target.address}" is not a valid IP address. Edit the bulb and enter its IP.`,
       })
     }
 
     yield* Effect.try({
-      try: () => tokenBytes(endpoint.token),
+      try: () => tokenBytes(target.token),
       catch: (cause) =>
         new MiioError({
           kind: "token",
-          address: endpoint.address,
+          address: target.address,
           message:
             "The stored token is not 32 hexadecimal characters. Edit the bulb and enter its token again.",
           cause,
@@ -69,13 +78,14 @@ const openMiioSession = (
 
     const socket = yield* BunDatagramSocket.make()
     const reader = yield* socket.reader.pipe(
-      Effect.mapError((cause) => toMiioError(cause, endpoint.address)),
+      Effect.mapError((cause) => toMiioError(cause, target.address)),
     )
     const writer = yield* socket.writer
-    const destination = target.success
+    const destination = resolved.success
     const state: SessionState = {
       deviceId: null,
       stamp: null,
+      stampAt: null,
       lastPacketAt: null,
       messageId: 0,
     }
@@ -88,18 +98,18 @@ const openMiioSession = (
     const send = (payload: Uint8Array): Effect.Effect<void, MiioError> =>
       writer
         .write({ payload, address: destination })
-        .pipe(Effect.mapError((cause) => toMiioError(cause, endpoint.address)))
+        .pipe(Effect.mapError((cause) => toMiioError(cause, target.address)))
 
-    const pull = reader.pull.pipe(Effect.mapError((cause) => toMiioError(cause, endpoint.address)))
+    const pull = reader.pull.pipe(Effect.mapError((cause) => toMiioError(cause, target.address)))
 
     const timeout = (kind: "hello" | "stream"): MiioError =>
       new MiioError({
         kind: "timeout",
-        address: endpoint.address,
+        address: target.address,
         message:
           kind === "hello"
-            ? `No reply from ${endpoint.address} to the miIO hello. Check its power and network.`
-            : `No reply from ${endpoint.address} within 600 ms.`,
+            ? `No reply from ${target.address} to the miIO hello. Check its power and network.`
+            : `No reply from ${target.address} within 600 ms.`,
       })
 
     const within = <A>(
@@ -114,6 +124,18 @@ const openMiioSession = (
         }),
       )
 
+    const advancedStamp = (): Uint8Array | null => {
+      const stamp = state.stamp
+      const stampAt = state.stampAt
+      if (stamp === null || stampAt === null) {
+        return null
+      }
+      const elapsed = Math.floor((performance.now() - stampAt) / 1000)
+      const bytes = new Uint8Array(4)
+      new DataView(bytes.buffer).setUint32(0, (stampValue(stamp) + elapsed) % STAMP_MODULUS, false)
+      return bytes
+    }
+
     const nextHelloReply = (): Effect.Effect<HelloReply, MiioError> =>
       Effect.gen(function* readHello() {
         const packets = yield* pull
@@ -123,8 +145,8 @@ const openMiioSession = (
             catch: (cause) =>
               new MiioError({
                 kind: "protocol",
-                address: endpoint.address,
-                message: `The bulb at ${endpoint.address} sent a hello reply jyoti could not read.`,
+                address: target.address,
+                message: `The bulb at ${target.address} sent a hello reply jyoti could not read.`,
                 cause,
               }),
           })
@@ -135,9 +157,11 @@ const openMiioSession = (
     const hello = Effect.fn("MiioSession.hello")(function* hello() {
       yield* send(buildHello())
       const reply = yield* within(nextHelloReply(), HELLO_TIMEOUT, "hello")
+      const receivedAt = performance.now()
       state.deviceId = reply.deviceId
       state.stamp = reply.stamp
-      state.lastPacketAt = performance.now()
+      state.stampAt = receivedAt
+      state.lastPacketAt = receivedAt
     })
 
     const nextReply = (messageId: number): Effect.Effect<IncomingReply, MiioError> =>
@@ -145,18 +169,18 @@ const openMiioSession = (
         const packets = yield* pull
         for (const packet of packets) {
           const parsed = yield* Effect.try({
-            try: () => parsePacket(endpoint.token, packet.payload),
+            try: () => parsePacket(target.token, packet.payload),
             catch: (cause) =>
               new MiioError({
                 kind: "protocol",
-                address: endpoint.address,
-                message: `The bulb at ${endpoint.address} sent a reply jyoti could not read.`,
+                address: target.address,
+                message: `The bulb at ${target.address} sent a reply jyoti could not read.`,
                 cause,
               }),
           })
           state.lastPacketAt = performance.now()
-          const reply = yield* decodeReply(parsed.body, endpoint.address)
-          if (reply.id === undefined || reply.id === messageId) {
+          const reply = yield* decodeReply(parsed.body, target.address)
+          if (reply.id === messageId) {
             return { packet: parsed, reply }
           }
         }
@@ -169,13 +193,13 @@ const openMiioSession = (
       params: readonly unknown[],
     ): Effect.Effect<MiioReply, MiioError> => {
       const deviceId = state.deviceId
-      const stamp = state.stamp
+      const stamp = advancedStamp()
       if (deviceId === null || stamp === null) {
         return Effect.fail(
           new MiioError({
             kind: "protocol",
-            address: endpoint.address,
-            message: `The session to ${endpoint.address} has no device ID. Reconnect and try again.`,
+            address: target.address,
+            message: `The session to ${target.address} has no device ID. Reconnect and try again.`,
           }),
         )
       }
@@ -183,7 +207,7 @@ const openMiioSession = (
       return Effect.gen(function* exchangeRequest() {
         yield* send(
           buildRequest({
-            token: endpoint.token,
+            token: target.token,
             deviceId,
             stamp,
             messageId,
@@ -192,9 +216,11 @@ const openMiioSession = (
           }),
         )
         const incoming = yield* nextReply(messageId)
+        const receivedAt = performance.now()
         state.deviceId = incoming.packet.deviceId
         state.stamp = incoming.packet.stamp
-        state.lastPacketAt = performance.now()
+        state.stampAt = receivedAt
+        state.lastPacketAt = receivedAt
         return incoming.reply
       }).pipe(
         Effect.timeoutOrElse({
@@ -239,14 +265,15 @@ const openMiioSession = (
       params: readonly PropertyParam[],
     ) {
       const reply = yield* request("set_properties", params)
-      const failure = commandError(reply, endpoint.address)
+      const failure = commandError(reply, target.address)
       if (failure !== null) {
         return yield* failure
       }
       return yield* Effect.void
     })
 
-    return { hello, setProperties }
+    yield* hello()
+    return { setProperties }
   })
 
 export { openMiioSession, type MiioSession }

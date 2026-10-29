@@ -45,17 +45,17 @@ const syncRuntime: ManagedRuntime.ManagedRuntime<ScreenSyncEngine, Config.Config
 const messageOf = (error: unknown): string =>
   error instanceof Error ? error.message : "Unexpected error. Press r to refresh, or restart jyoti."
 
-const run = <A, E>(effect: Effect.Effect<A, E, Bulbs>): Promise<UiResult<A>> =>
-  bulbRuntime.runPromise(effect).then(
+const toUiResult = <A>(result: Promise<A>): Promise<UiResult<A>> =>
+  result.then(
     (value): UiResult<A> => ({ ok: true, value }),
     (error: unknown): UiResult<A> => ({ ok: false, message: messageOf(error) }),
   )
 
+const run = <A, E>(effect: Effect.Effect<A, E, Bulbs>): Promise<UiResult<A>> =>
+  toUiResult(bulbRuntime.runPromise(effect))
+
 const runScreen = <A, E>(effect: Effect.Effect<A, E, ScreenSyncEngine>): Promise<UiResult<A>> =>
-  syncRuntime.runPromise(effect).then(
-    (value): UiResult<A> => ({ ok: true, value }),
-    (error: unknown): UiResult<A> => ({ ok: false, message: messageOf(error) }),
-  )
+  toUiResult(syncRuntime.runPromise(effect))
 
 const forkScreen = <A, E>(effect: Effect.Effect<A, E, ScreenCapture>): void => {
   screenRuntime.runFork(effect)
