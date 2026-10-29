@@ -151,32 +151,31 @@ const Detail = (props: DetailProps) => {
             onSelect={props.onQuality}
           />
 
-          <ControlRow
-            label="Brightness"
-            labelWidth={props.labelWidth}
-            focused={props.active && props.focus === "brightness"}
-            disabled={locked()}
-            hint={hintFor(props.rowHints, "←/→")}
-            onFocus={() => {
-              props.onFocus("brightness")
-            }}
-            value={
-              <>
-                <Meter
-                  value={props.state?.brightness ?? null}
-                  min={BRIGHTNESS_MIN}
-                  max={BRIGHTNESS_MAX}
-                  width={props.meterWidth}
-                  color={locked() ? palette.faint : palette.accent}
-                />
-                <text fg={locked() ? palette.faint : palette.text} wrapMode="none">
-                  {valueText(props.state?.brightness, "%", props.valueWidth)}
-                </text>
-              </>
-            }
-          />
-
           <Show when={quality() === "white"}>
+            <ControlRow
+              label="Brightness"
+              labelWidth={props.labelWidth}
+              focused={props.active && props.focus === "brightness"}
+              disabled={locked()}
+              hint={hintFor(props.rowHints, "←/→")}
+              onFocus={() => {
+                props.onFocus("brightness")
+              }}
+              value={
+                <>
+                  <Meter
+                    value={props.state?.brightness ?? null}
+                    min={BRIGHTNESS_MIN}
+                    max={BRIGHTNESS_MAX}
+                    width={props.meterWidth}
+                    color={locked() ? palette.faint : palette.accent}
+                  />
+                  <text fg={locked() ? palette.faint : palette.text} wrapMode="none">
+                    {valueText(props.state?.brightness, "%", props.valueWidth)}
+                  </text>
+                </>
+              }
+            />
             <ControlRow
               label="Warmth"
               labelWidth={props.labelWidth}
