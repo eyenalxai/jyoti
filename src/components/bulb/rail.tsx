@@ -16,7 +16,6 @@ interface RailProps {
   readonly selectedId: BulbId | null
   readonly allSelected: boolean
   readonly canSelectAll: boolean
-  readonly syncActive: boolean
   readonly syncBulbs: ReadonlyMap<BulbId, BulbSyncPhase>
   readonly height: number
   readonly width: number
@@ -136,7 +135,7 @@ const Rail = (props: RailProps) => {
             const selected = () => bulb.id === props.selectedId
             const state = () => props.states.get(bulb.id)
             const error = () => props.stateErrors.get(bulb.id)
-            const sync = () => (props.syncActive ? props.syncBulbs.get(bulb.id) : undefined)
+            const sync = () => props.syncBulbs.get(bulb.id)
             const glyphColor = () => {
               if (error() !== undefined) {
                 return palette.danger

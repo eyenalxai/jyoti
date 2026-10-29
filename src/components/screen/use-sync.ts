@@ -5,10 +5,12 @@ import { createSignal, onCleanup, onMount } from "solid-js"
 
 import type { Notice } from "@/components/ui/status"
 import type { Monitor } from "@/lib/screen/frame"
+import type { RestoreReport } from "@/lib/screen/sync/restore"
 import type { SyncStatus } from "@/lib/screen/sync/status"
 
 import { cancelFiber, forkSyncEffect, runScreen } from "@/lib/runtime"
 import { ScreenSyncEngine } from "@/lib/screen/sync"
+import { stoppedMessage } from "@/lib/screen/sync/copy"
 import { pickDefaultMonitor } from "@/lib/screen/sync/monitor"
 import { idleSyncStatus } from "@/lib/screen/sync/status"
 
@@ -26,7 +28,8 @@ interface ScreenSyncModel {
   readonly monitorError: Accessor<string | null>
   readonly toggle: () => void
   readonly togglePause: () => void
-  readonly stop: () => Promise<boolean>
+  readonly stop: () => Promise<RestoreReport | null>
+  readonly clearRestore: () => void
   readonly openMonitors: () => void
   readonly moveMonitor: (delta: number) => void
   readonly chooseMonitor: () => Promise<boolean>
@@ -42,24 +45,27 @@ const useScreenSyncModel = (options: UseScreenSyncOptions): ScreenSyncModel => {
 
   const selectedMonitorName = (): string | null => status().pendingMonitor ?? status().monitor
 
-  const stop = (): Promise<boolean> =>
+  const stop = (): Promise<RestoreReport | null> =>
     runScreen(ScreenSyncEngine.use((service) => service.stop())).then((result) => {
       if (!result.ok) {
         options.onError(result.message)
-        return false
+        return null
       }
-      return true
+      return result.value
     })
 
   const toggle = () => {
     const phase = status().phase
-    if (busy() && phase !== "starting") {
+    if (phase === "stopping" || (busy() && phase !== "starting")) {
       return
     }
     if (phase !== "idle") {
-      void stop().then((stopped) => {
-        if (stopped) {
-          options.onNotice({ kind: "info", message: "Screen sync stopped." })
+      void stop().then((report) => {
+        if (report !== null) {
+          options.onNotice({
+            kind: report.notRestored.length === 0 && report.total > 0 ? "success" : "info",
+            message: stoppedMessage(report),
+          })
         }
         return null
       })
@@ -82,6 +88,13 @@ const useScreenSyncModel = (options: UseScreenSyncOptions): ScreenSyncModel => {
       })
       return null
     })
+  }
+
+  const clearRestore = () => {
+    if (status().phase !== "idle") {
+      return
+    }
+    void runScreen(ScreenSyncEngine.use((service) => service.clearRestore()))
   }
 
   const togglePause = () => {
@@ -223,6 +236,7 @@ const useScreenSyncModel = (options: UseScreenSyncOptions): ScreenSyncModel => {
     toggle,
     togglePause,
     stop,
+    clearRestore,
     openMonitors,
     moveMonitor,
     chooseMonitor,

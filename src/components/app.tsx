@@ -76,9 +76,8 @@ const App = () => {
       renderer.destroy()
     })
   }
-  const syncOwnsControls = createMemo(
-    () => syncActive() && (focus() === "brightness" || focus() === "temperature"),
-  )
+  const syncOwnsControls = () =>
+    syncActive() && (focus() === "brightness" || focus() === "temperature")
   const actions = useBulbActions({
     model,
     syncActive,
@@ -99,7 +98,6 @@ const App = () => {
     setScreen,
     notify,
   })
-
   const colorInitial = createMemo(() => {
     if (!model.allSelected()) {
       return model.selectedState()?.color ?? "#FFFFFF"
@@ -199,7 +197,10 @@ const App = () => {
     onEdit: actions.openEdit,
     onRemove: actions.openRemove,
     onColor: actions.openColor,
-    onRefresh: model.refresh,
+    onRefresh: () => {
+      model.refresh()
+      sync.clearRestore()
+    },
     onSyncToggle: sync.toggle,
     onSyncPause: sync.togglePause,
     onMonitor: () => {

@@ -1,14 +1,16 @@
 import type { Fiber } from "effect"
 
-import { Array as Arr, Cause, Effect, Option, Ref, SubscriptionRef } from "effect"
+import { Array as Arr, Cause, Deferred, Effect, Option, Ref, SubscriptionRef } from "effect"
 
-import type { Bulb, BulbId } from "@/lib/bulbs/schema"
+import type { Bulb, BulbId, BulbState } from "@/lib/bulbs/schema"
+import type { BulbsShape } from "@/lib/bulbs/service"
 import type { MiioError } from "@/lib/miio/error"
+import type { MiioSession } from "@/lib/miio/session"
 import type { ScreenCaptureShape } from "@/lib/screen/capture"
 import type { ScreenSyncError } from "@/lib/screen/error"
 import type { Monitor } from "@/lib/screen/frame"
 import type { DerivedColor, ReducerState } from "@/lib/screen/reducer"
-import type { BulbProgress, BulbSession } from "@/lib/screen/sync/progress"
+import type { BulbProgress } from "@/lib/screen/sync/progress"
 import type { SyncStatus } from "@/lib/screen/sync/status"
 
 import { prepareFrame } from "@/lib/screen/grid"
@@ -16,17 +18,22 @@ import { reducePrepared } from "@/lib/screen/reducer"
 import { syncBrightnessFor } from "@/lib/screen/sync/brightness"
 import {
   markInflight,
+  markProbe,
+  markReachable,
   missProgress,
+  probeDue,
   propertiesFor,
   settleProgress,
   shouldSend,
 } from "@/lib/screen/sync/progress"
-import { LOST_FRAME_MS, STALE_FRAME_MS, TICK_MS } from "@/lib/screen/sync/timing"
+import { LOST_FRAME_MS, PROBE_INTERVAL_MS, STALE_FRAME_MS, TICK_MS } from "@/lib/screen/sync/timing"
 
 interface RunHandle {
   readonly bulbs: readonly Bulb[]
   readonly monitors: readonly Monitor[]
-  readonly sessions: readonly BulbSession[]
+  readonly sessions: Ref.Ref<ReadonlyMap<BulbId, MiioSession>>
+  readonly snapshots: Ref.Ref<ReadonlyMap<BulbId, BulbState>>
+  readonly armed: Deferred.Deferred<null>
   readonly phase: Ref.Ref<"syncing" | "paused">
   readonly monitor: Ref.Ref<Monitor>
   readonly switching: Ref.Ref<boolean>
@@ -56,6 +63,7 @@ const idleState: RunState = { status: "idle" }
 interface RunDeps {
   readonly capture: ScreenCaptureShape
   readonly status: SubscriptionRef.SubscriptionRef<SyncStatus>
+  readonly bulbs: BulbsShape
 }
 
 const patchStatus = Effect.fn("ScreenSync.patchStatus")(function* patchStatus(
@@ -123,21 +131,75 @@ const sendTarget = Effect.fn("ScreenSync.sendTarget")(function* sendTarget(
   target: DerivedColor,
 ) {
   const progress = yield* Ref.get(handle.progress)
-  for (const item of handle.sessions) {
-    const entry = progress.get(item.bulb.id)
-    if (entry === undefined || !shouldSend(target, entry)) {
+  const sessions = yield* Ref.get(handle.sessions)
+  for (const bulb of handle.bulbs) {
+    const entry = progress.get(bulb.id)
+    const session = sessions.get(bulb.id)
+    if (entry === undefined || session === undefined || !shouldSend(target, entry)) {
       continue
     }
-    yield* Ref.update(handle.progress, (current) => markInflight(current, item.bulb.id))
+    yield* Ref.update(handle.progress, (current) => markInflight(current, bulb.id))
     yield* Effect.forkScoped(
-      item.session.setProperties(propertiesFor(target)).pipe(
+      session.setProperties(propertiesFor(target)).pipe(
         Effect.matchEffect({
-          onFailure: (error) => settle(deps, handle, item.bulb.id, target, error),
-          onSuccess: () => settle(deps, handle, item.bulb.id, target, null),
+          onFailure: (error) => settle(deps, handle, bulb.id, target, error),
+          onSuccess: () => settle(deps, handle, bulb.id, target, null),
         }),
         Effect.catchCauseIf(
           (cause) => !Cause.hasInterruptsOnly(cause),
-          () => settleDefect(deps, handle, item.bulb.id),
+          () => settleDefect(deps, handle, bulb.id),
+        ),
+      ),
+    )
+  }
+})
+
+const recoverBulb = Effect.fn("ScreenSync.recoverBulb")(function* recoverBulb(
+  deps: RunDeps,
+  handle: RunHandle,
+  id: BulbId,
+) {
+  yield* Ref.update(handle.progress, (current) => markReachable(current, id))
+  yield* publishLive(deps, handle, {})
+})
+
+const probeBulb = Effect.fn("ScreenSync.probeBulb")(function* probeBulb(
+  deps: RunDeps,
+  handle: RunHandle,
+  bulb: Bulb,
+) {
+  const current = (yield* Ref.get(handle.sessions)).get(bulb.id)
+  if (current !== undefined) {
+    yield* current.hello()
+    return
+  }
+  const session = yield* deps.bulbs.openSession(bulb.id)
+  yield* Ref.update(handle.sessions, (sessions) => new Map(sessions).set(bulb.id, session))
+})
+
+const probeUnreachable = Effect.fn("ScreenSync.probeUnreachable")(function* probeUnreachable(
+  deps: RunDeps,
+  handle: RunHandle,
+  now: number,
+) {
+  const progress = yield* Ref.get(handle.progress)
+  for (const bulb of handle.bulbs) {
+    const entry = progress.get(bulb.id)
+    if (entry === undefined || !probeDue(entry, now)) {
+      continue
+    }
+    yield* Ref.update(handle.progress, (current) =>
+      markProbe(current, bulb.id, now + PROBE_INTERVAL_MS),
+    )
+    yield* Effect.forkScoped(
+      probeBulb(deps, handle, bulb).pipe(
+        Effect.matchEffect({
+          onFailure: () => Effect.void,
+          onSuccess: () => recoverBulb(deps, handle, bulb.id),
+        }),
+        Effect.catchCauseIf(
+          (cause) => !Cause.hasInterruptsOnly(cause),
+          () => Effect.void,
         ),
       ),
     )
@@ -152,6 +214,8 @@ const tick = Effect.fn("ScreenSync.tick")(function* tick(
   if (yield* Ref.get(handle.switching)) {
     return
   }
+
+  yield* probeUnreachable(deps, handle, performance.now())
 
   const latest = yield* deps.capture.latest()
   if (Option.isNone(latest)) {
@@ -197,6 +261,7 @@ const runLoop = Effect.fn("ScreenSync.runLoop")(function* runLoop(
   deps: RunDeps,
   handle: RunHandle,
 ) {
+  yield* Deferred.await(handle.armed)
   let previousTick = performance.now()
   let deadline = performance.now()
 

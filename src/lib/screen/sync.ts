@@ -1,8 +1,9 @@
 import type { Stream } from "effect"
 
-import { Context, Effect, Fiber, Layer, Ref, SubscriptionRef } from "effect"
+import { Context, Effect, Fiber, Layer, Ref, Semaphore, SubscriptionRef } from "effect"
 
 import type { Monitor } from "@/lib/screen/frame"
+import type { RestoreReport } from "@/lib/screen/sync/restore"
 import type { RunDeps, RunState } from "@/lib/screen/sync/run"
 import type { StartContext } from "@/lib/screen/sync/start"
 import type { SyncRun, SyncStatus } from "@/lib/screen/sync/status"
@@ -14,6 +15,7 @@ import { resetSmoothing } from "@/lib/screen/reducer"
 import { captureFailure } from "@/lib/screen/sync/failure"
 import { findMonitor } from "@/lib/screen/sync/monitor"
 import { switchMonitor } from "@/lib/screen/sync/monitor/switch"
+import { emptyRestoreReport, restoreRun } from "@/lib/screen/sync/restore"
 import { idleState, patchStatus, publishLive } from "@/lib/screen/sync/run"
 import { startRun } from "@/lib/screen/sync/start"
 import { idleSyncStatus } from "@/lib/screen/sync/status"
@@ -23,7 +25,8 @@ interface ScreenSyncShape {
   readonly start: () => Effect.Effect<SyncRun, ScreenSyncError>
   readonly pause: () => Effect.Effect<void, ScreenSyncError>
   readonly resume: () => Effect.Effect<void, ScreenSyncError>
-  readonly stop: () => Effect.Effect<void>
+  readonly stop: () => Effect.Effect<RestoreReport>
+  readonly clearRestore: () => Effect.Effect<void>
   readonly listMonitors: () => Effect.Effect<readonly Monitor[], ScreenSyncError>
   readonly selectMonitor: (name: string) => Effect.Effect<void, ScreenSyncError>
 }
@@ -39,7 +42,8 @@ class ScreenSyncEngine extends Context.Service<ScreenSyncEngine, ScreenSyncShape
       const runState = yield* Ref.make<RunState>(idleState)
       const pendingMonitor = yield* Ref.make<string | null>(null)
       const status = yield* SubscriptionRef.make<SyncStatus>(idleSyncStatus)
-      const deps: RunDeps = { capture, status }
+      const stopLock = yield* Semaphore.make(1)
+      const deps: RunDeps = { capture, status, bulbs }
       const context: StartContext = { capture, status, bulbs, runState, pendingMonitor }
 
       const start = Effect.fn("ScreenSync.start")(function* start() {
@@ -79,12 +83,31 @@ class ScreenSyncEngine extends Context.Service<ScreenSyncEngine, ScreenSyncShape
         return yield* Effect.void
       })
 
-      const stop = Effect.fn("ScreenSync.stop")(function* stop() {
+      const resetIdle = Effect.fn("ScreenSync.resetIdle")(function* resetIdle(keep?: SyncStatus) {
+        yield* Ref.set(pendingMonitor, null)
+        yield* Ref.set(runState, idleState)
+        yield* SubscriptionRef.set(
+          status,
+          keep === undefined
+            ? idleSyncStatus
+            : { ...idleSyncStatus, bulbs: keep.bulbs, total: keep.total },
+        )
+      })
+
+      const stopLocked = Effect.fn("ScreenSync.stopLocked")(function* stopLocked() {
         const current = yield* Ref.get(runState)
         if (current.status === "idle") {
-          yield* Ref.set(pendingMonitor, null)
-          yield* SubscriptionRef.set(status, idleSyncStatus)
-          return
+          yield* resetIdle()
+          return emptyRestoreReport
+        }
+
+        if (current.status === "starting") {
+          if (current.fiber !== null) {
+            yield* Fiber.interrupt(current.fiber)
+          }
+          yield* capture.stop()
+          yield* resetIdle()
+          return emptyRestoreReport
         }
 
         if (current.status === "running") {
@@ -93,18 +116,34 @@ class ScreenSyncEngine extends Context.Service<ScreenSyncEngine, ScreenSyncShape
             fiber: current.fiber,
             handle: current.handle,
           })
-          yield* publishLive(deps, current.handle, { phase: "stopping" })
-        } else {
-          yield* patchStatus(deps, { phase: "stopping" })
         }
-
-        if (current.fiber !== null) {
-          yield* Fiber.interrupt(current.fiber)
-        }
+        yield* Fiber.interrupt(current.fiber)
+        // The run fiber's finalizer resets the state; hold stopping through the restore.
+        yield* Ref.set(runState, {
+          status: "stopping",
+          fiber: current.fiber,
+          handle: current.handle,
+        })
         yield* capture.stop()
-        yield* Ref.set(pendingMonitor, null)
-        yield* Ref.set(runState, idleState)
-        yield* SubscriptionRef.set(status, idleSyncStatus)
+        yield* publishLive(deps, current.handle, { phase: "stopping" })
+        const report = yield* restoreRun(deps, current.handle)
+        const final = yield* SubscriptionRef.get(status)
+        yield* resetIdle(final)
+        return report
+      })
+
+      const stop = Effect.fn("ScreenSync.stop")(function* stop() {
+        return yield* stopLock.withPermit(stopLocked())
+      })
+
+      const clearRestore = Effect.fn("ScreenSync.clearRestore")(function* clearRestore() {
+        const current = yield* Ref.get(runState)
+        if (current.status !== "idle") {
+          return yield* Effect.void
+        }
+        const latest = yield* SubscriptionRef.get(status)
+        yield* SubscriptionRef.set(status, { ...latest, bulbs: [], total: 0 })
+        return yield* Effect.void
       })
 
       const listMonitors = Effect.fn("ScreenSync.listMonitors")(function* listMonitors() {
@@ -146,6 +185,7 @@ class ScreenSyncEngine extends Context.Service<ScreenSyncEngine, ScreenSyncShape
         pause,
         resume,
         stop,
+        clearRestore,
         listMonitors,
         selectMonitor,
       })

@@ -200,7 +200,6 @@ const Dashboard = (props: DashboardProps) => {
                     selectedId={props.model.selectedId()}
                     allSelected={props.model.allSelected()}
                     canSelectAll={props.model.canSelectAll()}
-                    syncActive={syncActive()}
                     syncBulbs={syncBulbs()}
                     height={mainHeight()}
                     width={railWidth() - 2}
