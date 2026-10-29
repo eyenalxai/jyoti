@@ -84,7 +84,7 @@ const Preview = (props: PreviewProps) => {
               <text fg={palette.faint}>{color().mode}</text>
             </box>
             <box flexDirection="row" gap={2} height={1} flexShrink={0}>
-              <text fg={palette.muted}>scene {Math.round(color().sceneL * 100)}%</text>
+              <text fg={palette.muted}>scene {Math.round(color().sceneBrightness * 100)}%</text>
               <Show when={frame()}>
                 {(current) => (
                   <>
