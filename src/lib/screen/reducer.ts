@@ -1,11 +1,9 @@
 import type { ColorHex, Rgb } from "@/lib/bulbs/schema"
-import type { ScreenFrame } from "@/lib/screen/frame"
 import type { PreparedFrame } from "@/lib/screen/grid"
 import type { Lab } from "@/lib/screen/lab"
 
 import { oklchToSrgb } from "@/lib/color"
 import { percentile } from "@/lib/format"
-import { prepareFrame } from "@/lib/screen/grid"
 import { cluster } from "@/lib/screen/kmeans"
 import { deltaEOk, labFromOklch, oklchFromLab } from "@/lib/screen/lab"
 
@@ -127,9 +125,6 @@ const reducePrepared = (prepared: PreparedFrame, state: ReducerState): Reduction
   }
 }
 
-const reduceFrame = (frame: ScreenFrame, state: ReducerState): Reduction =>
-  reducePrepared(prepareFrame(frame), state)
-
 const shouldPublish = (next: DerivedColor, last: Pick<DerivedColor, "lab"> | null): boolean => {
   if (last === null) {
     return true
@@ -137,5 +132,5 @@ const shouldPublish = (next: DerivedColor, last: Pick<DerivedColor, "lab"> | nul
   return deltaEOk(next.lab, last.lab) > DEADBAND
 }
 
-export { createReducerState, reduceFrame, reducePrepared, shouldPublish }
+export { createReducerState, reducePrepared, shouldPublish }
 export type { DerivedColor, Reduction, ReducerState }
