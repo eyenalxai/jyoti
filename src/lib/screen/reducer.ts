@@ -4,14 +4,15 @@ import type { PreparedFrame } from "@/lib/screen/grid"
 import type { Lab } from "@/lib/screen/lab"
 
 import { kelvinToSrgb, oklchToSrgb } from "@/lib/color"
-import { percentile, prepareFrame } from "@/lib/screen/grid"
+import { percentile } from "@/lib/format"
+import { prepareFrame } from "@/lib/screen/grid"
 import { cluster } from "@/lib/screen/kmeans"
 import { deltaEOk, labFromOklch, mixLab, oklchFromLab } from "@/lib/screen/lab"
 
 const NEUTRAL_ENTER_CHROMA = 0.03
 const NEUTRAL_EXIT_CHROMA = 0.045
 const NEUTRAL_KELVIN = 4000
-const REPRESENTATIVE_CHROMA = 0.75
+const CHROMA_QUANTILE = 0.75
 const COLOR_TAU_MS = 450
 const SCENE_TAU_MS = 900
 const CLUSTER_DROP = 0.03
@@ -23,7 +24,7 @@ interface ReducerState {
   readonly neutral: boolean
   readonly primed: boolean
   readonly color: Lab | null
-  readonly sceneDrive: number | null
+  readonly sceneBrightness: number | null
 }
 
 interface DerivedColor {
@@ -31,7 +32,7 @@ interface DerivedColor {
   readonly hex: ColorHex
   readonly kelvin: number | null
   readonly lab: Lab
-  readonly sceneDrive: number
+  readonly sceneBrightness: number
 }
 
 interface Reduction {
@@ -45,13 +46,13 @@ const createReducerState = (): ReducerState => ({
   neutral: false,
   primed: false,
   color: null,
-  sceneDrive: null,
+  sceneBrightness: null,
 })
 
 const resetSmoothing = (state: ReducerState): ReducerState => ({
   ...state,
   color: null,
-  sceneDrive: null,
+  sceneBrightness: null,
 })
 
 const smoothing = (tauMs: number, elapsedMs: number): number =>
@@ -121,7 +122,7 @@ const chooseTarget = (
   }
 
   const size = Math.max(1, chosen)
-  const scale = winner.chroma > 0 ? percentile(chromas, REPRESENTATIVE_CHROMA) / winner.chroma : 0
+  const scale = winner.chroma > 0 ? percentile(chromas, CHROMA_QUANTILE) / winner.chroma : 0
   return {
     l: sumL / size,
     a: (sumA / size) * scale,
@@ -129,14 +130,14 @@ const chooseTarget = (
   }
 }
 
-const temperatureFallback = (sceneDrive: number): DerivedColor => {
+const temperatureFallback = (sceneBrightness: number): DerivedColor => {
   const fallback = kelvinToSrgb(NEUTRAL_KELVIN)
   return {
     mode: "temperature",
     hex: fallback.hex,
     kelvin: NEUTRAL_KELVIN,
     lab: labFromOklch(fallback.oklch),
-    sceneDrive,
+    sceneBrightness,
   }
 }
 
@@ -151,14 +152,14 @@ const reducePrepared = (
       : prepared.p90Chroma < NEUTRAL_ENTER_CHROMA
     : prepared.p90Chroma < NEUTRAL_ENTER_CHROMA
 
-  const sceneAlpha = state.sceneDrive === null ? 1 : smoothing(SCENE_TAU_MS, elapsedMs)
-  const sceneDrive =
-    state.sceneDrive === null
+  const sceneAlpha = state.sceneBrightness === null ? 1 : smoothing(SCENE_TAU_MS, elapsedMs)
+  const sceneBrightness =
+    state.sceneBrightness === null
       ? prepared.meanDrive
-      : state.sceneDrive + (prepared.meanDrive - state.sceneDrive) * sceneAlpha
+      : state.sceneBrightness + (prepared.meanDrive - state.sceneBrightness) * sceneAlpha
 
   if (neutral) {
-    const derived = temperatureFallback(sceneDrive)
+    const derived = temperatureFallback(sceneBrightness)
     return {
       derived,
       state: {
@@ -166,7 +167,7 @@ const reducePrepared = (
         neutral: true,
         primed: true,
         color: derived.lab,
-        sceneDrive,
+        sceneBrightness,
       },
       p90Chroma: prepared.p90Chroma,
     }
@@ -188,14 +189,14 @@ const reducePrepared = (
       hex: srgb.hex,
       kelvin: null,
       lab,
-      sceneDrive,
+      sceneBrightness,
     },
     state: {
       centroids: clustering.centroids,
       neutral: false,
       primed: true,
       color: lab,
-      sceneDrive,
+      sceneBrightness,
     },
     p90Chroma: prepared.p90Chroma,
   }

@@ -24,6 +24,13 @@ const truncate = (value: string, width: number): string => {
 const clamp = (value: number, min: number, max: number): number =>
   Math.min(max, Math.max(min, value))
 
+const percentile = (values: Float32Array, fraction: number): number => {
+  const sorted = Float32Array.from(values)
+  sorted.sort()
+  const index = Math.min(sorted.length - 1, Math.max(0, Math.floor((sorted.length - 1) * fraction)))
+  return sorted[index] ?? 0
+}
+
 const meterUnits = (value: number | null, min: number, max: number, width: number): number => {
   if (value === null) {
     return 0
@@ -185,6 +192,7 @@ export {
   meterUnits,
   nameList,
   noticeDuration,
+  percentile,
   powerGlyph,
   powerWord,
   shortState,

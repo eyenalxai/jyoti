@@ -1,6 +1,7 @@
 import type { ScreenFrame } from "@/lib/screen/frame"
 
 import { rgbToOklch } from "@/lib/color"
+import { percentile } from "@/lib/format"
 import { labFromOklch } from "@/lib/screen/lab"
 
 const BAR_DARK_THRESHOLD = 8
@@ -102,13 +103,6 @@ const fullDarkFraction = (frame: ScreenFrame): number => {
   return dark / total
 }
 
-const percentile = (values: Float32Array, fraction: number): number => {
-  const sorted = Float32Array.from(values)
-  sorted.sort()
-  const index = Math.min(sorted.length - 1, Math.max(0, Math.floor((sorted.length - 1) * fraction)))
-  return sorted[index] ?? 0
-}
-
 const prepareFrame = (frame: ScreenFrame): PreparedFrame => {
   const detected = detectContentRect(frame)
   const { rect } = detected
@@ -149,5 +143,5 @@ const prepareFrame = (frame: ScreenFrame): PreparedFrame => {
   }
 }
 
-export { percentile, prepareFrame }
+export { prepareFrame }
 export type { ContentRect, PreparedFrame }

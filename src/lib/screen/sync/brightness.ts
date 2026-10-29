@@ -1,13 +1,16 @@
+import { clamp } from "@/lib/format"
+
 const SYNC_BRIGHTNESS_FLOOR = 8
 const SYNC_BRIGHTNESS_CEILING = 100
-const SYNC_BRIGHTNESS_SPAN = 92
+const SYNC_BRIGHTNESS_SPAN = SYNC_BRIGHTNESS_CEILING - SYNC_BRIGHTNESS_FLOOR
 const BRIGHTNESS_SLEW = 8
 
-const syncBrightnessFor = (sceneDrive: number): number =>
+const syncBrightnessFor = (sceneBrightness: number): number =>
   Math.round(
-    Math.min(
+    clamp(
+      SYNC_BRIGHTNESS_FLOOR + SYNC_BRIGHTNESS_SPAN * sceneBrightness,
+      SYNC_BRIGHTNESS_FLOOR,
       SYNC_BRIGHTNESS_CEILING,
-      Math.max(SYNC_BRIGHTNESS_FLOOR, SYNC_BRIGHTNESS_FLOOR + SYNC_BRIGHTNESS_SPAN * sceneDrive),
     ),
   )
 
