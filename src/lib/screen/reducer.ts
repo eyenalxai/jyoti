@@ -4,15 +4,14 @@ import type { PreparedFrame } from "@/lib/screen/grid"
 import type { Lab } from "@/lib/screen/lab"
 
 import { kelvinToSrgb, oklchToSrgb } from "@/lib/color"
-import { prepareFrame } from "@/lib/screen/grid"
+import { percentile, prepareFrame } from "@/lib/screen/grid"
 import { cluster } from "@/lib/screen/kmeans"
 import { deltaEOk, labFromOklch, mixLab, oklchFromLab } from "@/lib/screen/lab"
 
 const NEUTRAL_ENTER_CHROMA = 0.03
 const NEUTRAL_EXIT_CHROMA = 0.045
 const NEUTRAL_KELVIN = 4000
-const OUTPUT_LIGHTNESS = 0.65
-const OUTPUT_CHROMA_CAP = 0.13
+const REPRESENTATIVE_CHROMA = 0.75
 const COLOR_TAU_MS = 450
 const SCENE_TAU_MS = 900
 const CLUSTER_DROP = 0.03
@@ -24,7 +23,7 @@ interface ReducerState {
   readonly neutral: boolean
   readonly primed: boolean
   readonly color: Lab | null
-  readonly sceneL: number | null
+  readonly sceneDrive: number | null
 }
 
 interface DerivedColor {
@@ -32,7 +31,7 @@ interface DerivedColor {
   readonly hex: ColorHex
   readonly kelvin: number | null
   readonly lab: Lab
-  readonly sceneL: number
+  readonly sceneDrive: number
 }
 
 interface Reduction {
@@ -46,13 +45,13 @@ const createReducerState = (): ReducerState => ({
   neutral: false,
   primed: false,
   color: null,
-  sceneL: null,
+  sceneDrive: null,
 })
 
 const resetSmoothing = (state: ReducerState): ReducerState => ({
   ...state,
   color: null,
-  sceneL: null,
+  sceneDrive: null,
 })
 
 const smoothing = (tauMs: number, elapsedMs: number): number =>
@@ -105,38 +104,39 @@ const chooseTarget = (
   }
 
   const winner = pickWinner(counts, chromaSums, prepared.pixelCount)
+  const chromas = new Float32Array(counts[winner.index] ?? 0)
   let sumL = 0
   let sumA = 0
   let sumB = 0
-  let chosenCount = 0
-  for (let cursor = 0; cursor < prepared.pixelCount; cursor += 1) {
-    if ((assignments[cursor] ?? 0) !== winner.index) {
+  let chosen = 0
+  for (let index = 0; index < prepared.pixelCount; index += 1) {
+    if ((assignments[index] ?? 0) !== winner.index) {
       continue
     }
-    sumL += prepared.lab[cursor * 3] ?? 0
-    sumA += prepared.lab[cursor * 3 + 1] ?? 0
-    sumB += prepared.lab[cursor * 3 + 2] ?? 0
-    chosenCount += 1
+    sumL += prepared.lab[index * 3] ?? 0
+    sumA += prepared.lab[index * 3 + 1] ?? 0
+    sumB += prepared.lab[index * 3 + 2] ?? 0
+    chromas[chosen] = prepared.chroma[index] ?? 0
+    chosen += 1
   }
 
-  const size = Math.max(1, chosenCount)
-  const hue = Math.atan2(sumB / size, sumA / size)
-  const chroma = Math.min(winner.chroma, OUTPUT_CHROMA_CAP)
+  const size = Math.max(1, chosen)
+  const scale = winner.chroma > 0 ? percentile(chromas, REPRESENTATIVE_CHROMA) / winner.chroma : 0
   return {
-    l: OUTPUT_LIGHTNESS,
-    a: chroma * Math.cos(hue),
-    b: chroma * Math.sin(hue),
+    l: sumL / size,
+    a: (sumA / size) * scale,
+    b: (sumB / size) * scale,
   }
 }
 
-const temperatureFallback = (sceneL: number): DerivedColor => {
+const temperatureFallback = (sceneDrive: number): DerivedColor => {
   const fallback = kelvinToSrgb(NEUTRAL_KELVIN)
   return {
     mode: "temperature",
     hex: fallback.hex,
     kelvin: NEUTRAL_KELVIN,
     lab: labFromOklch(fallback.oklch),
-    sceneL,
+    sceneDrive,
   }
 }
 
@@ -151,14 +151,14 @@ const reducePrepared = (
       : prepared.p90Chroma < NEUTRAL_ENTER_CHROMA
     : prepared.p90Chroma < NEUTRAL_ENTER_CHROMA
 
-  const sceneAlpha = state.sceneL === null ? 1 : smoothing(SCENE_TAU_MS, elapsedMs)
-  const sceneL =
-    state.sceneL === null
-      ? prepared.meanL
-      : state.sceneL + (prepared.meanL - state.sceneL) * sceneAlpha
+  const sceneAlpha = state.sceneDrive === null ? 1 : smoothing(SCENE_TAU_MS, elapsedMs)
+  const sceneDrive =
+    state.sceneDrive === null
+      ? prepared.meanDrive
+      : state.sceneDrive + (prepared.meanDrive - state.sceneDrive) * sceneAlpha
 
   if (neutral) {
-    const derived = temperatureFallback(sceneL)
+    const derived = temperatureFallback(sceneDrive)
     return {
       derived,
       state: {
@@ -166,7 +166,7 @@ const reducePrepared = (
         neutral: true,
         primed: true,
         color: derived.lab,
-        sceneL,
+        sceneDrive,
       },
       p90Chroma: prepared.p90Chroma,
     }
@@ -188,14 +188,14 @@ const reducePrepared = (
       hex: srgb.hex,
       kelvin: null,
       lab,
-      sceneL,
+      sceneDrive,
     },
     state: {
       centroids: clustering.centroids,
       neutral: false,
       primed: true,
       color: lab,
-      sceneL,
+      sceneDrive,
     },
     p90Chroma: prepared.p90Chroma,
   }

@@ -94,15 +94,15 @@ The monitor a sync run reads.
 
 ## Derived colour
 
-The single colour the colour reducer produces for a frame: a chroma-weighted OKLab dominant colour, or the neutral fallback.
+The single colour the colour reducer produces for a frame: the colour of the winning OKLab cluster — its mean lightness and hue, with the cluster's 75th-percentile chroma — or the neutral fallback.
 
 ## Scene brightness
 
-The mean OKLab lightness of the captured frame, from 0 to 1, published separately from the derived colour.
+The mean per-pixel drive of the captured frame, `max(r, g, b) / 255`, from 0 to 1, published separately from the derived colour.
 
 ## Sync brightness
 
-The bulb brightness derived from scene brightness through the 8–80% envelope.
+The bulb brightness derived from scene brightness through the 8–100% envelope.
 
 ## Flash guard
 

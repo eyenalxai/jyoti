@@ -21,7 +21,7 @@ interface PreparedFrame {
   readonly pixelCount: number
   readonly lab: Float32Array
   readonly chroma: Float32Array
-  readonly meanL: number
+  readonly meanDrive: number
   readonly p90Chroma: number
   readonly blackout: boolean
 }
@@ -118,21 +118,20 @@ const prepareFrame = (frame: ScreenFrame): PreparedFrame => {
   const { pixels, width } = frame
 
   let cursor = 0
-  let sumL = 0
+  let sumDrive = 0
   for (let y = rect.y; y < rect.y + rect.height; y += 1) {
     for (let x = rect.x; x < rect.x + rect.width; x += 1) {
       const offset = (y * width + x) * 4
-      const color = rgbToOklch({
-        red: pixels[offset] ?? 0,
-        green: pixels[offset + 1] ?? 0,
-        blue: pixels[offset + 2] ?? 0,
-      })
+      const red = pixels[offset] ?? 0
+      const green = pixels[offset + 1] ?? 0
+      const blue = pixels[offset + 2] ?? 0
+      const color = rgbToOklch({ red, green, blue })
       const converted = labFromOklch(color)
       lab[cursor * 3] = converted.l
       lab[cursor * 3 + 1] = converted.a
       lab[cursor * 3 + 2] = converted.b
       chroma[cursor] = color.chroma
-      sumL += converted.l
+      sumDrive += Math.max(red, green, blue) / 255
       cursor += 1
     }
   }
@@ -144,11 +143,11 @@ const prepareFrame = (frame: ScreenFrame): PreparedFrame => {
     pixelCount,
     lab,
     chroma,
-    meanL: sumL / Math.max(1, pixelCount),
+    meanDrive: sumDrive / Math.max(1, pixelCount),
     p90Chroma: percentile(chroma, 0.9),
     blackout: detected.rejected && fullDarkFraction(frame) >= BAR_COVERAGE,
   }
 }
 
-export { prepareFrame }
+export { percentile, prepareFrame }
 export type { ContentRect, PreparedFrame }

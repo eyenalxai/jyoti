@@ -225,7 +225,7 @@ const tick = Effect.fn("ScreenSync.tick")(function* tick(
   yield* Ref.set(handle.reducer, reduction.state)
 
   const target = reduction.derived
-  const targetBrightness = syncBrightnessFor(target.sceneL)
+  const targetBrightness = syncBrightnessFor(target.sceneDrive)
   const guarded = guardFlash(yield* Ref.get(handle.flash), targetBrightness, performance.now())
   yield* Ref.set(handle.flash, guarded.guard)
   yield* publishLive(deps, handle, {

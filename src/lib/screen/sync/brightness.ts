@@ -1,13 +1,13 @@
 const SYNC_BRIGHTNESS_FLOOR = 8
-const SYNC_BRIGHTNESS_CEILING = 80
-const SYNC_BRIGHTNESS_SPAN = 72
+const SYNC_BRIGHTNESS_CEILING = 100
+const SYNC_BRIGHTNESS_SPAN = 92
 const BRIGHTNESS_SLEW = 8
 
-const syncBrightnessFor = (sceneL: number): number =>
+const syncBrightnessFor = (sceneDrive: number): number =>
   Math.round(
     Math.min(
       SYNC_BRIGHTNESS_CEILING,
-      Math.max(SYNC_BRIGHTNESS_FLOOR, SYNC_BRIGHTNESS_FLOOR + SYNC_BRIGHTNESS_SPAN * sceneL),
+      Math.max(SYNC_BRIGHTNESS_FLOOR, SYNC_BRIGHTNESS_FLOOR + SYNC_BRIGHTNESS_SPAN * sceneDrive),
     ),
   )
 
