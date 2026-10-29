@@ -126,7 +126,11 @@ The mean per-pixel drive of the captured content, `max(r, g, b) / 255`, from 0 t
 
 ## Sync brightness
 
-The bulb brightness derived from scene brightness through the 8–100% envelope.
+The bulb brightness derived from scene brightness through the 8–100% envelope and the gain.
+
+## Sync brightness gain
+
+The multiplier applied to the rounded envelope result, from `0.5` to `2.0` in `0.1` steps. It is `1.0` by default, survives stop and start within one process and is never persisted. `+` and `-` adjust it during a run. The gained value is clamped at `100%`; the 8% floor applies to the result, so a gain above `1.0` raises the floor and a gain below `1.0` does not lower it. The flash guard watches the gained value.
 
 ## Flash guard
 

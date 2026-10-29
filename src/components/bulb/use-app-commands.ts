@@ -236,6 +236,7 @@ const useAppCommands = (options: UseAppCommandsOptions): AppCommands => {
     },
     onSyncToggle: options.sync.toggle,
     onSyncPause: options.sync.togglePause,
+    onSyncGain: options.sync.adjustGain,
     onMonitor: () => {
       if (options.sync.status().phase === "stopping") {
         options.notify({ kind: "info", message: "Wait for sync to stop." })
