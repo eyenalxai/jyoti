@@ -5,6 +5,8 @@ import { aggregateState, lightQualityOf } from "@/lib/bulbs/aggregate"
 import { NEUTRAL_TEMPERATURE } from "@/lib/bulbs/schema"
 import { kelvinToSrgb } from "@/lib/color"
 
+const NEUTRAL_COLOR = "#FFFFFF"
+
 const initialColor = (model: BulbsModel): string => {
   const aggregate = model.allSelected()
     ? aggregateState(model.bulbs(), model.states(), model.stateErrors())
@@ -22,6 +24,9 @@ const initialColor = (model: BulbsModel): string => {
     if (current !== undefined && current !== null) {
       return current
     }
+  }
+  if (quality !== "white") {
+    return NEUTRAL_COLOR
   }
 
   const kelvin =

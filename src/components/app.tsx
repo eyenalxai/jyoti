@@ -9,6 +9,7 @@ import type { Bulb } from "@/lib/bulbs/schema"
 import { initialColor } from "@/components/bulb/color/initial"
 import { useColorSession } from "@/components/bulb/color/use-session"
 import { Dashboard } from "@/components/bulb/dashboard"
+import { canFocus } from "@/components/bulb/focus"
 import { Modals } from "@/components/bulb/modals"
 import { useBulbActions } from "@/components/bulb/use-actions"
 import { useAppCommands } from "@/components/bulb/use-app-commands"
@@ -67,9 +68,9 @@ const App = () => {
       ? aggregateState(model.bulbs(), model.states(), model.stateErrors()).quality
       : lightQualityOf(model.selectedState()?.mode),
   )
-  // Brightness is only drawn in White, so focus cannot stay on it in another mode.
+  // Only the rows the current mode draws can hold focus.
   createEffect(() => {
-    if (selectedQuality() !== "white" && focus() === "brightness") {
+    if (!canFocus(selectedQuality(), focus())) {
       setFocus("quality")
     }
   })

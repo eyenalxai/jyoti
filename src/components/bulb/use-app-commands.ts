@@ -13,6 +13,7 @@ import type { Notice } from "@/components/ui/toast"
 import type { LightQuality, LightSide } from "@/lib/bulbs/aggregate"
 import type { Bulb } from "@/lib/bulbs/schema"
 
+import { canFocus, focusOrder, refusalFor } from "@/components/bulb/focus"
 import { useAppKeys } from "@/components/bulb/use-app-keys"
 import { BRIGHTNESS_STEP, TEMPERATURE_STEP } from "@/lib/bulbs/schema"
 import { SYNC_OWNS_CONTROLS } from "@/lib/screen/sync/copy"
@@ -44,16 +45,6 @@ interface AppCommands {
   readonly focusControl: (focus: ControlFocus) => void
   readonly setQuality: (quality: LightSide) => void
   readonly dismissColor: () => void
-}
-
-const focusOrder = (quality: LightQuality): readonly ControlFocus[] => {
-  if (quality === "white") {
-    return ["power", "quality", "brightness", "light"]
-  }
-  if (quality === "color") {
-    return ["power", "quality", "light"]
-  }
-  return ["power", "quality"]
 }
 
 const useAppCommands = (options: UseAppCommandsOptions): AppCommands => {
@@ -126,14 +117,14 @@ const useAppCommands = (options: UseAppCommandsOptions): AppCommands => {
     }
   }
 
-  const switchToColor = () => {
+  const switchToColor = (seed: boolean) => {
     if (options.syncActive()) {
       options.notify({ kind: "info", message: SYNC_OWNS_CONTROLS })
       return false
     }
     if (!options.colorSession.dirty()) {
       options.colorSession.capture()
-      if (options.selectedQuality() !== "color") {
+      if (seed) {
         void options.colorSession.commit(options.colorInitial())
       }
     }
@@ -147,7 +138,7 @@ const useAppCommands = (options: UseAppCommandsOptions): AppCommands => {
       options.controls.setWhite()
       return
     }
-    switchToColor()
+    switchToColor(options.selectedQuality() !== "color")
   }
 
   const adjustLight = (direction: number) => {
@@ -169,7 +160,7 @@ const useAppCommands = (options: UseAppCommandsOptions): AppCommands => {
   }
 
   const openColor = () => {
-    if (!switchToColor()) {
+    if (!switchToColor(options.selectedQuality() === "white")) {
       return
     }
     options.actions.openColor()
@@ -218,8 +209,8 @@ const useAppCommands = (options: UseAppCommandsOptions): AppCommands => {
   }
 
   const focusControl = (next: ControlFocus) => {
-    if (next === "brightness" && options.selectedQuality() !== "white") {
-      options.notify({ kind: "info", message: "Choose White to set brightness." })
+    if (!canFocus(options.selectedQuality(), next)) {
+      options.notify({ kind: "info", message: refusalFor(next) })
       return
     }
     options.setPane("controls")

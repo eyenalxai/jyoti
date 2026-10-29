@@ -30,7 +30,7 @@ Xiaomi's UDP protocol on port 54321. A request sends a 32-byte hello, receives t
 
 ## All bulbs
 
-A selection that stands for every configured bulb at once. It is not a bulb: it has no ID, address, token or stored state, so edit and remove do not act on it. The row appears first in the rail while two or more bulbs exist, and it is the default selection on first load. Its state is the aggregate of the bulbs: power is on, off or mixed; quality is White or Colour when every reachable bulb agrees and mixed when they do not; brightness and colour temperature show one value when equal and a range when not; colour shows a swatch when equal and mixed otherwise. Power uses a quorum: if every reachable bulb is on, one toggle turns them all off; otherwise it turns them all on. Brightness and warmth set one absolute value on every bulb, anchored at the aggregate's high end for an increase and its low end for a decrease. Colour applies one packed colour to every bulb. Each bulb is addressed independently, so a slow bulb does not delay the others; a failure names the bulbs that failed while the successes stay applied.
+A selection that stands for every configured bulb at once. It is not a bulb: it has no ID, address, token or stored state, so edit and remove do not act on it. The row appears first in the rail while two or more bulbs exist, and it is the default selection on first load. Its state is the aggregate of the bulbs: power is on, off or mixed; quality is White or Colour when every reachable bulb agrees and mixed when they do not. The mode's settings rows are drawn only when the bulbs agree on the mode: brightness and colour temperature show one value when equal and a range when not, and colour shows a swatch when equal and mixed otherwise. In mixed, choosing White or Colour applies that mode to every bulb. Power uses a quorum: if every reachable bulb is on, one toggle turns them all off; otherwise it turns them all on. Brightness and warmth set one absolute value on every White-mode bulb, anchored at the aggregate's high end for an increase and its low end for a decrease. Colour applies one packed colour to every bulb. Each bulb is addressed independently, so a slow bulb does not delay the others; a failure names the bulbs that failed while the successes stay applied.
 
 ## State
 
@@ -78,7 +78,7 @@ The All bulbs quality when at least two reachable bulbs disagree. The switch sho
 
 ## Colour picker
 
-The inline editor for the Colour quality. It edits hue and saturation, switches to RGB on `tab`, and accepts an exact hex value. Every value it can produce is an sRGB colour, so the swatch and the sent colour cannot diverge. Changes are sent after a short idle, so the bulb follows the picker. Brightness belongs to White, so the picker does not edit it. Opening the picker on a bulb that is already in Colour leaves its colour untouched; only a bulb entering Colour is seeded.
+The inline editor for the Colour quality. It edits hue and saturation, switches to RGB on `tab`, and accepts an exact hex value. Every value it can produce is an sRGB colour, so the swatch and the sent colour cannot diverge. Changes are sent after a short idle, so the bulb follows the picker. Brightness is the panel's White-mode control, so the picker does not edit it. Opening the picker seeds a colour only when every target is White; a bulb already in Colour keeps its colour, black included.
 
 ## Revert
 
