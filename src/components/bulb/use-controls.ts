@@ -1,10 +1,14 @@
-import { Array as Arr, Effect, Result, Schema, String as Str } from "effect"
+import type { Effect } from "effect"
+
+import { Result, Schema, String as Str } from "effect"
 
 import type { BulbsModel } from "@/components/bulb/use-bulbs"
+import type { ColorOutcome } from "@/components/bulb/use-group-controls"
 import type { BulbsError } from "@/lib/bulbs/error"
 import type { Bulb, BulbId, BulbState } from "@/lib/bulbs/schema"
 import type { Timer } from "@/lib/timers"
 
+import { useGroupControls } from "@/components/bulb/use-group-controls"
 import {
   BRIGHTNESS_MAX,
   BRIGHTNESS_MIN,
@@ -26,27 +30,13 @@ interface ControlsModel {
   readonly togglePower: () => Promise<string | null>
   readonly adjustBrightness: (delta: number) => void
   readonly adjustTemperature: (delta: number) => void
-  readonly setColor: (hex: string) => Promise<string | null>
+  readonly setColor: (hex: string) => Promise<ColorOutcome>
   readonly flushPending: () => void
 }
 
 interface Pending {
   readonly timer: Timer
   readonly send: () => void
-}
-
-const nameList = (names: readonly string[]): string => {
-  const first = names[0]
-  const second = names[1]
-  if (first === undefined) {
-    return "The bulbs"
-  }
-  if (second === undefined) {
-    return first
-  }
-  return names.length === 2
-    ? `${first} and ${second}`
-    : `${first}, ${second} and ${names.length - 2} more`
 }
 
 const useControls = (options: UseControlsOptions): ControlsModel => {
@@ -64,6 +54,12 @@ const useControls = (options: UseControlsOptions): ControlsModel => {
     })
     pending.set(key, { timer, send })
   }
+
+  const group = useGroupControls({
+    model: options.model,
+    onError: options.onError,
+    schedule,
+  })
 
   const sendControl = (id: BulbId, effect: Effect.Effect<void, BulbsError, Bulbs>) => {
     void run(effect).then((result) => {
@@ -97,64 +93,9 @@ const useControls = (options: UseControlsOptions): ControlsModel => {
     })
   }
 
-  const toggleAllPower = (): Promise<string | null> => {
-    const bulbs = options.model.bulbs()
-    if (bulbs.length === 0) {
-      return Promise.resolve(null)
-    }
-    const states = options.model.states()
-    const known = Arr.flatMap(bulbs, (bulb) => {
-      const state = states.get(bulb.id)
-      return state === undefined || state.power === null ? [] : [state.power]
-    })
-    const target = !(known.length > 0 && Arr.every(known, Boolean))
-
-    for (const bulb of bulbs) {
-      options.model.patchState(bulb.id, { power: target })
-    }
-
-    return run(
-      Bulbs.use((service) =>
-        Effect.forEach(
-          bulbs,
-          (bulb) =>
-            service.setPower(bulb.id, target).pipe(
-              Effect.result,
-              Effect.map((outcome) => ({ bulb, outcome })),
-            ),
-          { concurrency: 4 },
-        ),
-      ),
-    ).then((result) => {
-      if (!result.ok) {
-        options.onError(result.message)
-        for (const bulb of bulbs) {
-          void options.model.readOne(bulb.id)
-        }
-        return result.message
-      }
-
-      const failures = Arr.filter(result.value, (entry) => Result.isFailure(entry.outcome))
-      const changed = result.value.length - failures.length
-      for (const entry of result.value) {
-        if (Result.isFailure(entry.outcome) || !states.has(entry.bulb.id)) {
-          void options.model.readOne(entry.bulb.id)
-        }
-      }
-      if (failures.length === 0) {
-        return null
-      }
-
-      const names = nameList(Arr.map(failures, (entry) => entry.bulb.name))
-      const message = `${names} failed · ${changed} of ${result.value.length} changed`
-      options.onError(message)
-      return message
-    })
-  }
-
   const togglePower = (): Promise<string | null> => {
     if (options.model.allSelected()) {
-      return toggleAllPower()
+      return group.togglePower()
     }
     const bulb = options.model.selected()
     if (bulb === null) {
@@ -182,6 +123,7 @@ const useControls = (options: UseControlsOptions): ControlsModel => {
 
   const adjustBrightness = (delta: number) => {
     if (options.model.allSelected()) {
+      group.adjustBrightness(delta)
       return
     }
     const bulb = options.model.selected()
@@ -208,6 +150,7 @@ const useControls = (options: UseControlsOptions): ControlsModel => {
 
   const adjustTemperature = (delta: number) => {
     if (options.model.allSelected()) {
+      group.adjustTemperature(delta)
       return
     }
     const bulb = options.model.selected()
@@ -232,30 +175,30 @@ const useControls = (options: UseControlsOptions): ControlsModel => {
     })
   }
 
-  const setColor = (hex: string): Promise<string | null> => {
+  const setColor = (hex: string): Promise<ColorOutcome> => {
     if (options.model.allSelected()) {
-      return Promise.resolve("Select one bulb to set its color.")
+      return group.setColor(hex)
     }
     const bulb = options.model.selected()
     if (bulb === null) {
-      return Promise.resolve(null)
+      return Promise.resolve({ error: null, partial: false })
     }
     const normalized = Str.toUpperCase(Str.trim(hex))
     const withHash = Str.startsWith("#")(normalized) ? normalized : `#${normalized}`
     const decoded = Schema.decodeResult(ColorHexSchema)(withHash)
     if (Result.isFailure(decoded)) {
-      return Promise.resolve("Enter a color as #RRGGBB.")
+      return Promise.resolve({ error: "Enter a color as #RRGGBB.", partial: false })
     }
 
     options.model.patchState(bulb.id, { color: decoded.success, mode: "color" })
     return run(Bulbs.use((service) => service.setColor(bulb.id, decoded.success))).then(
       (result) => {
         if (result.ok) {
-          return null
+          return { error: null, partial: false }
         }
         options.onError(result.message)
         void options.model.readOne(bulb.id)
-        return result.message
+        return { error: result.message, partial: false }
       },
     )
   }

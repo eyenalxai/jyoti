@@ -60,7 +60,24 @@ const Dashboard = (props: DashboardProps) => {
       return "refreshing…"
     }
     if (showingAll()) {
-      return props.pane === "bulbs" ? "↑/↓ select · tab controls" : "space toggle all · tab bulbs"
+      if (props.pane === "bulbs") {
+        return "↑/↓ select · tab controls"
+      }
+      switch (props.focus) {
+        case "power": {
+          return "space toggle all · ↑/↓ control · tab bulbs"
+        }
+        case "brightness":
+        case "temperature": {
+          return "←/→ set all · ↑/↓ control · tab bulbs"
+        }
+        case "color": {
+          return "enter or c set all · ↑/↓ control · tab bulbs"
+        }
+        default: {
+          return "tab bulbs"
+        }
+      }
     }
     if (props.pane === "bulbs") {
       return "↑/↓ select · tab controls"

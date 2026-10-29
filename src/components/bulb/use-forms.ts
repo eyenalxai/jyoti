@@ -91,21 +91,25 @@ const useForms = (options: UseFormsOptions): FormsModel => {
   }
 
   const submitColor = (hex: string) => {
+    const all = options.model.allSelected()
     const bulb = options.activeBulb()
-    if (bulb === null || options.busy()) {
+    if ((!all && bulb === null) || options.busy()) {
       return
     }
+    const label = all ? "All bulbs" : (bulb?.name ?? "The bulb")
     options.setBusy(true)
     options.setFormError(null)
-    void options.controls.setColor(hex).then((error) => {
+    void options.controls.setColor(hex).then((outcome) => {
       options.setBusy(false)
-      if (error !== null) {
-        options.setFormError(error)
+      if (outcome.error !== null && !outcome.partial) {
+        options.setFormError(outcome.error)
         return null
       }
       options.setScreen("dashboard")
       options.setActiveBulb(null)
-      options.notify({ kind: "success", message: `${bulb.name} set to ${hex}.` })
+      if (outcome.error === null) {
+        options.notify({ kind: "success", message: `${label} set to ${hex}.` })
+      }
       return null
     })
   }

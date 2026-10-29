@@ -123,6 +123,20 @@ const aggregateColorWord = (color: AggregateColor | null): string => {
   return color.kind === "equal" ? color.hex : "mixed"
 }
 
+const nameList = (names: readonly string[]): string => {
+  const first = names[0]
+  const second = names[1]
+  if (first === undefined) {
+    return "The bulbs"
+  }
+  if (second === undefined) {
+    return first
+  }
+  return names.length === 2
+    ? `${first} and ${second}`
+    : `${first}, ${second} and ${names.length - 2} more`
+}
+
 const aggregateShort = (aggregate: AggregateState): string => {
   if (aggregate.total === 0) {
     return "no bulbs"
@@ -169,6 +183,7 @@ export {
   aggregateSummary,
   clamp,
   meterUnits,
+  nameList,
   noticeDuration,
   powerGlyph,
   powerWord,

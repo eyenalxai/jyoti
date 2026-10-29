@@ -1,5 +1,5 @@
 import { useRenderer, useTerminalDimensions } from "@opentui/solid"
-import { createSignal, onCleanup } from "solid-js"
+import { createMemo, createSignal, onCleanup } from "solid-js"
 
 import type { ControlFocus } from "@/components/bulb/controls"
 import type { Pane } from "@/components/bulb/dashboard"
@@ -15,6 +15,7 @@ import { useBulbs } from "@/components/bulb/use-bulbs"
 import { useControls } from "@/components/bulb/use-controls"
 import { useForms } from "@/components/bulb/use-forms"
 import { useTerminalPalette } from "@/components/bulb/use-terminal-palette"
+import { aggregateState } from "@/lib/bulbs/aggregate"
 import { BRIGHTNESS_STEP, TEMPERATURE_STEP } from "@/lib/bulbs/schema"
 import { noticeDuration } from "@/lib/format"
 import { dispose } from "@/lib/runtime"
@@ -61,6 +62,14 @@ const App = () => {
     setFormError,
     setScreen,
     notify,
+  })
+
+  const colorInitial = createMemo(() => {
+    if (!model.allSelected()) {
+      return model.selectedState()?.color ?? "#FFFFFF"
+    }
+    const aggregate = aggregateState(model.bulbs(), model.states(), model.stateErrors())
+    return aggregate.color?.kind === "equal" ? aggregate.color.hex : "#FFFFFF"
   })
 
   const closeScreen = () => {
@@ -110,16 +119,14 @@ const App = () => {
   }
 
   const openColor = () => {
-    if (model.allSelected()) {
-      notify({ kind: "info", message: "All bulbs is a group. Select a bulb to set its color." })
+    if (busy()) {
       return
     }
-    const bulb = model.selected()
-    if (bulb === null || busy()) {
+    if (!model.allSelected() && model.selected() === null) {
       return
     }
     setFormError(null)
-    setActiveBulb(bulb)
+    setActiveBulb(model.selected())
     setScreen("color")
   }
 
@@ -139,10 +146,9 @@ const App = () => {
   }
 
   const cycleFocus = (direction: number) => {
-    const order = model.allSelected() ? (["power"] as const) : focusOrder
-    const current = order.indexOf(focus())
+    const current = focusOrder.indexOf(focus())
     const base = current === -1 ? 0 : current
-    const next = order[(base + direction + order.length) % order.length]
+    const next = focusOrder[(base + direction + focusOrder.length) % focusOrder.length]
     if (next !== undefined) {
       setFocus(next)
     }
@@ -186,13 +192,6 @@ const App = () => {
   }
 
   const focusControl = (next: ControlFocus) => {
-    if (model.allSelected() && next !== "power") {
-      notify({
-        kind: "info",
-        message: "Select one bulb to change brightness, warmth or color.",
-      })
-      return
-    }
     setPane("controls")
     setFocus(next)
   }
@@ -251,7 +250,7 @@ const App = () => {
       <Modals
         screen={screen()}
         activeBulb={activeBulb()}
-        colorInitial={model.selectedState()?.color ?? "#FFFFFF"}
+        colorInitial={colorInitial()}
         busy={busy()}
         error={formError()}
         onSubmitAdd={forms.submitAdd}

@@ -34,6 +34,12 @@ const spanOf = (
   return span
 }
 
+const absoluteStep = (span: ValueSpan, delta: number, min: number, max: number): number => {
+  // Start at the aggregate edge the key moves toward, so no bulb moves against it.
+  const anchor = delta > 0 ? span.high : span.low
+  return Math.min(max, Math.max(min, anchor + delta))
+}
+
 const powerOf = (values: readonly boolean[]): AggregatePower => {
   if (values.length === 0) {
     return "unknown"
@@ -110,6 +116,7 @@ const aggregateState = (
 }
 
 export {
+  absoluteStep,
   aggregateState,
   type AggregateColor,
   type AggregatePower,

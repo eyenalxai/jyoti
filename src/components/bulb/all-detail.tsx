@@ -164,7 +164,10 @@ const AllDetail = (props: AllDetailProps) => {
         />
         <ControlRow
           label="Brightness"
-          focused={false}
+          focused={props.active && props.focus === "brightness"}
+          onFocus={() => {
+            props.onFocus("brightness")
+          }}
           value={<text fg={palette.text}>{spanValue(props.aggregate.brightness, "%", 7)}</text>}
           detail={
             <SpanMeter
@@ -177,7 +180,10 @@ const AllDetail = (props: AllDetailProps) => {
         />
         <ControlRow
           label="Warmth"
-          focused={false}
+          focused={props.active && props.focus === "temperature"}
+          onFocus={() => {
+            props.onFocus("temperature")
+          }}
           value={<text fg={palette.text}>{spanValue(props.aggregate.temperature, "K", 10)}</text>}
           detail={
             <SpanMeter
@@ -190,7 +196,10 @@ const AllDetail = (props: AllDetailProps) => {
         />
         <ControlRow
           label="Color"
-          focused={false}
+          focused={props.active && props.focus === "color"}
+          onFocus={() => {
+            props.onFocus("color")
+          }}
           value={
             <text fg={props.aggregate.color?.kind === "mixed" ? palette.warning : palette.text}>
               {aggregateColorWord(props.aggregate.color)}

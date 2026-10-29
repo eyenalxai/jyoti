@@ -8,7 +8,7 @@ Bulbs are added inside the app. Their tokens go to the OS keyring; only non-secr
 
 - Lists any number of bulbs, with live power, brightness, color temperature and RGB color.
 - Adds, edits and removes bulbs without touching a config file by hand.
-- Sends power, brightness, warmth and color changes to the selected bulb over UDP.
+- Sends power, brightness, warmth and color changes to the selected bulb, or to every bulb when All bulbs is selected, over UDP.
 - Keeps every action on the keyboard, with an inline error when a bulb does not answer.
 - Uses the terminal's default foreground, background and ANSI palette, so it follows the active terminal theme.
 - Starts empty. It does not read `~/.local/share/xiaomi-bulbs/tokens.env`; that file remains the reference script's input.
@@ -50,7 +50,7 @@ The first screen is empty. Press `a` and enter the bulb's name, IP address and 3
 
 Brightness moves in 5% steps, warmth in 100 K steps. Changes update immediately and are sent after a short idle; a failed command restores the bulb's real state and explains what went wrong.
 
-With two or more bulbs, `A` selects **All bulbs**: the panel shows the aggregate power, brightness, warmth and colour, and `space` turns every bulb off when all of them are on, or on otherwise. Edit, remove and colour stay per bulb.
+With two or more bulbs, `A` selects **All bulbs**: the panel shows the aggregate power, brightness, warmth and colour. `space` turns every bulb off when all of them are on, or on otherwise. `←` `→` set the same brightness or warmth on every bulb, starting from the aggregate — right from the brightest, left from the dimmest — and `c` applies one colour to all of them. Each bulb is addressed independently, so one slow bulb does not hold up the rest; a partial failure names the bulbs that failed and keeps the successes. Edit and remove stay per bulb.
 
 ## Storage and security
 
