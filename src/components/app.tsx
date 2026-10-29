@@ -16,6 +16,7 @@ import { useControls } from "@/components/bulb/use-controls"
 import { useForms } from "@/components/bulb/use-forms"
 import { useTerminalPalette } from "@/components/bulb/use-terminal-palette"
 import { useCapturePreview } from "@/components/screen/use-preview"
+import { useScreenSyncModel } from "@/components/screen/use-sync"
 import { aggregateState } from "@/lib/bulbs/aggregate"
 import { BRIGHTNESS_STEP, TEMPERATURE_STEP } from "@/lib/bulbs/schema"
 import { noticeDuration } from "@/lib/format"
@@ -54,6 +55,7 @@ const App = () => {
   const model = useBulbs({ onError: fail })
   const controls = useControls({ model, onError: fail })
   const preview = useCapturePreview()
+  const sync = useScreenSyncModel({ onNotice: notify, onError: fail })
   const forms = useForms({
     model,
     controls,
@@ -209,6 +211,7 @@ const App = () => {
     onRemove: openRemove,
     onColor: openColor,
     onRefresh: model.refresh,
+    onSyncToggle: sync.toggle,
     onHelp: () => {
       setScreen("help")
     },
@@ -223,6 +226,13 @@ const App = () => {
     onActivate: activate,
     onConfirmRemove: forms.confirmRemove,
     onPreview: () => {
+      if (sync.running() || sync.busy()) {
+        notify({
+          kind: "info",
+          message: "Stop screen sync before opening the capture preview.",
+        })
+        return
+      }
       preview.open()
       setScreen("capture")
     },
@@ -238,7 +248,9 @@ const App = () => {
     if (noticeTimer !== null) {
       cancel(noticeTimer)
     }
-    void dispose()
+    void sync.stop().finally(() => {
+      void dispose()
+    })
   })
 
   return (
@@ -255,6 +267,7 @@ const App = () => {
         focus={focus()}
         pane={pane()}
         notice={notice()}
+        syncing={sync.running()}
         width={dimensions().width}
         height={dimensions().height}
         onFocus={focusControl}

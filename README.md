@@ -56,6 +56,7 @@ The build writes `native/build/libjyoti-capture.so` and the generated Wayland pr
 | `e`               | Edit the selected bulb                       |
 | `d`               | Remove the selected bulb                     |
 | `r`               | Refresh the list and all states              |
+| `s`               | Start or stop screen sync                    |
 | `v`               | Capture preview (development preview)        |
 | `?`               | Show the key map                             |
 | `q` / `ctrl+c`    | Quit                                         |
@@ -66,9 +67,11 @@ The colour picker starts in OKLCH mode with L, C and H sliders. `tab` switches t
 
 With two or more bulbs, `A` selects **All bulbs**: the panel shows the aggregate power, brightness, warmth and colour. `space` turns every bulb off when all of them are on, or on otherwise. `←` `→` set the same brightness or warmth on every bulb, starting from the aggregate — right from the brightest, left from the dimmest — and `c` applies one colour to all of them. Each bulb is addressed independently, so one slow bulb does not hold up the rest; a partial failure names the bulbs that failed and keeps the successes. Edit and remove stay per bulb.
 
-## Screen sync (preview)
+## Screen sync
 
-Screen sync is being built in slices. The capture path and the colour reducer are in place; the shipped sync mode, the strip and the bulb writes arrive in the next tickets.
+Screen sync is being built in slices. `s` starts a sync run that captures the default monitor, derives its colour at 1.5 Hz and sends it to the first configured bulb; `s` again stops the run. A coloured scene writes the packed RGB value, while a low-chroma scene writes 4000 K. The run holds the last colour through a black frame or a stale capture and never writes power. Brightness, restore, all-bulb sync, the strip and the monitor picker arrive in the next tickets.
+
+The run captures the first monitor that is not focused, or the first enumerated monitor when focus is unknown. A single monitor is captured as-is.
 
 `v` opens a development preview. It lists the monitors with their resolution, refresh rate and the focused one, captures the selected monitor through the native library, and shows the derived colour, the scene brightness, the frame age and the blackout state. `enter` starts or stops the capture, `↑` `↓` choose a monitor, and `esc` closes the preview. The preview does not write to any bulb.
 
@@ -107,7 +110,7 @@ src/
     bulbs/                 schemas, config file store, repository
     keyring/               Secret Service adapter
     miio/                  packet codec, UDP transport, bulb client
-    screen/                capture service and colour reducer
+    screen/                capture, colour reducer and sync run
     config.ts              runtime configuration
     runtime.ts             Effect runtime boundary
     theme.ts               palette

@@ -31,9 +31,10 @@ const Help = () => (
     <KeyRow keys="c" label="Set color" />
 
     <text fg={palette.faint} bg={palette.surfaceRaised} height={1} flexShrink={0}>
-      screen (preview)
+      screen
     </text>
-    <KeyRow keys="v" label="Capture a monitor and derive its colour" />
+    <KeyRow keys="s" label="Start or stop screen sync" />
+    <KeyRow keys="v" label="Capture preview" />
 
     <text fg={palette.faint} bg={palette.surfaceRaised} height={1} flexShrink={0}>
       app

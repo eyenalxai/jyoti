@@ -12,6 +12,7 @@ interface AppKeysOptions {
   readonly onRemove: () => void
   readonly onColor: () => void
   readonly onRefresh: () => void
+  readonly onSyncToggle: () => void
   readonly onHelp: () => void
   readonly onTogglePower: () => void
   readonly onSelectAll: () => void
@@ -145,6 +146,10 @@ const handleAction = (key: KeyLike, options: AppKeysOptions): boolean => {
   }
   if (key.name === "r") {
     options.onRefresh()
+    return true
+  }
+  if (key.name === "s") {
+    options.onSyncToggle()
     return true
   }
   if (key.name === "v") {
