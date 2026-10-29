@@ -56,6 +56,18 @@ const powerTone = (state: BulbState | undefined): RGBA =>
 
 const hintFor = (show: boolean, hint: string): string | undefined => (show ? hint : undefined)
 
+const ColourBar = (props: {
+  readonly color: string | null | undefined
+  readonly width: number
+  readonly disabled: boolean
+}) => (
+  <text fg={props.disabled ? palette.faint : (props.color ?? palette.faint)} wrapMode="none">
+    {Str.repeat(Math.max(1, props.width))(
+      props.color === null || props.color === undefined ? "░" : "█",
+    )}
+  </text>
+)
+
 const Detail = (props: DetailProps) => {
   const quality = () => lightQualityOf(props.state?.mode)
   const qualityFocused = () => props.active && props.focus === "quality"
@@ -203,12 +215,11 @@ const Detail = (props: DetailProps) => {
               }}
               value={
                 <>
-                  <text
-                    fg={locked() ? palette.faint : (props.state?.color ?? palette.border)}
-                    wrapMode="none"
-                  >
-                    {Str.repeat(Math.max(1, props.meterWidth))("█")}
-                  </text>
+                  <ColourBar
+                    color={props.state?.color}
+                    width={props.meterWidth}
+                    disabled={locked()}
+                  />
                   <text fg={locked() ? palette.faint : palette.text} wrapMode="none">
                     {Str.padStart(props.valueWidth, " ")(props.state?.color ?? "—")}
                   </text>
