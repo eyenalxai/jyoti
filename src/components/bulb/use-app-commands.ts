@@ -46,10 +46,15 @@ interface AppCommands {
   readonly dismissColor: () => void
 }
 
-const focusOrder = (quality: LightQuality): readonly ControlFocus[] =>
-  quality === "white" || quality === "color"
-    ? ["power", "quality", "brightness", "light"]
-    : ["power", "quality", "brightness"]
+const focusOrder = (quality: LightQuality): readonly ControlFocus[] => {
+  if (quality === "white") {
+    return ["power", "quality", "brightness", "light"]
+  }
+  if (quality === "color") {
+    return ["power", "quality", "light"]
+  }
+  return ["power", "quality"]
+}
 
 const useAppCommands = (options: UseAppCommandsOptions): AppCommands => {
   const syncOwnsControls = () =>
@@ -211,6 +216,10 @@ const useAppCommands = (options: UseAppCommandsOptions): AppCommands => {
   }
 
   const focusControl = (next: ControlFocus) => {
+    if (next === "brightness" && options.selectedQuality() !== "white") {
+      options.notify({ kind: "info", message: "Choose White to set brightness." })
+      return
+    }
     options.setPane("controls")
     options.setFocus(next)
   }

@@ -70,7 +70,7 @@ The `siid 2 / piid 6` property that reports which control is active: `1` for col
 
 ## Light quality
 
-The kind of light a bulb is producing: **White** (colour temperature) or **Colour** (packed RGB). The two are mutually exclusive on the bulb, and brightness belongs to both, so the panel shows a White/Colour switch followed by brightness and the value of the chosen quality. Choosing a quality switches the bulb's mode.
+The kind of light a bulb is producing: **White** (colour temperature) or **Colour** (packed RGB). The two are mutually exclusive on the bulb, so the panel shows a White/Colour switch followed by that mode's settings: brightness and warmth for White, colour for Colour. Choosing a quality switches the bulb's mode.
 
 ## Mixed quality
 

@@ -19,7 +19,7 @@ const initialColor = (model: BulbsModel): string => {
         : aggregate.color?.kind === "equal"
           ? aggregate.color.hex
           : undefined
-    if (current !== undefined && current !== null && current !== "#000000") {
+    if (current !== undefined && current !== null) {
       return current
     }
   }
