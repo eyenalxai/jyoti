@@ -29,57 +29,40 @@ const healthWord = (capture: CaptureHealth): string => {
   return ""
 }
 
-const phaseWord = (phase: SyncPhase, capture: CaptureHealth): string => {
-  if (phase === "starting") {
-    return "starting"
-  }
-  if (phase === "stopping") {
-    return "stopping"
+interface PhaseView {
+  readonly word: string
+  readonly glyph: string
+  readonly tone: RGBA
+}
+
+const phaseView = (phase: SyncPhase, capture: CaptureHealth, flashing: boolean): PhaseView => {
+  if (phase === "starting" || phase === "stopping") {
+    return { word: phase, glyph: "◌", tone: palette.muted }
   }
   if (phase === "paused") {
     const health = healthWord(capture)
-    return health.length === 0 ? "paused" : `paused · ${health}`
-  }
-  const health = healthWord(capture)
-  return health.length === 0 ? "syncing" : health
-}
-
-const phaseGlyph = (phase: SyncPhase, capture: CaptureHealth): string => {
-  if (phase === "starting" || phase === "stopping") {
-    return "◌"
-  }
-  if (phase === "paused") {
-    return "❚"
+    return {
+      word: health.length === 0 ? "paused" : `paused · ${health}`,
+      glyph: "❚",
+      tone: palette.warning,
+    }
   }
   if (capture === "lost") {
-    return "○"
+    return { word: "capture lost", glyph: "○", tone: palette.danger }
   }
   if (capture === "black" || capture === "stale" || capture === "switching") {
-    return "◐"
+    return { word: healthWord(capture), glyph: "◐", tone: palette.warning }
   }
-  return "●"
-}
-
-const phaseTone = (phase: SyncPhase, capture: CaptureHealth): RGBA => {
-  if (phase === "paused") {
-    return palette.warning
+  if (flashing) {
+    return { word: "flashing scene", glyph: "◐", tone: palette.warning }
   }
-  if (capture === "lost") {
-    return palette.danger
-  }
-  if (capture === "black" || capture === "stale" || capture === "switching") {
-    return palette.warning
-  }
-  if (phase === "syncing") {
-    return palette.accent
-  }
-  return palette.muted
+  return { word: "syncing", glyph: "●", tone: palette.accent }
 }
 
 const SyncStrip = (props: SyncStripProps) => {
-  const word = createMemo(() => phaseWord(props.status.phase, props.status.capture))
-  const glyph = createMemo(() => phaseGlyph(props.status.phase, props.status.capture))
-  const tone = createMemo(() => phaseTone(props.status.phase, props.status.capture))
+  const view = createMemo(() =>
+    phaseView(props.status.phase, props.status.capture, props.status.flashing),
+  )
   const color = createMemo(() => props.status.color)
   const colorLabel = createMemo(() => {
     const current = color()
@@ -127,8 +110,8 @@ const SyncStrip = (props: SyncStripProps) => {
   return (
     <box flexDirection="column" height={2} flexShrink={0}>
       <text height={1} truncate wrapMode="none">
-        <span style={{ fg: tone() }}>
-          {glyph()} {word()}
+        <span style={{ fg: view().tone }}>
+          {view().glyph} {view().word}
         </span>
         <span style={{ fg: palette.faint }}> · </span>
         <span style={{ fg: palette.muted }}>{monitor()}</span>

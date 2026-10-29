@@ -55,9 +55,9 @@ const App = () => {
     notify({ kind: "error", message })
   }
 
-  const model = useBulbs({ onError: fail })
   const preview = useCapturePreview()
   const sync = useScreenSyncModel({ onNotice: notify, onError: fail })
+  const model = useBulbs({ onError: fail, onPower: sync.notePowers })
   const syncActive = createMemo(() => sync.status().phase !== "idle")
   const controls = useControls({
     model,

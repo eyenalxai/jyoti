@@ -4,6 +4,7 @@ import { Array as Arr, Effect, Option, Stream } from "effect"
 import { createSignal, onCleanup, onMount } from "solid-js"
 
 import type { Notice } from "@/components/ui/status"
+import type { BulbId } from "@/lib/bulbs/schema"
 import type { Monitor } from "@/lib/screen/frame"
 import type { RestoreReport } from "@/lib/screen/sync/restore"
 import type { SyncStatus } from "@/lib/screen/sync/status"
@@ -30,6 +31,7 @@ interface ScreenSyncModel {
   readonly togglePause: () => void
   readonly stop: () => Promise<RestoreReport | null>
   readonly clearRestore: () => void
+  readonly notePowers: (powers: ReadonlyMap<BulbId, boolean | null>) => void
   readonly openMonitors: () => void
   readonly moveMonitor: (delta: number) => void
   readonly chooseMonitor: () => Promise<boolean>
@@ -95,6 +97,15 @@ const useScreenSyncModel = (options: UseScreenSyncOptions): ScreenSyncModel => {
       return
     }
     void runScreen(ScreenSyncEngine.use((service) => service.clearRestore()))
+  }
+
+  const notePowers = (powers: ReadonlyMap<BulbId, boolean | null>) => {
+    void runScreen(ScreenSyncEngine.use((service) => service.notePowers(powers))).then((result) => {
+      if (!result.ok) {
+        options.onError(result.message)
+      }
+      return null
+    })
   }
 
   const togglePause = () => {
@@ -237,6 +248,7 @@ const useScreenSyncModel = (options: UseScreenSyncOptions): ScreenSyncModel => {
     togglePause,
     stop,
     clearRestore,
+    notePowers,
     openMonitors,
     moveMonitor,
     chooseMonitor,

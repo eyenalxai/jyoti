@@ -1,6 +1,6 @@
-import type { Fiber } from "effect"
+import type { Fiber, SubscriptionRef } from "effect"
 
-import { Array as Arr, Cause, Deferred, Effect, Option, Ref, SubscriptionRef } from "effect"
+import { Cause, Deferred, Effect, Option, Ref } from "effect"
 
 import type { Bulb, BulbId, BulbState } from "@/lib/bulbs/schema"
 import type { BulbsShape } from "@/lib/bulbs/service"
@@ -10,22 +10,25 @@ import type { ScreenCaptureShape } from "@/lib/screen/capture"
 import type { ScreenSyncError } from "@/lib/screen/error"
 import type { Monitor } from "@/lib/screen/frame"
 import type { DerivedColor, ReducerState } from "@/lib/screen/reducer"
-import type { BulbProgress } from "@/lib/screen/sync/progress"
+import type { FlashGuard } from "@/lib/screen/sync/flash"
+import type { BulbProgress, SendPlan } from "@/lib/screen/sync/progress"
 import type { SyncStatus } from "@/lib/screen/sync/status"
 
 import { prepareFrame } from "@/lib/screen/grid"
 import { reducePrepared } from "@/lib/screen/reducer"
 import { syncBrightnessFor } from "@/lib/screen/sync/brightness"
+import { guardFlash } from "@/lib/screen/sync/flash"
 import {
   markInflight,
   markProbe,
   markReachable,
   missProgress,
+  planSend,
   probeDue,
   propertiesFor,
   settleProgress,
-  shouldSend,
 } from "@/lib/screen/sync/progress"
+import { publishLive } from "@/lib/screen/sync/publish"
 import { LOST_FRAME_MS, PROBE_INTERVAL_MS, STALE_FRAME_MS, TICK_MS } from "@/lib/screen/sync/timing"
 
 interface RunHandle {
@@ -38,6 +41,7 @@ interface RunHandle {
   readonly monitor: Ref.Ref<Monitor>
   readonly switching: Ref.Ref<boolean>
   readonly reducer: Ref.Ref<ReducerState>
+  readonly flash: Ref.Ref<FlashGuard>
   readonly progress: Ref.Ref<ReadonlyMap<BulbId, BulbProgress>>
 }
 
@@ -66,53 +70,20 @@ interface RunDeps {
   readonly bulbs: BulbsShape
 }
 
-const patchStatus = Effect.fn("ScreenSync.patchStatus")(function* patchStatus(
-  deps: RunDeps,
-  patch: Partial<SyncStatus>,
-) {
-  return yield* SubscriptionRef.update(deps.status, (current) => ({ ...current, ...patch }))
-})
-
-const publishLive = Effect.fn("ScreenSync.publishLive")(function* publishLive(
-  deps: RunDeps,
-  handle: RunHandle,
-  patch: Partial<SyncStatus>,
-) {
-  const progress = yield* Ref.get(handle.progress)
-  const synced = Arr.map(handle.bulbs, (bulb) => {
-    const current = progress.get(bulb.id)
-    return {
-      id: bulb.id,
-      name: bulb.name,
-      status: current?.status ?? "unreachable",
-    }
-  })
-  const reachable = Arr.filter(synced, (bulb) => bulb.status === "syncing").length
-  let rejection: string | null = null
-  for (const entry of progress.values()) {
-    if (entry.rejectedMessage !== null) {
-      rejection = entry.rejectedMessage
-      break
-    }
-  }
-  yield* SubscriptionRef.update(deps.status, (current) => ({
-    ...current,
-    ...patch,
-    rejection,
-    bulbs: synced,
-    reachable,
-    total: synced.length,
-  }))
-})
+const healthPatch = (
+  capture: SyncStatus["capture"],
+  frameAgeMs: number | null,
+): Partial<SyncStatus> => ({ capture, frameAgeMs })
 
 const settle = Effect.fn("ScreenSync.settle")(function* settle(
   deps: RunDeps,
   handle: RunHandle,
   id: BulbId,
   target: DerivedColor,
+  plan: SendPlan,
   error: MiioError | null,
 ) {
-  yield* Ref.update(handle.progress, (current) => settleProgress(current, id, target, error))
+  yield* Ref.update(handle.progress, (current) => settleProgress(current, id, target, plan, error))
   yield* publishLive(deps, handle, {})
 })
 
@@ -129,21 +100,27 @@ const sendTarget = Effect.fn("ScreenSync.sendTarget")(function* sendTarget(
   deps: RunDeps,
   handle: RunHandle,
   target: DerivedColor,
+  targetBrightness: number,
+  flashHold: boolean,
 ) {
   const progress = yield* Ref.get(handle.progress)
   const sessions = yield* Ref.get(handle.sessions)
   for (const bulb of handle.bulbs) {
     const entry = progress.get(bulb.id)
     const session = sessions.get(bulb.id)
-    if (entry === undefined || session === undefined || !shouldSend(target, entry)) {
+    if (entry === undefined || session === undefined) {
+      continue
+    }
+    const plan = planSend(entry, target, targetBrightness, flashHold)
+    if (plan === null) {
       continue
     }
     yield* Ref.update(handle.progress, (current) => markInflight(current, bulb.id))
     yield* Effect.forkScoped(
-      session.setProperties(propertiesFor(target)).pipe(
+      session.setProperties(propertiesFor(target, plan)).pipe(
         Effect.matchEffect({
-          onFailure: (error) => settle(deps, handle, bulb.id, target, error),
-          onSuccess: () => settle(deps, handle, bulb.id, target, null),
+          onFailure: (error) => settle(deps, handle, bulb.id, target, plan, error),
+          onSuccess: () => settle(deps, handle, bulb.id, target, plan, null),
         }),
         Effect.catchCauseIf(
           (cause) => !Cause.hasInterruptsOnly(cause),
@@ -219,23 +196,23 @@ const tick = Effect.fn("ScreenSync.tick")(function* tick(
 
   const latest = yield* deps.capture.latest()
   if (Option.isNone(latest)) {
-    yield* publishLive(deps, handle, { capture: "lost", frameAgeMs: null })
+    yield* publishLive(deps, handle, healthPatch("lost", null))
     return
   }
 
   const frame = latest.value
   if (frame.ageMs > LOST_FRAME_MS) {
-    yield* publishLive(deps, handle, { capture: "lost", frameAgeMs: frame.ageMs })
+    yield* publishLive(deps, handle, healthPatch("lost", frame.ageMs))
     return
   }
   if (frame.ageMs > STALE_FRAME_MS) {
-    yield* publishLive(deps, handle, { capture: "stale", frameAgeMs: frame.ageMs })
+    yield* publishLive(deps, handle, healthPatch("stale", frame.ageMs))
     return
   }
 
   const prepared = prepareFrame(frame)
   if (prepared.blackout) {
-    yield* publishLive(deps, handle, { capture: "black", frameAgeMs: frame.ageMs })
+    yield* publishLive(deps, handle, healthPatch("black", frame.ageMs))
     return
   }
 
@@ -248,13 +225,16 @@ const tick = Effect.fn("ScreenSync.tick")(function* tick(
   yield* Ref.set(handle.reducer, reduction.state)
 
   const target = reduction.derived
+  const targetBrightness = syncBrightnessFor(target.sceneL)
+  const guarded = guardFlash(yield* Ref.get(handle.flash), targetBrightness, performance.now())
+  yield* Ref.set(handle.flash, guarded.guard)
   yield* publishLive(deps, handle, {
     color: target,
-    syncBrightness: syncBrightnessFor(target.sceneL),
+    syncBrightness: targetBrightness,
     capture: "ok",
     frameAgeMs: frame.ageMs,
   })
-  yield* sendTarget(deps, handle, target)
+  yield* sendTarget(deps, handle, target, targetBrightness, guarded.flashing)
 })
 
 const runLoop = Effect.fn("ScreenSync.runLoop")(function* runLoop(
@@ -281,5 +261,5 @@ const runLoop = Effect.fn("ScreenSync.runLoop")(function* runLoop(
   }
 })
 
-export { idleState, patchStatus, publishLive, runLoop }
+export { idleState, runLoop }
 export type { RunDeps, RunHandle, RunState }

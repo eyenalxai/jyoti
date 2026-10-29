@@ -2,6 +2,7 @@ import type { Stream } from "effect"
 
 import { Context, Effect, Fiber, Layer, Ref, Semaphore, SubscriptionRef } from "effect"
 
+import type { BulbId } from "@/lib/bulbs/schema"
 import type { Monitor } from "@/lib/screen/frame"
 import type { RestoreReport } from "@/lib/screen/sync/restore"
 import type { RunDeps, RunState } from "@/lib/screen/sync/run"
@@ -15,8 +16,10 @@ import { resetSmoothing } from "@/lib/screen/reducer"
 import { captureFailure } from "@/lib/screen/sync/failure"
 import { findMonitor } from "@/lib/screen/sync/monitor"
 import { switchMonitor } from "@/lib/screen/sync/monitor/switch"
+import { setPowers } from "@/lib/screen/sync/progress"
+import { patchStatus, publishLive } from "@/lib/screen/sync/publish"
 import { emptyRestoreReport, restoreRun } from "@/lib/screen/sync/restore"
-import { idleState, patchStatus, publishLive } from "@/lib/screen/sync/run"
+import { idleState } from "@/lib/screen/sync/run"
 import { startRun } from "@/lib/screen/sync/start"
 import { idleSyncStatus } from "@/lib/screen/sync/status"
 
@@ -27,6 +30,7 @@ interface ScreenSyncShape {
   readonly resume: () => Effect.Effect<void, ScreenSyncError>
   readonly stop: () => Effect.Effect<RestoreReport>
   readonly clearRestore: () => Effect.Effect<void>
+  readonly notePowers: (powers: ReadonlyMap<BulbId, boolean | null>) => Effect.Effect<void>
   readonly listMonitors: () => Effect.Effect<readonly Monitor[], ScreenSyncError>
   readonly selectMonitor: (name: string) => Effect.Effect<void, ScreenSyncError>
 }
@@ -41,10 +45,18 @@ class ScreenSyncEngine extends Context.Service<ScreenSyncEngine, ScreenSyncShape
       const capture = yield* ScreenCapture
       const runState = yield* Ref.make<RunState>(idleState)
       const pendingMonitor = yield* Ref.make<string | null>(null)
+      const powerTargets = yield* Ref.make<ReadonlyMap<BulbId, boolean | null> | null>(null)
       const status = yield* SubscriptionRef.make<SyncStatus>(idleSyncStatus)
       const stopLock = yield* Semaphore.make(1)
       const deps: RunDeps = { capture, status, bulbs }
-      const context: StartContext = { capture, status, bulbs, runState, pendingMonitor }
+      const context: StartContext = {
+        capture,
+        status,
+        bulbs,
+        runState,
+        pendingMonitor,
+        powerTargets,
+      }
 
       const start = Effect.fn("ScreenSync.start")(function* start() {
         return yield* startRun(context)
@@ -85,6 +97,7 @@ class ScreenSyncEngine extends Context.Service<ScreenSyncEngine, ScreenSyncShape
 
       const resetIdle = Effect.fn("ScreenSync.resetIdle")(function* resetIdle(keep?: SyncStatus) {
         yield* Ref.set(pendingMonitor, null)
+        yield* Ref.set(powerTargets, null)
         yield* Ref.set(runState, idleState)
         yield* SubscriptionRef.set(
           status,
@@ -146,6 +159,21 @@ class ScreenSyncEngine extends Context.Service<ScreenSyncEngine, ScreenSyncShape
         return yield* Effect.void
       })
 
+      const notePowers = Effect.fn("ScreenSync.notePowers")(function* notePowers(
+        powers: ReadonlyMap<BulbId, boolean | null>,
+      ) {
+        const current = yield* Ref.get(runState)
+        if (current.status === "starting") {
+          yield* Ref.set(powerTargets, powers)
+          return yield* Effect.void
+        }
+        if (current.status !== "running") {
+          return yield* Effect.void
+        }
+        yield* Ref.update(current.handle.progress, (progress) => setPowers(progress, powers))
+        return yield* Effect.void
+      })
+
       const listMonitors = Effect.fn("ScreenSync.listMonitors")(function* listMonitors() {
         return yield* capture.listMonitors().pipe(Effect.mapError(captureFailure))
       })
@@ -186,6 +214,7 @@ class ScreenSyncEngine extends Context.Service<ScreenSyncEngine, ScreenSyncShape
         resume,
         stop,
         clearRestore,
+        notePowers,
         listMonitors,
         selectMonitor,
       })
