@@ -124,9 +124,10 @@ const useAppCommands = (options: UseAppCommandsOptions): AppCommands => {
     }
     if (!options.colorSession.dirty()) {
       options.colorSession.capture()
-      if (seed) {
-        void options.colorSession.commit(options.colorInitial())
-      }
+    }
+    // Entering Colour writes a seed even when an earlier visit left the session dirty.
+    if (seed) {
+      void options.colorSession.commit(options.colorInitial())
     }
     return true
   }
