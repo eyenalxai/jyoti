@@ -100,7 +100,6 @@ const startRun = Effect.fn("ScreenSync.startRun")(function* startRun(context: St
         switching: yield* Ref.make(false),
         reducer: yield* Ref.make(createReducerState()),
         flash: yield* Ref.make(initialFlashGuard()),
-        lastGain: yield* Ref.make(gain),
         progress: yield* Ref.make<ReadonlyMap<BulbId, BulbProgress>>(
           initialProgress(listed, snapshot.reachable, snapshot.states),
         ),

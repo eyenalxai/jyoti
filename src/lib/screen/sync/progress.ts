@@ -21,7 +21,6 @@ interface BulbProgress {
   readonly status: BulbSyncPhase
   readonly power: boolean | null
   readonly droveBrightness: boolean
-  readonly forceGain: number | null
   readonly probeDueAt: number | null
 }
 
@@ -29,14 +28,12 @@ interface SendRequest {
   readonly target: DerivedColor
   readonly brightness: number
   readonly flashHold: boolean
-  readonly gain: number
 }
 
 interface SendPlan {
   readonly brightness: number | null
   readonly publishColor: boolean
   readonly targetBrightness: number
-  readonly gain: number
 }
 
 const propertiesFor = (target: DerivedColor, plan: SendPlan): readonly PropertyParam[] => {
@@ -66,7 +63,6 @@ const initialProgress = (
       status: reachable.has(bulb.id) ? "syncing" : "unreachable",
       power,
       droveBrightness: false,
-      forceGain: null,
       probeDueAt: null,
     })
   }
@@ -90,17 +86,6 @@ const markInflight = (
   id: BulbId,
 ): ReadonlyMap<BulbId, BulbProgress> =>
   updateEntry(progress, id, (entry) => ({ ...entry, inflight: true }))
-
-const markForceColor = (
-  progress: ReadonlyMap<BulbId, BulbProgress>,
-  gain: number,
-): ReadonlyMap<BulbId, BulbProgress> => {
-  const next = new Map(progress)
-  for (const [id, entry] of next) {
-    next.set(id, { ...entry, forceGain: gain })
-  }
-  return next
-}
 
 const withMiss = (
   progress: ReadonlyMap<BulbId, BulbProgress>,
@@ -138,7 +123,6 @@ const settleProgress = (
       misses: 0,
       status: "syncing",
       droveBrightness: current.droveBrightness || plan.brightness !== null,
-      forceGain: plan.publishColor && plan.gain === current.forceGain ? null : current.forceGain,
     }))
   }
   if (error.kind === "device") {
@@ -164,7 +148,7 @@ const planSend = (entry: BulbProgress, request: SendRequest): SendPlan | null =>
   if (entry.status !== "syncing" || entry.inflight) {
     return null
   }
-  const { target, brightness: targetBrightness, flashHold, gain } = request
+  const { target, brightness: targetBrightness, flashHold } = request
   const targetRejected = entry.rejectedTarget === targetBrightness
   const brightness =
     entry.power === true &&
@@ -174,12 +158,11 @@ const planSend = (entry: BulbProgress, request: SendRequest): SendPlan | null =>
       ? targetBrightness
       : null
   const colorRejected = entry.rejected !== null && !shouldPublish(target, entry.rejected)
-  const publishColor =
-    !colorRejected && (entry.forceGain !== null || shouldPublish(target, entry.last))
+  const publishColor = !colorRejected && shouldPublish(target, entry.last)
   if (!publishColor && brightness === null) {
     return null
   }
-  return { brightness, publishColor, targetBrightness, gain }
+  return { brightness, publishColor, targetBrightness }
 }
 
 const resetAcked = (
@@ -266,7 +249,6 @@ const markRestored = (
 
 export {
   initialProgress,
-  markForceColor,
   markInflight,
   markProbe,
   markReachable,

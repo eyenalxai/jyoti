@@ -2,7 +2,7 @@
 
 Date: 2026-10-29
 
-Status: Accepted
+Status: Withdrawn. The gain turned greys and pale colours toward white; it was reverted by JYOT-52. The brightness-only gain is recorded in ADR 0009.
 
 ## Context
 
