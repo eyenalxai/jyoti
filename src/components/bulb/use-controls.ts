@@ -3,10 +3,12 @@ import type { Effect } from "effect"
 import { Result, Schema, String as Str } from "effect"
 
 import type { BulbsModel } from "@/components/bulb/use-bulbs"
+import type { ColorOutcome } from "@/components/bulb/use-group-controls"
 import type { BulbsError } from "@/lib/bulbs/error"
 import type { Bulb, BulbId, BulbState } from "@/lib/bulbs/schema"
 import type { Timer } from "@/lib/timers"
 
+import { useGroupControls } from "@/components/bulb/use-group-controls"
 import {
   BRIGHTNESS_MAX,
   BRIGHTNESS_MIN,
@@ -28,7 +30,7 @@ interface ControlsModel {
   readonly togglePower: () => Promise<string | null>
   readonly adjustBrightness: (delta: number) => void
   readonly adjustTemperature: (delta: number) => void
-  readonly setColor: (hex: string) => Promise<string | null>
+  readonly setColor: (hex: string) => Promise<ColorOutcome>
   readonly flushPending: () => void
 }
 
@@ -52,6 +54,12 @@ const useControls = (options: UseControlsOptions): ControlsModel => {
     })
     pending.set(key, { timer, send })
   }
+
+  const group = useGroupControls({
+    model: options.model,
+    onError: options.onError,
+    schedule,
+  })
 
   const sendControl = (id: BulbId, effect: Effect.Effect<void, BulbsError, Bulbs>) => {
     void run(effect).then((result) => {
@@ -86,6 +94,9 @@ const useControls = (options: UseControlsOptions): ControlsModel => {
   }
 
   const togglePower = (): Promise<string | null> => {
+    if (options.model.allSelected()) {
+      return group.togglePower()
+    }
     const bulb = options.model.selected()
     if (bulb === null) {
       return Promise.resolve(null)
@@ -111,6 +122,10 @@ const useControls = (options: UseControlsOptions): ControlsModel => {
   }
 
   const adjustBrightness = (delta: number) => {
+    if (options.model.allSelected()) {
+      group.adjustBrightness(delta)
+      return
+    }
     const bulb = options.model.selected()
     if (bulb === null) {
       return
@@ -134,6 +149,10 @@ const useControls = (options: UseControlsOptions): ControlsModel => {
   }
 
   const adjustTemperature = (delta: number) => {
+    if (options.model.allSelected()) {
+      group.adjustTemperature(delta)
+      return
+    }
     const bulb = options.model.selected()
     if (bulb === null) {
       return
@@ -156,27 +175,30 @@ const useControls = (options: UseControlsOptions): ControlsModel => {
     })
   }
 
-  const setColor = (hex: string): Promise<string | null> => {
+  const setColor = (hex: string): Promise<ColorOutcome> => {
+    if (options.model.allSelected()) {
+      return group.setColor(hex)
+    }
     const bulb = options.model.selected()
     if (bulb === null) {
-      return Promise.resolve(null)
+      return Promise.resolve({ error: null, partial: false })
     }
     const normalized = Str.toUpperCase(Str.trim(hex))
     const withHash = Str.startsWith("#")(normalized) ? normalized : `#${normalized}`
     const decoded = Schema.decodeResult(ColorHexSchema)(withHash)
     if (Result.isFailure(decoded)) {
-      return Promise.resolve("Enter a color as #RRGGBB.")
+      return Promise.resolve({ error: "Enter a color as #RRGGBB.", partial: false })
     }
 
     options.model.patchState(bulb.id, { color: decoded.success, mode: "color" })
     return run(Bulbs.use((service) => service.setColor(bulb.id, decoded.success))).then(
       (result) => {
         if (result.ok) {
-          return null
+          return { error: null, partial: false }
         }
         options.onError(result.message)
         void options.model.readOne(bulb.id)
-        return result.message
+        return { error: result.message, partial: false }
       },
     )
   }

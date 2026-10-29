@@ -28,6 +28,10 @@ The four-byte identifier a bulb returns in its hello reply. The next request ech
 
 Xiaomi's UDP protocol on port 54321. A request sends a 32-byte hello, receives the device ID and stamp, then sends an AES-encrypted JSON command. `bulbs.py` is the reference implementation.
 
+## All bulbs
+
+A selection that stands for every configured bulb at once. It is not a bulb: it has no ID, address, token or stored state, so edit and remove do not act on it. The row appears first in the rail while two or more bulbs exist. Its state is the aggregate of the bulbs: power is on, off or mixed; brightness and colour temperature show one value when equal and a range when not; colour shows a swatch when equal and mixed otherwise. Power uses a quorum: if every reachable bulb is on, one toggle turns them all off; otherwise it turns them all on. Brightness and warmth set one absolute value on every bulb, anchored at the aggregate's high end for an increase and its low end for a decrease. Colour applies one packed colour to every bulb. Each bulb is addressed independently, so a slow bulb does not delay the others; a failure names the bulbs that failed while the successes stay applied.
+
 ## State
 
 The last values read from a bulb: power, brightness, color temperature, packed color and the active color mode. State is read on launch and on refresh; it is not cached across runs.

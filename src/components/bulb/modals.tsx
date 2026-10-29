@@ -73,7 +73,7 @@ const Modals = (props: ModalsProps) => (
     </Show>
 
     <Show when={props.screen === "help"}>
-      <Modal title="Keys" hint="esc close" width={58} height={16}>
+      <Modal title="Keys" hint="esc close" width={58} height={17}>
         <Help />
       </Modal>
     </Show>
