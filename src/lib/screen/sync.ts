@@ -12,7 +12,7 @@ import type { StartContext } from "@/lib/screen/sync/start"
 import type { SyncRun, SyncStatus } from "@/lib/screen/sync/status"
 
 import { Bulbs } from "@/lib/bulbs/service"
-import { Preferences, defaultPreferences } from "@/lib/preferences"
+import { Preferences } from "@/lib/preferences"
 import { ScreenCapture } from "@/lib/screen/capture"
 import { ScreenSyncError } from "@/lib/screen/error"
 import { captureFailure } from "@/lib/screen/sync/failure"
@@ -48,10 +48,7 @@ class ScreenSyncEngine extends Context.Service<ScreenSyncEngine, ScreenSyncShape
       const bulbs = yield* Bulbs
       const capture = yield* ScreenCapture
       const preferences = yield* Preferences
-      // A missing or unreadable preference must not stop sync; the default is safe.
-      const saved = yield* preferences
-        .load()
-        .pipe(Effect.catch(() => Effect.succeed(defaultPreferences)))
+      const saved = yield* preferences.load()
       const runState = yield* Ref.make<RunState>(idleState)
       const pendingMonitor = yield* Ref.make<string | null>(null)
       const powerTargets = yield* Ref.make<ReadonlyMap<BulbId, boolean | null> | null>(null)

@@ -13,8 +13,8 @@ ADR 0008 fixed the light output by lifting the colour as well. This ADR fixes th
 ## Decision
 
 - **Remember the gain.** The gain is stored in `$XDG_CONFIG_HOME/jyoti/prefs.json`, next to `bulbs.json`, as `{ "version": 1, "syncGain": 1.5 }`. The sync engine loads it at start, saves it on every gain change, clamps it to 0.5–2.0 and rounds it to 0.1. A first run starts at 1.0. A missing or unreadable file falls back to 1.0; a failed save leaves the gain applied for the session and surfaces as a toast.
-- **Show the gain always.** The strip renders `57% ×1.0` at the default and `57% ×1.5` after a press, in both the syncing and paused forms. The sync-on toast appends `+/- gain`.
-- **Repaint on a press.** A tick whose gain differs from the previous tick forces a colour write, bypassing the ΔE 0.02 deadband. A device rejection still suppresses the write. Paused changes are forced on the first tick after resume.
+- **Show the gain always.** The strip renders `57% ×1.0` at the default and `57% ×1.5` after a press while syncing; the paused form is `45% · gain ×1.0` because the brightness is the last one written. The sync-on toast appends `+/- gain`.
+- **Repaint on a press.** A gain change marks every bulb to write the gained colour on its next send. The write bypasses the ΔE 0.02 deadband; a bulb that is already sending keeps the mark until a send for that gain succeeds. A device rejection still suppresses the write. Paused changes are marked on the first tick after resume.
 
 ## Consequences
 

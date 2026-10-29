@@ -1,11 +1,11 @@
 import { Context, Effect, Layer, Schema } from "effect"
-import { chmod, mkdir, rename } from "node:fs/promises"
-import path from "node:path"
 
 import type { Bulb } from "@/lib/bulbs/schema"
+import type { JsonFileError } from "@/lib/json-file"
 
 import { BulbFileSchema } from "@/lib/bulbs/schema"
 import { AppConfig } from "@/lib/config"
+import { readText, writeText } from "@/lib/json-file"
 
 class BulbStoreError extends Schema.TaggedError<BulbStoreError>()("BulbStoreError", {
   path: Schema.String,
@@ -18,6 +18,9 @@ interface BulbStoreShape {
   readonly save: (bulbs: readonly Bulb[]) => Effect.Effect<void, BulbStoreError>
 }
 
+const storeError = (error: JsonFileError): BulbStoreError =>
+  new BulbStoreError({ path: error.path, message: error.message, cause: error.cause })
+
 class BulbStore extends Context.Service<BulbStore, BulbStoreShape>()(
   "jyoti/lib/bulbs/store/BulbStore",
 ) {
@@ -28,20 +31,10 @@ class BulbStore extends Context.Service<BulbStore, BulbStoreShape>()(
       const file = BulbFileSchema
 
       const load = Effect.fn("BulbStore.load")(function* load() {
-        const exists = yield* Effect.promise(() => Bun.file(configPath).exists())
-        if (!exists) {
+        const text = yield* readText(configPath).pipe(Effect.mapError(storeError))
+        if (text === null) {
           return []
         }
-
-        const text = yield* Effect.tryPromise({
-          try: () => Bun.file(configPath).text(),
-          catch: (cause) =>
-            new BulbStoreError({
-              path: configPath,
-              message: `Could not read ${configPath}. Check its permissions and try again.`,
-              cause,
-            }),
-        })
 
         const decoded = yield* Schema.decodeUnknownEffect(Schema.fromJsonString(file))(text).pipe(
           Effect.mapError(
@@ -83,48 +76,7 @@ class BulbStore extends Context.Service<BulbStore, BulbStoreShape>()(
               }),
           ),
         )
-        const encoded = `${text}\n`
-        const temporary = `${configPath}.tmp`
-
-        yield* Effect.tryPromise({
-          try: () => mkdir(path.dirname(configPath), { recursive: true }),
-          catch: (cause) =>
-            new BulbStoreError({
-              path: configPath,
-              message: `Could not create the folder for ${configPath}. Check its permissions.`,
-              cause,
-            }),
-        })
-
-        yield* Effect.tryPromise({
-          try: () => Bun.write(temporary, encoded),
-          catch: (cause) =>
-            new BulbStoreError({
-              path: configPath,
-              message: `Could not write ${configPath}. Check its permissions.`,
-              cause,
-            }),
-        })
-
-        yield* Effect.tryPromise({
-          try: () => chmod(temporary, 0o600),
-          catch: (cause) =>
-            new BulbStoreError({
-              path: configPath,
-              message: `Could not set permissions on ${configPath}.`,
-              cause,
-            }),
-        })
-
-        yield* Effect.tryPromise({
-          try: () => rename(temporary, configPath),
-          catch: (cause) =>
-            new BulbStoreError({
-              path: configPath,
-              message: `Could not replace ${configPath}. Check its permissions.`,
-              cause,
-            }),
-        })
+        yield* writeText(configPath, `${text}\n`).pipe(Effect.mapError(storeError))
       })
 
       return BulbStore.of({ load, save })
