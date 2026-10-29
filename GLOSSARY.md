@@ -130,7 +130,7 @@ The bulb brightness derived from scene brightness through the 8–100% envelope.
 
 ## Flash guard
 
-The rule that watches the last three target sync brightness values. A direction flip with a three-target peak-to-peak greater than 25 holds the applied brightness for two seconds. A trigger disarms the guard; it re-arms only after three same-direction targets or a peak-to-peak of 25 or less.
+The rule that watches the last three target sync brightness values. A direction flip whose reversing change is greater than 25 points holds the applied brightness for two seconds. A trigger disarms the guard; it re-arms only after three same-direction targets or a peak-to-peak of 25 or less.
 
 ## Flashing scene
 

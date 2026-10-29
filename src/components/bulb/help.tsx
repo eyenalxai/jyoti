@@ -45,7 +45,7 @@ const Help = () => (
     <KeyRow keys="s  x" label="Start or stop (restores) · pause" />
     <KeyRow keys="m  v" label="Monitor · capture preview (dev)" />
     <NoteRow label={SYNC_OWNS_CONTROLS} />
-    <NoteRow label="8–100% · ±8/tick · flash hold 2 s" />
+    <NoteRow label="8–100% · flash hold 2 s" />
     <NoteRow label="power untouched · 5 s lost" />
 
     <text fg={palette.faint} bg={palette.surfaceRaised} height={1} flexShrink={0}>

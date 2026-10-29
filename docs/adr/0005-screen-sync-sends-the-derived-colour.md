@@ -2,7 +2,7 @@
 
 Date: 2026-10-29
 
-Status: Accepted
+Status: Accepted; the brightness-smoothing clause is superseded by ADR 0006
 
 ## Context
 

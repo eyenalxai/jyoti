@@ -183,11 +183,7 @@ const probeUnreachable = Effect.fn("ScreenSync.probeUnreachable")(function* prob
   }
 })
 
-const tick = Effect.fn("ScreenSync.tick")(function* tick(
-  deps: RunDeps,
-  handle: RunHandle,
-  elapsedMs: number,
-) {
+const tick = Effect.fn("ScreenSync.tick")(function* tick(deps: RunDeps, handle: RunHandle) {
   if (yield* Ref.get(handle.switching)) {
     return
   }
@@ -216,7 +212,7 @@ const tick = Effect.fn("ScreenSync.tick")(function* tick(
     return
   }
 
-  const reduction = reducePrepared(prepared, yield* Ref.get(handle.reducer), elapsedMs)
+  const reduction = reducePrepared(prepared, yield* Ref.get(handle.reducer))
   yield* Ref.set(handle.reducer, reduction.state)
 
   const target = reduction.derived
@@ -237,7 +233,6 @@ const runLoop = Effect.fn("ScreenSync.runLoop")(function* runLoop(
   handle: RunHandle,
 ) {
   yield* Deferred.await(handle.armed)
-  let previousTick = performance.now()
   let deadline = performance.now()
 
   while (true) {
@@ -246,9 +241,7 @@ const runLoop = Effect.fn("ScreenSync.runLoop")(function* runLoop(
       yield* Effect.sleep(deadline - now)
     }
 
-    const startedAt = performance.now()
-    yield* tick(deps, handle, startedAt - previousTick)
-    previousTick = startedAt
+    yield* tick(deps, handle)
     deadline += TICK_MS
     while (deadline <= performance.now()) {
       deadline += TICK_MS

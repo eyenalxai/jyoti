@@ -7,7 +7,6 @@ import type { BulbSyncPhase } from "@/lib/screen/sync/status"
 import { PIID_BRIGHTNESS, PIID_COLOR, packColor } from "@/lib/bulbs/schema"
 import { propertiesWithValue } from "@/lib/miio/properties"
 import { shouldPublish } from "@/lib/screen/reducer"
-import { slewBrightness } from "@/lib/screen/sync/brightness"
 
 const UNREACHABLE_MISSES = 3
 
@@ -21,7 +20,6 @@ interface BulbProgress {
   readonly misses: number
   readonly status: BulbSyncPhase
   readonly power: boolean | null
-  readonly appliedBrightness: number | null
   readonly droveBrightness: boolean
   readonly probeDueAt: number | null
 }
@@ -48,7 +46,6 @@ const initialProgress = (
   for (const bulb of bulbs) {
     const state = states.get(bulb.id)
     const power = state?.power ?? null
-    const brightness = state?.brightness ?? null
     progress.set(bulb.id, {
       last: null,
       lastBrightness: null,
@@ -59,7 +56,6 @@ const initialProgress = (
       misses: 0,
       status: reachable.has(bulb.id) ? "syncing" : "unreachable",
       power,
-      appliedBrightness: power === true && brightness !== null ? brightness : null,
       droveBrightness: false,
       probeDueAt: null,
     })
@@ -115,7 +111,6 @@ const settleProgress = (
       inflight: false,
       last: plan.publishColor ? target : current.last,
       lastBrightness: plan.brightness ?? current.lastBrightness,
-      appliedBrightness: plan.brightness ?? current.appliedBrightness,
       rejected: null,
       rejectedTarget: null,
       rejectedMessage: null,
@@ -152,14 +147,14 @@ const planSend = (
   if (entry.status !== "syncing" || entry.inflight) {
     return null
   }
-  const applied =
-    entry.power === true && !flashHold
-      ? slewBrightness(entry.appliedBrightness, targetBrightness)
-      : null
   const targetRejected = entry.rejectedTarget === targetBrightness
-  const nextBrightness =
-    entry.power === true && applied !== null && applied !== entry.lastBrightness ? applied : null
-  const brightness = targetRejected ? null : nextBrightness
+  const brightness =
+    entry.power === true &&
+    !flashHold &&
+    !targetRejected &&
+    targetBrightness !== entry.lastBrightness
+      ? targetBrightness
+      : null
   const colorRejected = entry.rejected !== null && !shouldPublish(target, entry.rejected)
   const publishColor = !colorRejected && shouldPublish(target, entry.last)
   if (!publishColor && brightness === null) {
@@ -220,13 +215,12 @@ const setPower = (
     if (entry.power === power) {
       return entry
     }
-    const keepApplied = entry.power !== false && power !== false
+    const keepLastBrightness = entry.power !== false && power !== false
     const turnedOn = power === true && entry.power !== true
     return {
       ...entry,
       power,
-      appliedBrightness: keepApplied ? entry.appliedBrightness : null,
-      lastBrightness: keepApplied ? entry.lastBrightness : null,
+      lastBrightness: keepLastBrightness ? entry.lastBrightness : null,
       rejected: turnedOn ? null : entry.rejected,
       rejectedTarget: turnedOn ? null : entry.rejectedTarget,
       rejectedMessage: turnedOn ? null : entry.rejectedMessage,
