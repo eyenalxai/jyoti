@@ -126,9 +126,6 @@ const SyncStrip = (props: SyncStripProps) => {
           {" "}
           · {brightness()} · frame {frameAge()} · {props.status.reachable}/{props.status.total}
         </span>
-        <span style={{ fg: palette.danger }}>
-          {props.status.error === null ? "" : " · rejected"}
-        </span>
       </text>
       <text fg={palette.faint} height={1} truncate wrapMode="none">
         {keys()}

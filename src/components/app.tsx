@@ -22,6 +22,7 @@ import { aggregateState } from "@/lib/bulbs/aggregate"
 import { BRIGHTNESS_STEP, TEMPERATURE_STEP } from "@/lib/bulbs/schema"
 import { noticeDuration } from "@/lib/format"
 import { dispose } from "@/lib/runtime"
+import { SYNC_OWNS_CONTROLS } from "@/lib/screen/sync/copy"
 import { palette } from "@/lib/theme"
 import { after, cancel } from "@/lib/timers"
 
@@ -38,6 +39,7 @@ const App = () => {
   const [pane, setPane] = createSignal<Pane>("bulbs")
   const [notice, setNotice] = createSignal<Notice | null>(null)
   let noticeTimer: Timer | null = null
+  let quitting = false
 
   const notify = (next: Notice) => {
     if (noticeTimer !== null) {
@@ -54,10 +56,26 @@ const App = () => {
   }
 
   const model = useBulbs({ onError: fail })
-  const controls = useControls({ model, onError: fail })
   const preview = useCapturePreview()
   const sync = useScreenSyncModel({ onNotice: notify, onError: fail })
   const syncActive = createMemo(() => sync.status().phase !== "idle")
+  const controls = useControls({
+    model,
+    onError: fail,
+    syncLocked: syncActive,
+    onBlocked: (message) => {
+      notify({ kind: "info", message })
+    },
+  })
+  const quit = () => {
+    if (quitting) {
+      return
+    }
+    quitting = true
+    void sync.stop().finally(() => {
+      renderer.destroy()
+    })
+  }
   const syncOwnsControls = createMemo(
     () => syncActive() && (focus() === "brightness" || focus() === "temperature"),
   )
@@ -134,7 +152,7 @@ const App = () => {
       return
     }
     if (syncOwnsControls()) {
-      notify({ kind: "info", message: "sync owns colour, brightness and temperature" })
+      notify({ kind: "info", message: SYNC_OWNS_CONTROLS })
       return
     }
     if (focus() === "brightness") {
@@ -158,7 +176,7 @@ const App = () => {
       return
     }
     if (syncOwnsControls()) {
-      notify({ kind: "info", message: "sync owns colour, brightness and temperature" })
+      notify({ kind: "info", message: SYNC_OWNS_CONTROLS })
       return
     }
     controls.flushPending()
@@ -175,9 +193,7 @@ const App = () => {
 
   useAppKeys({
     screen: () => screen(),
-    onQuit: () => {
-      renderer.destroy()
-    },
+    onQuit: quit,
     onClose: closeScreen,
     onAdd: actions.openAdd,
     onEdit: actions.openEdit,

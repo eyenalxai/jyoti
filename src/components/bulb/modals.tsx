@@ -78,7 +78,7 @@ const Modals = (props: ModalsProps) => (
     </Show>
 
     <Show when={props.screen === "help"}>
-      <Modal title="Keys" hint="esc close" width={58} height={19}>
+      <Modal title="Keys" hint="esc close" width={58} height={20}>
         <Help />
       </Modal>
     </Show>
@@ -94,7 +94,8 @@ const Modals = (props: ModalsProps) => (
         <Monitors
           monitors={props.sync.monitors()}
           selected={props.sync.monitorIndex()}
-          current={props.sync.status().pendingMonitor ?? props.sync.status().monitor}
+          captured={props.sync.status().monitor}
+          pending={props.sync.status().pendingMonitor}
           busy={props.sync.monitorBusy()}
           error={props.sync.monitorError()}
         />

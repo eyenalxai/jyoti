@@ -15,6 +15,7 @@ import {
   TEMPERATURE_MIN,
 } from "@/lib/bulbs/schema"
 import { powerGlyph, powerWord, stateSummary, truncate } from "@/lib/format"
+import { SYNC_OWNS_CONTROLS } from "@/lib/screen/sync/copy"
 import { palette } from "@/lib/theme"
 
 interface DetailProps {
@@ -172,7 +173,7 @@ const Detail = (props: DetailProps) => (
 
     <Show when={props.syncLocked}>
       <text fg={palette.warning} truncate wrapMode="none" height={1}>
-        sync owns colour, brightness and temperature
+        {SYNC_OWNS_CONTROLS}
       </text>
     </Show>
 

@@ -5,6 +5,8 @@ import type { BulbsModel } from "@/components/bulb/use-bulbs"
 import type { Notice } from "@/components/ui/status"
 import type { Bulb } from "@/lib/bulbs/schema"
 
+import { SYNC_BLOCKS_BULBS, SYNC_OWNS_CONTROLS } from "@/lib/screen/sync/copy"
+
 interface UseBulbActionsOptions {
   readonly model: BulbsModel
   readonly syncActive: Accessor<boolean>
@@ -27,7 +29,7 @@ const useBulbActions = (options: UseBulbActionsOptions): BulbActions => {
     if (!options.syncActive()) {
       return false
     }
-    options.notify({ kind: "info", message: "stop sync to change bulbs" })
+    options.notify({ kind: "info", message: SYNC_BLOCKS_BULBS })
     return true
   }
 
@@ -81,7 +83,7 @@ const useBulbActions = (options: UseBulbActionsOptions): BulbActions => {
     if (options.syncActive()) {
       options.notify({
         kind: "info",
-        message: "sync owns colour, brightness and temperature",
+        message: SYNC_OWNS_CONTROLS,
       })
       return
     }

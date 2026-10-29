@@ -1,0 +1,5 @@
+const TICK_MS = 667
+const STALE_FRAME_MS = 1000
+const LOST_FRAME_MS = 5000
+
+export { LOST_FRAME_MS, STALE_FRAME_MS, TICK_MS }

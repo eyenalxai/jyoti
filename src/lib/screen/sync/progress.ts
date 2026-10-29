@@ -71,16 +71,7 @@ const settleProgress = (
   if (current === undefined) {
     return progress
   }
-  if (error === null) {
-    return new Map(progress).set(id, {
-      ...current,
-      inflight: false,
-      last: target,
-      misses: 0,
-      status: "syncing",
-    })
-  }
-  if (error.kind === "device") {
+  if (error === null || error.kind === "device") {
     return new Map(progress).set(id, {
       ...current,
       inflight: false,

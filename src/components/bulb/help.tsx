@@ -35,6 +35,7 @@ const Help = () => (
     <KeyRow keys="s" label="Start or stop sync" />
     <KeyRow keys="x" label="Pause or resume" />
     <KeyRow keys="m" label="Choose the captured monitor" />
+    <KeyRow keys="v" label="Capture preview (dev)" />
     <KeyRow keys=" " label="sync owns colour, brightness and warmth" />
     <KeyRow keys=" " label="power untouched · 4000 K neutral · 1.5 Hz" />
 

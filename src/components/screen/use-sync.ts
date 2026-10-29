@@ -8,8 +8,10 @@ import type { Monitor } from "@/lib/screen/frame"
 import type { SyncStatus } from "@/lib/screen/sync/status"
 
 import { forkSyncEffect, runScreen } from "@/lib/runtime"
+import { SYNC_CANCELLED_MESSAGE } from "@/lib/screen/sync/copy"
 import { ScreenSyncEngine } from "@/lib/screen/sync/engine"
-import { idleSyncStatus, pickDefaultMonitor } from "@/lib/screen/sync/status"
+import { pickDefaultMonitor } from "@/lib/screen/sync/monitor"
+import { idleSyncStatus } from "@/lib/screen/sync/status"
 
 interface UseScreenSyncOptions {
   readonly onNotice: (notice: Notice) => void
@@ -51,10 +53,11 @@ const useScreenSyncModel = (options: UseScreenSyncOptions): ScreenSyncModel => {
     })
 
   const toggle = () => {
-    if (busy()) {
+    const phase = status().phase
+    if (busy() && phase !== "starting") {
       return
     }
-    if (status().phase !== "idle") {
+    if (phase !== "idle") {
       void stop().then((stopped) => {
         if (stopped) {
           options.onNotice({ kind: "info", message: "Screen sync stopped." })
@@ -68,7 +71,7 @@ const useScreenSyncModel = (options: UseScreenSyncOptions): ScreenSyncModel => {
     void runScreen(ScreenSyncEngine.use((service) => service.start())).then((result) => {
       setBusy(false)
       if (!result.ok) {
-        if (result.message !== "Screen sync start cancelled.") {
+        if (result.message !== SYNC_CANCELLED_MESSAGE) {
           options.onError(result.message)
         }
         return null

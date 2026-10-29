@@ -7,9 +7,9 @@ import { ScreenSyncError } from "@/lib/screen/error"
 import { DEFAULT_GRID } from "@/lib/screen/frame"
 import { createReducerState } from "@/lib/screen/reducer"
 import { captureFailure } from "@/lib/screen/sync/failure"
+import { selfCaptureFor } from "@/lib/screen/sync/monitor"
 import { resetAcked } from "@/lib/screen/sync/progress"
 import { patchStatus, publishLive } from "@/lib/screen/sync/run"
-import { selfCaptureFor } from "@/lib/screen/sync/status"
 
 const switchMonitor = Effect.fn("ScreenSync.switchMonitor")(function* switchMonitor(
   deps: RunDeps,

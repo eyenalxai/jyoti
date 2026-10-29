@@ -7,7 +7,8 @@ import { palette } from "@/lib/theme"
 interface MonitorsProps {
   readonly monitors: readonly Monitor[]
   readonly selected: number
-  readonly current: string | null
+  readonly captured: string | null
+  readonly pending: string | null
   readonly busy: boolean
   readonly error: string | null
 }
@@ -23,7 +24,8 @@ const focusWord = (monitor: Monitor): string => {
 }
 
 const Monitors = (props: MonitorsProps) => {
-  const current = createMemo(() => props.current)
+  const captured = createMemo(() => props.captured)
+  const pending = createMemo(() => props.pending)
 
   return (
     <box flexDirection="column" gap={0} flexGrow={1} minHeight={0}>
@@ -51,8 +53,11 @@ const Monitors = (props: MonitorsProps) => {
               <Show when={focusWord(monitor).length > 0}>
                 <text fg={palette.warning}>{focusWord(monitor)}</text>
               </Show>
-              <Show when={current() === monitor.name}>
+              <Show when={captured() === monitor.name}>
                 <text fg={palette.success}>captured</text>
+              </Show>
+              <Show when={pending() === monitor.name}>
+                <text fg={palette.warning}>next run</text>
               </Show>
             </box>
           )}

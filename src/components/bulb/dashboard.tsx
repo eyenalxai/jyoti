@@ -14,6 +14,7 @@ import { Rail } from "@/components/bulb/rail"
 import { SyncStrip } from "@/components/screen/strip"
 import { StatusLine } from "@/components/ui/status"
 import { aggregateState } from "@/lib/bulbs/aggregate"
+import { SYNC_OWNS_CONTROLS } from "@/lib/screen/sync/copy"
 import { palette } from "@/lib/theme"
 
 type Pane = "bulbs" | "controls"
@@ -72,7 +73,7 @@ const Dashboard = (props: DashboardProps) => {
       return "refreshing…"
     }
     if (props.pane === "controls" && syncActive() && props.focus !== "power") {
-      return "sync owns colour, brightness and temperature"
+      return SYNC_OWNS_CONTROLS
     }
     if (showingAll()) {
       if (props.pane === "bulbs") {

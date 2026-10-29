@@ -26,6 +26,7 @@ import {
   spanText,
   truncate,
 } from "@/lib/format"
+import { SYNC_OWNS_CONTROLS } from "@/lib/screen/sync/copy"
 import { palette } from "@/lib/theme"
 
 const aggregatePowerTone = (power: AggregatePower): RGBA => {
@@ -176,7 +177,7 @@ const AllDetail = (props: AllDetailProps) => {
 
       <Show when={props.syncLocked}>
         <text fg={palette.warning} truncate wrapMode="none" height={1}>
-          sync owns colour, brightness and temperature
+          {SYNC_OWNS_CONTROLS}
         </text>
       </Show>
 

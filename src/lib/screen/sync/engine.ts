@@ -1,6 +1,6 @@
 import type { Stream } from "effect"
 
-import { Array as Arr, Context, Effect, Fiber, Layer, Option, Ref, SubscriptionRef } from "effect"
+import { Context, Effect, Fiber, Layer, Ref, SubscriptionRef } from "effect"
 
 import type { Monitor } from "@/lib/screen/frame"
 import type { RunDeps, RunState } from "@/lib/screen/sync/run"
@@ -12,6 +12,7 @@ import { ScreenCapture } from "@/lib/screen/capture"
 import { ScreenSyncError } from "@/lib/screen/error"
 import { resetSmoothing } from "@/lib/screen/reducer"
 import { captureFailure } from "@/lib/screen/sync/failure"
+import { findMonitor } from "@/lib/screen/sync/monitor"
 import { switchMonitor } from "@/lib/screen/sync/monitors"
 import { idleState, patchStatus, publishLive } from "@/lib/screen/sync/run"
 import { startRun } from "@/lib/screen/sync/start"
@@ -114,7 +115,7 @@ class ScreenSyncEngine extends Context.Service<ScreenSyncEngine, ScreenSyncShape
         name: string,
       ) {
         const monitors = yield* capture.listMonitors().pipe(Effect.mapError(captureFailure))
-        const monitor = Option.getOrNull(Arr.findFirst(monitors, (entry) => entry.name === name))
+        const monitor = findMonitor(monitors, name)
         if (monitor === null) {
           return yield* new ScreenSyncError({
             kind: "no-monitor",

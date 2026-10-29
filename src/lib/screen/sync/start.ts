@@ -1,29 +1,20 @@
-import {
-  Array as Arr,
-  Cause,
-  Deferred,
-  Effect,
-  Exit,
-  Fiber,
-  Option,
-  Ref,
-  Result,
-  SubscriptionRef,
-} from "effect"
+import { Cause, Deferred, Effect, Exit, Fiber, Ref, Result, SubscriptionRef } from "effect"
 
 import type { BulbId } from "@/lib/bulbs/schema"
 import type { BulbsShape } from "@/lib/bulbs/service"
 import type { BulbProgress, BulbSession } from "@/lib/screen/sync/progress"
 import type { RunDeps, RunHandle, RunState } from "@/lib/screen/sync/run"
-import type { SyncRun } from "@/lib/screen/sync/status"
+import type { SyncRun, SyncStatus } from "@/lib/screen/sync/status"
 
 import { ScreenSyncError } from "@/lib/screen/error"
 import { DEFAULT_GRID } from "@/lib/screen/frame"
 import { createReducerState } from "@/lib/screen/reducer"
+import { SYNC_CANCELLED_MESSAGE } from "@/lib/screen/sync/copy"
 import { bulbFailure, captureFailure } from "@/lib/screen/sync/failure"
+import { findMonitor, pickDefaultMonitor, selfCaptureFor } from "@/lib/screen/sync/monitor"
 import { initialProgress } from "@/lib/screen/sync/progress"
 import { idleState, publishLive, runLoop } from "@/lib/screen/sync/run"
-import { idleSyncStatus, pickDefaultMonitor, selfCaptureFor } from "@/lib/screen/sync/status"
+import { idleSyncStatus } from "@/lib/screen/sync/status"
 
 interface StartContext extends RunDeps {
   readonly bulbs: BulbsShape
@@ -42,7 +33,8 @@ const startRun = Effect.fn("ScreenSync.startRun")(function* startRun(context: St
     })
   }
 
-  yield* SubscriptionRef.set(context.status, { ...idleSyncStatus, phase: "starting" as const })
+  const startingStatus: SyncStatus = { ...idleSyncStatus, phase: "starting" }
+  yield* SubscriptionRef.set(context.status, startingStatus)
 
   return yield* Effect.gen(function* startRunEffect() {
     const ready = yield* Deferred.make<RunHandle, ScreenSyncError>()
@@ -57,11 +49,9 @@ const startRun = Effect.fn("ScreenSync.startRun")(function* startRun(context: St
 
       const monitors = yield* context.capture.listMonitors().pipe(Effect.mapError(captureFailure))
       const manual = yield* Ref.get(context.pendingMonitor)
-      const monitor =
-        manual === null
-          ? pickDefaultMonitor(monitors)
-          : Option.getOrNull(Arr.findFirst(monitors, (entry) => entry.name === manual))
+      const monitor = manual === null ? pickDefaultMonitor(monitors) : findMonitor(monitors, manual)
       if (monitor === null) {
+        yield* Ref.set(context.pendingMonitor, null)
         return yield* new ScreenSyncError({
           kind: "no-monitor",
           message:
@@ -145,7 +135,7 @@ const startRun = Effect.fn("ScreenSync.startRun")(function* startRun(context: St
           ? Effect.fail(
               new ScreenSyncError({
                 kind: "cancelled",
-                message: "Screen sync start cancelled.",
+                message: SYNC_CANCELLED_MESSAGE,
               }),
             )
           : Effect.failCause(cause),
@@ -165,7 +155,7 @@ const startRun = Effect.fn("ScreenSync.startRun")(function* startRun(context: St
       yield* Fiber.interrupt(fiber)
       return yield* new ScreenSyncError({
         kind: "cancelled",
-        message: "Screen sync start cancelled.",
+        message: SYNC_CANCELLED_MESSAGE,
       })
     }
 
@@ -181,7 +171,10 @@ const startRun = Effect.fn("ScreenSync.startRun")(function* startRun(context: St
             if (current.status === "starting" || current.status === "idle") {
               yield* Ref.set(context.runState, idleState)
             }
-            yield* SubscriptionRef.set(context.status, idleSyncStatus)
+            const pending = yield* Ref.get(context.pendingMonitor)
+            const failedStatus: SyncStatus =
+              pending === null ? idleSyncStatus : { ...idleSyncStatus, pendingMonitor: pending }
+            yield* SubscriptionRef.set(context.status, failedStatus)
           })
         : Effect.void,
     ),
