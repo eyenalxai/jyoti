@@ -35,7 +35,9 @@ const Color = (props: ColorProps) => {
   const seeded = parseColor(props.initial) ?? WHITE
   const seededHex = formatColor(packColor(seeded))
   const [rgb, setRgb] = createSignal<Rgb>(seeded)
-  const [mode, setMode] = createSignal<Mode>("hs")
+  const [mode, setMode] = createSignal<Mode>(
+    seeded.red === 0 && seeded.green === 0 && seeded.blue === 0 ? "rgb" : "hs",
+  )
   const [focus, setFocus] = createSignal<PickerFocus>(0)
   const [hexDraft, setHexDraft] = createSignal(seededHex)
   const [appliedHex, setAppliedHex] = createSignal(seededHex)

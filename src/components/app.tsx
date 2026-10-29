@@ -1,5 +1,5 @@
 import { useRenderer, useTerminalDimensions } from "@opentui/solid"
-import { createMemo, createSignal, onCleanup } from "solid-js"
+import { createEffect, createMemo, createSignal, onCleanup } from "solid-js"
 
 import type { ControlFocus } from "@/components/bulb/controls"
 import type { Screen } from "@/components/bulb/modals"
@@ -9,6 +9,7 @@ import type { Bulb } from "@/lib/bulbs/schema"
 import { initialColor } from "@/components/bulb/color/initial"
 import { useColorSession } from "@/components/bulb/color/use-session"
 import { Dashboard } from "@/components/bulb/dashboard"
+import { canFocus } from "@/components/bulb/focus"
 import { Modals } from "@/components/bulb/modals"
 import { useBulbActions } from "@/components/bulb/use-actions"
 import { useAppCommands } from "@/components/bulb/use-app-commands"
@@ -67,6 +68,12 @@ const App = () => {
       ? aggregateState(model.bulbs(), model.states(), model.stateErrors()).quality
       : lightQualityOf(model.selectedState()?.mode),
   )
+  // Only the rows the current mode draws can hold focus.
+  createEffect(() => {
+    if (!canFocus(selectedQuality(), focus())) {
+      setFocus("quality")
+    }
+  })
   const actions = useBulbActions({
     model,
     syncActive,

@@ -155,32 +155,31 @@ const AllDetail = (props: AllDetailProps) => {
             onSelect={props.onQuality}
           />
 
-          <ControlRow
-            label="Brightness"
-            labelWidth={props.labelWidth}
-            focused={props.active && props.focus === "brightness"}
-            disabled={locked()}
-            hint={hintFor(props.rowHints, "←/→")}
-            onFocus={() => {
-              props.onFocus("brightness")
-            }}
-            value={
-              <>
-                <SpanMeter
-                  span={props.aggregate.brightness}
-                  min={BRIGHTNESS_MIN}
-                  max={BRIGHTNESS_MAX}
-                  width={props.meterWidth}
-                  disabled={locked()}
-                />
-                <text fg={locked() ? palette.faint : palette.text} wrapMode="none">
-                  {spanValue(props.aggregate.brightness, "%", props.valueWidth)}
-                </text>
-              </>
-            }
-          />
-
           <Show when={props.aggregate.quality === "white"}>
+            <ControlRow
+              label="Brightness"
+              labelWidth={props.labelWidth}
+              focused={props.active && props.focus === "brightness"}
+              disabled={locked()}
+              hint={hintFor(props.rowHints, "←/→")}
+              onFocus={() => {
+                props.onFocus("brightness")
+              }}
+              value={
+                <>
+                  <SpanMeter
+                    span={props.aggregate.brightness}
+                    min={BRIGHTNESS_MIN}
+                    max={BRIGHTNESS_MAX}
+                    width={props.meterWidth}
+                    disabled={locked()}
+                  />
+                  <text fg={locked() ? palette.faint : palette.text} wrapMode="none">
+                    {spanValue(props.aggregate.brightness, "%", props.valueWidth)}
+                  </text>
+                </>
+              }
+            />
             <ControlRow
               label="Warmth"
               labelWidth={props.labelWidth}
