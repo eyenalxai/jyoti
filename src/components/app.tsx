@@ -1,5 +1,5 @@
 import { useRenderer, useTerminalDimensions } from "@opentui/solid"
-import { createMemo, createSignal, onCleanup } from "solid-js"
+import { createEffect, createMemo, createSignal, onCleanup } from "solid-js"
 
 import type { ControlFocus } from "@/components/bulb/controls"
 import type { Screen } from "@/components/bulb/modals"
@@ -67,6 +67,12 @@ const App = () => {
       ? aggregateState(model.bulbs(), model.states(), model.stateErrors()).quality
       : lightQualityOf(model.selectedState()?.mode),
   )
+  // Brightness is only drawn in White, so focus cannot stay on it in another mode.
+  createEffect(() => {
+    if (selectedQuality() !== "white" && focus() === "brightness") {
+      setFocus("quality")
+    }
+  })
   const actions = useBulbActions({
     model,
     syncActive,

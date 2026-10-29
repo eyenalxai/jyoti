@@ -133,7 +133,9 @@ const useAppCommands = (options: UseAppCommandsOptions): AppCommands => {
     }
     if (!options.colorSession.dirty()) {
       options.colorSession.capture()
-      void options.colorSession.commit(options.colorInitial())
+      if (options.selectedQuality() !== "color") {
+        void options.colorSession.commit(options.colorInitial())
+      }
     }
     return true
   }

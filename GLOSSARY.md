@@ -78,7 +78,7 @@ The All bulbs quality when at least two reachable bulbs disagree. The switch sho
 
 ## Colour picker
 
-The inline editor for the Colour quality. It edits hue and saturation, switches to RGB on `tab`, and accepts an exact hex value. Every value it can produce is an sRGB colour, so the swatch and the sent colour cannot diverge. Changes are sent after a short idle, so the bulb follows the picker. Brightness is the shared dimmer and is not repeated inside the picker.
+The inline editor for the Colour quality. It edits hue and saturation, switches to RGB on `tab`, and accepts an exact hex value. Every value it can produce is an sRGB colour, so the swatch and the sent colour cannot diverge. Changes are sent after a short idle, so the bulb follows the picker. Brightness belongs to White, so the picker does not edit it. Opening the picker on a bulb that is already in Colour leaves its colour untouched; only a bulb entering Colour is seeded.
 
 ## Revert
 
