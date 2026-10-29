@@ -7,13 +7,12 @@ import { kelvinToSrgb, oklchToSrgb } from "@/lib/color"
 import { percentile } from "@/lib/format"
 import { prepareFrame } from "@/lib/screen/grid"
 import { cluster } from "@/lib/screen/kmeans"
-import { deltaEOk, labFromOklch, mixLab, oklchFromLab } from "@/lib/screen/lab"
+import { deltaEOk, labFromOklch, oklchFromLab } from "@/lib/screen/lab"
 
 const NEUTRAL_ENTER_CHROMA = 0.03
 const NEUTRAL_EXIT_CHROMA = 0.045
 const NEUTRAL_KELVIN = 4000
 const CHROMA_QUANTILE = 0.75
-const COLOR_TAU_MS = 450
 const SCENE_TAU_MS = 900
 const CLUSTER_DROP = 0.03
 const SCORE_CHROMA_SCALE = 0.15
@@ -23,7 +22,6 @@ interface ReducerState {
   readonly centroids: readonly Lab[] | null
   readonly neutral: boolean
   readonly primed: boolean
-  readonly color: Lab | null
   readonly sceneBrightness: number | null
 }
 
@@ -45,13 +43,11 @@ const createReducerState = (): ReducerState => ({
   centroids: null,
   neutral: false,
   primed: false,
-  color: null,
   sceneBrightness: null,
 })
 
 const resetSmoothing = (state: ReducerState): ReducerState => ({
   ...state,
-  color: null,
   sceneBrightness: null,
 })
 
@@ -166,7 +162,6 @@ const reducePrepared = (
         centroids: state.centroids,
         neutral: true,
         primed: true,
-        color: derived.lab,
         sceneBrightness,
       },
       p90Chroma: prepared.p90Chroma,
@@ -175,12 +170,7 @@ const reducePrepared = (
 
   const clustering = cluster(prepared.lab, prepared.pixelCount, state.centroids)
   const target = chooseTarget(prepared, clustering.assignments, clustering.centroids.length)
-  const targetSrgb = oklchToSrgb(oklchFromLab(target))
-  const targetLab = labFromOklch(targetSrgb.oklch)
-  const alpha = state.primed && !state.neutral ? smoothing(COLOR_TAU_MS, elapsedMs) : 1
-  const smoothed =
-    state.color === null || alpha >= 1 ? targetLab : mixLab(state.color, targetLab, alpha)
-  const srgb = oklchToSrgb(oklchFromLab(smoothed))
+  const srgb = oklchToSrgb(oklchFromLab(target))
   const lab = labFromOklch(srgb.oklch)
 
   return {
@@ -195,7 +185,6 @@ const reducePrepared = (
       centroids: clustering.centroids,
       neutral: false,
       primed: true,
-      color: lab,
       sceneBrightness,
     },
     p90Chroma: prepared.p90Chroma,
