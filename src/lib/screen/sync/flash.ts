@@ -38,6 +38,9 @@ const flipsDirection = (targets: readonly number[]): boolean => {
 const peakToPeak = (targets: readonly number[]): number =>
   Math.max(...targets) - Math.min(...targets)
 
+const reversalSwing = (targets: readonly number[]): number =>
+  targets.length < FLASH_WINDOW ? 0 : Math.abs((targets[2] ?? 0) - (targets[1] ?? 0))
+
 const isFlashing = (guard: FlashGuard, now: number): boolean =>
   guard.heldUntil !== null && now < guard.heldUntil
 
@@ -51,7 +54,7 @@ const guardFlash = (guard: FlashGuard, target: number, now: number): FlashVerdic
   if (!armed && (sameDirection(targets) || peakToPeak(targets) <= FLASH_PEAK_TO_PEAK)) {
     armed = true
   }
-  if (armed && flipsDirection(targets) && peakToPeak(targets) > FLASH_PEAK_TO_PEAK) {
+  if (armed && flipsDirection(targets) && reversalSwing(targets) > FLASH_PEAK_TO_PEAK) {
     return {
       guard: { targets, heldUntil: now + FLASH_HOLD_MS, armed: false },
       flashing: true,
