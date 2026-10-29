@@ -21,7 +21,7 @@ interface ModalsProps {
   readonly busy: boolean
   readonly error: string | null
   readonly preview: CapturePreviewModel
-  readonly sync: ScreenSyncModel
+  readonly syncModel: ScreenSyncModel
   readonly onSubmitAdd: (draft: BulbDraft) => void
   readonly onSubmitEdit: (draft: BulbDraft) => void
   readonly onConfirmRemove: () => void
@@ -92,12 +92,12 @@ const Modals = (props: ModalsProps) => (
     <Show when={props.screen === "monitors"}>
       <Modal title="Captured monitor" hint="esc cancel" width={64} height={14}>
         <Monitors
-          monitors={props.sync.monitors()}
-          selected={props.sync.monitorIndex()}
-          captured={props.sync.status().monitor}
-          pending={props.sync.status().pendingMonitor}
-          busy={props.sync.monitorBusy()}
-          error={props.sync.monitorError()}
+          monitors={props.syncModel.monitors()}
+          selected={props.syncModel.monitorIndex()}
+          captured={props.syncModel.status().monitor}
+          pending={props.syncModel.status().pendingMonitor}
+          busy={props.syncModel.monitorBusy()}
+          error={props.syncModel.monitorError()}
         />
       </Modal>
     </Show>

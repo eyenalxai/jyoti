@@ -13,6 +13,8 @@ interface MonitorsProps {
   readonly error: string | null
 }
 
+const VISIBLE_MONITORS = 6
+
 const focusWord = (monitor: Monitor): string => {
   if (monitor.focused === true) {
     return "focused"
@@ -26,6 +28,16 @@ const focusWord = (monitor: Monitor): string => {
 const Monitors = (props: MonitorsProps) => {
   const captured = createMemo(() => props.captured)
   const pending = createMemo(() => props.pending)
+  const start = createMemo(() =>
+    Math.max(
+      0,
+      Math.min(
+        props.monitors.length - VISIBLE_MONITORS,
+        props.selected - Math.floor(VISIBLE_MONITORS / 2),
+      ),
+    ),
+  )
+  const visible = createMemo(() => props.monitors.slice(start(), start() + VISIBLE_MONITORS))
 
   return (
     <box flexDirection="column" gap={0} flexGrow={1} minHeight={0}>
@@ -35,7 +47,7 @@ const Monitors = (props: MonitorsProps) => {
           <text fg={palette.muted}>{props.busy ? "Reading monitors…" : "No monitor listed."}</text>
         }
       >
-        <For each={props.monitors}>
+        <For each={visible()}>
           {(monitor, index) => (
             <box flexDirection="row" gap={1} height={1} flexShrink={0}>
               <text fg={index() === props.selected ? palette.accent : palette.faint}>

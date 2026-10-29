@@ -24,7 +24,7 @@ interface DashboardProps {
   readonly focus: ControlFocus
   readonly pane: Pane
   readonly notice: Notice | null
-  readonly sync: SyncStatus
+  readonly syncStatus: SyncStatus
   readonly width: number
   readonly height: number
   readonly onFocus: (focus: ControlFocus) => void
@@ -36,7 +36,7 @@ const Dashboard = (props: DashboardProps) => {
   const railWidth = createMemo(() => (shellWidth() >= 96 ? 30 : 26))
   const detailWidth = createMemo(() => Math.min(76, Math.max(20, shellWidth() - railWidth() - 2)))
   const meterWidth = createMemo(() => Math.min(36, Math.max(10, detailWidth() - 24)))
-  const syncActive = createMemo(() => props.sync.phase !== "idle")
+  const syncActive = createMemo(() => props.syncStatus.phase !== "idle")
   const mainHeight = createMemo(() => Math.max(0, props.height - (syncActive() ? 6 : 4)))
   const aggregate = createMemo(() =>
     aggregateState(props.model.bulbs(), props.model.states(), props.model.stateErrors()),
@@ -44,7 +44,7 @@ const Dashboard = (props: DashboardProps) => {
   const showingAll = createMemo(() => props.model.allSelected() && props.model.canSelectAll())
   const syncBulbs = createMemo(() => {
     const map = new Map<BulbId, BulbSyncPhase>()
-    for (const bulb of props.sync.bulbs) {
+    for (const bulb of props.syncStatus.bulbs) {
       map.set(bulb.id, bulb.status)
     }
     return map
@@ -118,16 +118,16 @@ const Dashboard = (props: DashboardProps) => {
   })
 
   const syncHint = createMemo(() => {
-    if (props.sync.phase === "starting") {
+    if (props.syncStatus.phase === "starting") {
       return "s cancel"
     }
-    if (props.sync.phase === "paused") {
+    if (props.syncStatus.phase === "paused") {
       return "x resume · m monitor"
     }
-    if (props.sync.phase === "stopping") {
+    if (props.syncStatus.phase === "stopping") {
       return "stopping…"
     }
-    if (props.sync.phase === "syncing") {
+    if (props.syncStatus.phase === "syncing") {
       return "s stop · x pause · m monitor"
     }
     return "s sync"
@@ -261,7 +261,7 @@ const Dashboard = (props: DashboardProps) => {
           </box>
 
           <Show when={syncActive()}>
-            <SyncStrip status={props.sync} />
+            <SyncStrip status={props.syncStatus} width={shellWidth()} />
           </Show>
 
           <box flexDirection="column" flexShrink={0}>

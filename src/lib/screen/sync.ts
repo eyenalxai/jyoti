@@ -13,7 +13,7 @@ import { ScreenSyncError } from "@/lib/screen/error"
 import { resetSmoothing } from "@/lib/screen/reducer"
 import { captureFailure } from "@/lib/screen/sync/failure"
 import { findMonitor } from "@/lib/screen/sync/monitor"
-import { switchMonitor } from "@/lib/screen/sync/monitors"
+import { switchMonitor } from "@/lib/screen/sync/monitor/switch"
 import { idleState, patchStatus, publishLive } from "@/lib/screen/sync/run"
 import { startRun } from "@/lib/screen/sync/start"
 import { idleSyncStatus } from "@/lib/screen/sync/status"
@@ -29,7 +29,7 @@ interface ScreenSyncShape {
 }
 
 class ScreenSyncEngine extends Context.Service<ScreenSyncEngine, ScreenSyncShape>()(
-  "jyoti/lib/screen/sync/engine/ScreenSyncEngine",
+  "jyoti/lib/screen/sync/ScreenSyncEngine",
 ) {
   static readonly layer = Layer.effect(
     ScreenSyncEngine,
@@ -129,10 +129,15 @@ class ScreenSyncEngine extends Context.Service<ScreenSyncEngine, ScreenSyncShape
           yield* patchStatus(deps, { pendingMonitor: name })
           return yield* Effect.void
         }
+        if (current.status === "starting") {
+          yield* Ref.set(pendingMonitor, name)
+          yield* patchStatus(deps, { pendingMonitor: name })
+          return yield* Effect.void
+        }
         if (current.status !== "running") {
           return yield* new ScreenSyncError({
             kind: "not-ready",
-            message: "Wait for the run to start or stop before changing monitors.",
+            message: "Wait for the run to stop before changing monitors.",
           })
         }
 

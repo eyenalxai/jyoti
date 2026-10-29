@@ -3,10 +3,12 @@ import { createMemo } from "solid-js"
 
 import type { CaptureHealth, SyncPhase, SyncStatus } from "@/lib/screen/sync/status"
 
+import { truncate } from "@/lib/format"
 import { palette } from "@/lib/theme"
 
 interface SyncStripProps {
   readonly status: SyncStatus
+  readonly width: number
 }
 
 const healthWord = (capture: CaptureHealth): string => {
@@ -108,6 +110,9 @@ const SyncStrip = (props: SyncStripProps) => {
     props.status.frameAgeMs === null ? "—" : `${props.status.frameAgeMs} ms`,
   )
   const keys = createMemo(() => runKeys(props.status.phase))
+  const monitor = createMemo(() =>
+    truncate(props.status.monitor ?? "—", Math.max(8, Math.floor(props.width * 0.22))),
+  )
 
   return (
     <box flexDirection="column" height={2} flexShrink={0}>
@@ -116,7 +121,7 @@ const SyncStrip = (props: SyncStripProps) => {
           {glyph()} {word()}
         </span>
         <span style={{ fg: palette.faint }}> · </span>
-        <span style={{ fg: palette.muted }}>{props.status.monitor ?? "—"}</span>
+        <span style={{ fg: palette.muted }}>{monitor()}</span>
         <span style={{ fg: props.status.selfCapture ? palette.warning : palette.muted }}>
           {props.status.selfCapture ? " ⚠ jyoti" : ""}
         </span>

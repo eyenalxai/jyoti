@@ -26,4 +26,7 @@ const selfCaptureFor = (monitor: Monitor, sole: boolean): boolean =>
 const findMonitor = (monitors: readonly Monitor[], name: string): Monitor | null =>
   Option.getOrNull(Arr.findFirst(monitors, (monitor) => monitor.name === name))
 
-export { findMonitor, pickDefaultMonitor, selfCaptureFor }
+const resolveMonitor = (monitors: readonly Monitor[], name: string | null): Monitor | null =>
+  name === null ? pickDefaultMonitor(monitors) : findMonitor(monitors, name)
+
+export { findMonitor, pickDefaultMonitor, resolveMonitor, selfCaptureFor }

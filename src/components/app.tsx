@@ -274,7 +274,7 @@ const App = () => {
         focus={focus()}
         pane={pane()}
         notice={notice()}
-        sync={sync.status()}
+        syncStatus={sync.status()}
         width={dimensions().width}
         height={dimensions().height}
         onFocus={focusControl}
@@ -286,7 +286,7 @@ const App = () => {
         busy={busy()}
         error={formError()}
         preview={preview}
-        sync={sync}
+        syncModel={sync}
         onSubmitAdd={forms.submitAdd}
         onSubmitEdit={forms.submitEdit}
         onConfirmRemove={forms.confirmRemove}

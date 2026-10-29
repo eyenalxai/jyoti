@@ -12,18 +12,20 @@ import type { BulbProgress, BulbSession } from "@/lib/screen/sync/progress"
 import type { SyncStatus } from "@/lib/screen/sync/status"
 
 import { prepareFrame } from "@/lib/screen/grid"
-import { reducePrepared, shouldPublish } from "@/lib/screen/reducer"
+import { reducePrepared } from "@/lib/screen/reducer"
 import { syncBrightnessFor } from "@/lib/screen/sync/brightness"
 import {
   markInflight,
   missProgress,
   propertiesFor,
   settleProgress,
+  shouldSend,
 } from "@/lib/screen/sync/progress"
 import { LOST_FRAME_MS, STALE_FRAME_MS, TICK_MS } from "@/lib/screen/sync/timing"
 
 interface RunHandle {
   readonly bulbs: readonly Bulb[]
+  readonly monitors: readonly Monitor[]
   readonly sessions: readonly BulbSession[]
   readonly phase: Ref.Ref<"syncing" | "paused">
   readonly monitor: Ref.Ref<Monitor>
@@ -78,9 +80,17 @@ const publishLive = Effect.fn("ScreenSync.publishLive")(function* publishLive(
     }
   })
   const reachable = Arr.filter(synced, (bulb) => bulb.status === "syncing").length
+  let rejection: string | null = null
+  for (const entry of progress.values()) {
+    if (entry.rejectedMessage !== null) {
+      rejection = entry.rejectedMessage
+      break
+    }
+  }
   yield* SubscriptionRef.update(deps.status, (current) => ({
     ...current,
     ...patch,
+    error: rejection,
     bulbs: synced,
     reachable,
     total: synced.length,
@@ -95,11 +105,6 @@ const settle = Effect.fn("ScreenSync.settle")(function* settle(
   error: MiioError | null,
 ) {
   yield* Ref.update(handle.progress, (current) => settleProgress(current, id, target, error))
-  if (error !== null && error.kind === "device") {
-    yield* patchStatus(deps, { error: error.message })
-  } else if (error === null) {
-    yield* patchStatus(deps, { error: null })
-  }
   yield* publishLive(deps, handle, {})
 })
 
@@ -120,10 +125,7 @@ const sendTarget = Effect.fn("ScreenSync.sendTarget")(function* sendTarget(
   const progress = yield* Ref.get(handle.progress)
   for (const item of handle.sessions) {
     const entry = progress.get(item.bulb.id)
-    if (entry === undefined || entry.status !== "syncing" || entry.inflight) {
-      continue
-    }
-    if (!shouldPublish(target, entry.last)) {
+    if (entry === undefined || !shouldSend(target, entry)) {
       continue
     }
     yield* Ref.update(handle.progress, (current) => markInflight(current, item.bulb.id))

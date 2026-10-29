@@ -7,12 +7,14 @@ import type { BulbSyncPhase } from "@/lib/screen/sync/status"
 
 import { PIID_COLOR, PIID_TEMPERATURE, packColor, parseColor } from "@/lib/bulbs/schema"
 import { propertiesWithValue } from "@/lib/miio/properties"
-import { NEUTRAL_KELVIN } from "@/lib/screen/reducer"
+import { NEUTRAL_KELVIN, shouldPublish } from "@/lib/screen/reducer"
 
 const UNREACHABLE_MISSES = 3
 
 interface BulbProgress {
   readonly last: DerivedColor | null
+  readonly rejected: DerivedColor | null
+  readonly rejectedMessage: string | null
   readonly inflight: boolean
   readonly misses: number
   readonly status: BulbSyncPhase
@@ -42,6 +44,8 @@ const initialProgress = (
   for (const bulb of bulbs) {
     progress.set(bulb.id, {
       last: null,
+      rejected: null,
+      rejectedMessage: null,
       inflight: false,
       misses: 0,
       status: reachable.has(bulb.id) ? "syncing" : "unreachable",
@@ -61,6 +65,22 @@ const markInflight = (
   return new Map(progress).set(id, { ...current, inflight: true })
 }
 
+const withMiss = (
+  progress: ReadonlyMap<BulbId, BulbProgress>,
+  id: BulbId,
+  current: BulbProgress,
+): ReadonlyMap<BulbId, BulbProgress> => {
+  const misses = current.misses + 1
+  const status = misses >= UNREACHABLE_MISSES ? "unreachable" : current.status
+  return new Map(progress).set(id, {
+    ...current,
+    inflight: false,
+    misses,
+    rejectedMessage: status === "unreachable" ? null : current.rejectedMessage,
+    status,
+  })
+}
+
 const settleProgress = (
   progress: ReadonlyMap<BulbId, BulbProgress>,
   id: BulbId,
@@ -71,22 +91,28 @@ const settleProgress = (
   if (current === undefined) {
     return progress
   }
-  if (error === null || error.kind === "device") {
+  if (error === null) {
     return new Map(progress).set(id, {
       ...current,
       inflight: false,
       last: target,
+      rejected: null,
+      rejectedMessage: null,
       misses: 0,
       status: "syncing",
     })
   }
-  const misses = current.misses + 1
-  return new Map(progress).set(id, {
-    ...current,
-    inflight: false,
-    misses,
-    status: misses >= UNREACHABLE_MISSES ? "unreachable" : current.status,
-  })
+  if (error.kind === "device") {
+    return new Map(progress).set(id, {
+      ...current,
+      inflight: false,
+      rejected: target,
+      rejectedMessage: error.message,
+      misses: 0,
+      status: "syncing",
+    })
+  }
+  return withMiss(progress, id, current)
 }
 
 const missProgress = (
@@ -94,16 +120,17 @@ const missProgress = (
   id: BulbId,
 ): ReadonlyMap<BulbId, BulbProgress> => {
   const current = progress.get(id)
-  if (current === undefined) {
-    return progress
+  return current === undefined ? progress : withMiss(progress, id, current)
+}
+
+const shouldSend = (target: DerivedColor, entry: BulbProgress): boolean => {
+  if (entry.status !== "syncing" || entry.inflight) {
+    return false
   }
-  const misses = current.misses + 1
-  return new Map(progress).set(id, {
-    ...current,
-    inflight: false,
-    misses,
-    status: misses >= UNREACHABLE_MISSES ? "unreachable" : current.status,
-  })
+  if (entry.rejected !== null && !shouldPublish(target, entry.rejected)) {
+    return false
+  }
+  return shouldPublish(target, entry.last)
 }
 
 const resetAcked = (
@@ -111,10 +138,18 @@ const resetAcked = (
 ): ReadonlyMap<BulbId, BulbProgress> => {
   const next = new Map(progress)
   for (const [id, entry] of next) {
-    next.set(id, { ...entry, last: null })
+    next.set(id, { ...entry, last: null, rejected: null, rejectedMessage: null })
   }
   return next
 }
 
-export { initialProgress, markInflight, missProgress, propertiesFor, resetAcked, settleProgress }
+export {
+  initialProgress,
+  markInflight,
+  missProgress,
+  propertiesFor,
+  resetAcked,
+  settleProgress,
+  shouldSend,
+}
 export type { BulbProgress, BulbSession }

@@ -1,4 +1,14 @@
-import { Cause, Deferred, Effect, Exit, Fiber, Ref, Result, SubscriptionRef } from "effect"
+import {
+  Cause,
+  Deferred,
+  Duration,
+  Effect,
+  Exit,
+  Fiber,
+  Ref,
+  Result,
+  SubscriptionRef,
+} from "effect"
 
 import type { BulbId } from "@/lib/bulbs/schema"
 import type { BulbsShape } from "@/lib/bulbs/service"
@@ -11,9 +21,10 @@ import { DEFAULT_GRID } from "@/lib/screen/frame"
 import { createReducerState } from "@/lib/screen/reducer"
 import { SYNC_CANCELLED_MESSAGE } from "@/lib/screen/sync/copy"
 import { bulbFailure, captureFailure } from "@/lib/screen/sync/failure"
-import { findMonitor, pickDefaultMonitor, selfCaptureFor } from "@/lib/screen/sync/monitor"
+import { findMonitor, resolveMonitor, selfCaptureFor } from "@/lib/screen/sync/monitor"
+import { switchMonitor } from "@/lib/screen/sync/monitor/switch"
 import { initialProgress } from "@/lib/screen/sync/progress"
-import { idleState, publishLive, runLoop } from "@/lib/screen/sync/run"
+import { idleState, patchStatus, publishLive, runLoop } from "@/lib/screen/sync/run"
 import { idleSyncStatus } from "@/lib/screen/sync/status"
 
 interface StartContext extends RunDeps {
@@ -49,7 +60,7 @@ const startRun = Effect.fn("ScreenSync.startRun")(function* startRun(context: St
 
       const monitors = yield* context.capture.listMonitors().pipe(Effect.mapError(captureFailure))
       const manual = yield* Ref.get(context.pendingMonitor)
-      const monitor = manual === null ? pickDefaultMonitor(monitors) : findMonitor(monitors, manual)
+      const monitor = resolveMonitor(monitors, manual)
       if (monitor === null) {
         yield* Ref.set(context.pendingMonitor, null)
         return yield* new ScreenSyncError({
@@ -65,10 +76,11 @@ const startRun = Effect.fn("ScreenSync.startRun")(function* startRun(context: St
         listed,
         (bulb) =>
           context.bulbs.openSession(bulb.id).pipe(
+            Effect.timeout(Duration.seconds(2)),
             Effect.result,
             Effect.map((outcome) => ({ bulb, outcome })),
           ),
-        { concurrency: 4 },
+        { concurrency: "unbounded" },
       )
       const reachable = new Set<BulbId>()
       const sessions: BulbSession[] = []
@@ -81,6 +93,7 @@ const startRun = Effect.fn("ScreenSync.startRun")(function* startRun(context: St
 
       const handle: RunHandle = {
         bulbs: listed,
+        monitors,
         sessions,
         phase: yield* Ref.make<"syncing" | "paused">("syncing"),
         monitor: yield* Ref.make(monitor),
@@ -92,7 +105,6 @@ const startRun = Effect.fn("ScreenSync.startRun")(function* startRun(context: St
       }
 
       yield* Effect.addFinalizer(() => Ref.set(context.runState, idleState))
-      yield* Effect.addFinalizer(() => Ref.set(context.pendingMonitor, null))
       yield* Effect.addFinalizer(() => context.capture.stop())
       yield* Effect.addFinalizer(() => SubscriptionRef.set(context.status, idleSyncStatus))
       yield* context.capture
@@ -159,8 +171,22 @@ const startRun = Effect.fn("ScreenSync.startRun")(function* startRun(context: St
       })
     }
 
+    const pending = yield* Ref.get(context.pendingMonitor)
+    if (pending !== null) {
+      const target = findMonitor(handle.monitors, pending)
+      if (target !== null && target.name !== monitor.name) {
+        yield* switchMonitor(context, handle, target, handle.monitors.length === 1).pipe(
+          Effect.ignore,
+        )
+      }
+    }
+
+    yield* Ref.set(context.pendingMonitor, null)
+    yield* patchStatus(context, { pendingMonitor: null })
+
+    const active = yield* Ref.get(handle.monitor)
     return {
-      monitorName: monitor.name,
+      monitorName: active.name,
       bulbCount: handle.bulbs.length,
     } satisfies SyncRun
   }).pipe(

@@ -8,8 +8,8 @@ import type { Monitor } from "@/lib/screen/frame"
 import type { SyncStatus } from "@/lib/screen/sync/status"
 
 import { forkSyncEffect, runScreen } from "@/lib/runtime"
+import { ScreenSyncEngine } from "@/lib/screen/sync"
 import { SYNC_CANCELLED_MESSAGE } from "@/lib/screen/sync/copy"
-import { ScreenSyncEngine } from "@/lib/screen/sync/engine"
 import { pickDefaultMonitor } from "@/lib/screen/sync/monitor"
 import { idleSyncStatus } from "@/lib/screen/sync/status"
 

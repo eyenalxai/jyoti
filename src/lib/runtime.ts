@@ -9,7 +9,7 @@ import { Keyring } from "@/lib/keyring/service"
 import { Miio } from "@/lib/miio/service"
 import { MiioTransport } from "@/lib/miio/transport"
 import { ScreenCapture } from "@/lib/screen/capture"
-import { ScreenSyncEngine } from "@/lib/screen/sync/engine"
+import { ScreenSyncEngine } from "@/lib/screen/sync"
 
 interface UiFailure {
   readonly ok: false
