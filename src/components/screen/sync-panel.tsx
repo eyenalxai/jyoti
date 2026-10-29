@@ -72,31 +72,27 @@ const SyncPanel = (props: SyncPanelProps) => {
         muted={stopping()}
       />
       <Show when={running()}>
-        <Row label={pauseLabel()} value={phase()} selected={props.selected === "pause"} />
+        <Row label={pauseLabel()} value="enter" selected={props.selected === "pause"} />
       </Show>
       <Row label="Monitor" value={monitor()} selected={props.selected === "monitor"} />
       <Row label="Brightness gain" value={gain()} selected={props.selected === "gain"} />
 
       <box height={1} />
 
-      <text fg={palette.faint} wrapMode="word">
+      <text fg={palette.faint} height={1} wrapMode="none" truncate>
         <span style={{ fg: swatchTone() }}>██ {colorLabel()}</span>
         <span>
           {" "}
-          · {brightness()} · frame {props.model.status().frameAgeMs ?? "—"} ms
+          · {brightness()} · frame {props.model.status().frameAgeMs ?? "—"} ms ·{" "}
+          {props.model.status().reachable}/{props.model.status().total} · {phase()}
         </span>
       </text>
-      <text fg={palette.faint} wrapMode="word">
-        {props.model.status().reachable}/{props.model.status().total} bulbs · {phase()}
-      </text>
 
-      <box height={1} />
-
-      <text fg={palette.faint} wrapMode="word">
+      <text fg={palette.faint} height={1} wrapMode="none" truncate>
         ↑↓ row · ←→ adjust · enter act · esc close
       </text>
-      <text fg={palette.faint} wrapMode="word">
-        Brightness gain scales the frame's brightness; it never changes the colour.
+      <text fg={palette.faint} height={1} wrapMode="none" truncate>
+        Gain changes brightness only; the colour is untouched.
       </text>
     </box>
   )
