@@ -94,7 +94,7 @@ const Modals = (props: ModalsProps) => {
       </Show>
 
       <Show when={props.screen === "sync"}>
-        <Modal title="Screen sync" hint="esc close" width={64} height={14}>
+        <Modal title="Screen sync" hint="esc close" width={64} height={18}>
           <SyncPanel model={props.syncModel} selected={props.syncRow} />
         </Modal>
       </Show>
