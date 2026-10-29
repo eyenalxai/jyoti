@@ -1,17 +1,14 @@
-import type { ColorHex } from "@/lib/bulbs/schema"
+import type { ColorHex, Rgb } from "@/lib/bulbs/schema"
 import type { ScreenFrame } from "@/lib/screen/frame"
 import type { PreparedFrame } from "@/lib/screen/grid"
 import type { Lab } from "@/lib/screen/lab"
 
-import { kelvinToSrgb, oklchToSrgb } from "@/lib/color"
+import { oklchToSrgb } from "@/lib/color"
 import { percentile } from "@/lib/format"
 import { prepareFrame } from "@/lib/screen/grid"
 import { cluster } from "@/lib/screen/kmeans"
 import { deltaEOk, labFromOklch, oklchFromLab } from "@/lib/screen/lab"
 
-const NEUTRAL_ENTER_CHROMA = 0.03
-const NEUTRAL_EXIT_CHROMA = 0.045
-const NEUTRAL_KELVIN = 4000
 const CHROMA_QUANTILE = 0.75
 const SCENE_TAU_MS = 900
 const CLUSTER_DROP = 0.03
@@ -20,15 +17,12 @@ const DEADBAND = 0.02
 
 interface ReducerState {
   readonly centroids: readonly Lab[] | null
-  readonly neutral: boolean
-  readonly primed: boolean
   readonly sceneBrightness: number | null
 }
 
 interface DerivedColor {
-  readonly mode: "color" | "temperature"
   readonly hex: ColorHex
-  readonly kelvin: number | null
+  readonly rgb: Rgb
   readonly lab: Lab
   readonly sceneBrightness: number
 }
@@ -41,8 +35,6 @@ interface Reduction {
 
 const createReducerState = (): ReducerState => ({
   centroids: null,
-  neutral: false,
-  primed: false,
   sceneBrightness: null,
 })
 
@@ -126,47 +118,16 @@ const chooseTarget = (
   }
 }
 
-const temperatureFallback = (sceneBrightness: number): DerivedColor => {
-  const fallback = kelvinToSrgb(NEUTRAL_KELVIN)
-  return {
-    mode: "temperature",
-    hex: fallback.hex,
-    kelvin: NEUTRAL_KELVIN,
-    lab: labFromOklch(fallback.oklch),
-    sceneBrightness,
-  }
-}
-
 const reducePrepared = (
   prepared: PreparedFrame,
   state: ReducerState,
   elapsedMs: number,
 ): Reduction => {
-  const neutral = state.primed
-    ? state.neutral
-      ? prepared.p90Chroma <= NEUTRAL_EXIT_CHROMA
-      : prepared.p90Chroma < NEUTRAL_ENTER_CHROMA
-    : prepared.p90Chroma < NEUTRAL_ENTER_CHROMA
-
   const sceneAlpha = state.sceneBrightness === null ? 1 : smoothing(SCENE_TAU_MS, elapsedMs)
   const sceneBrightness =
     state.sceneBrightness === null
       ? prepared.meanDrive
       : state.sceneBrightness + (prepared.meanDrive - state.sceneBrightness) * sceneAlpha
-
-  if (neutral) {
-    const derived = temperatureFallback(sceneBrightness)
-    return {
-      derived,
-      state: {
-        centroids: state.centroids,
-        neutral: true,
-        primed: true,
-        sceneBrightness,
-      },
-      p90Chroma: prepared.p90Chroma,
-    }
-  }
 
   const clustering = cluster(prepared.lab, prepared.pixelCount, state.centroids)
   const target = chooseTarget(prepared, clustering.assignments, clustering.centroids.length)
@@ -175,16 +136,13 @@ const reducePrepared = (
 
   return {
     derived: {
-      mode: "color",
       hex: srgb.hex,
-      kelvin: null,
+      rgb: srgb.rgb,
       lab,
       sceneBrightness,
     },
     state: {
       centroids: clustering.centroids,
-      neutral: false,
-      primed: true,
       sceneBrightness,
     },
     p90Chroma: prepared.p90Chroma,
@@ -194,25 +152,12 @@ const reducePrepared = (
 const reduceFrame = (frame: ScreenFrame, state: ReducerState, elapsedMs: number): Reduction =>
   reducePrepared(prepareFrame(frame), state, elapsedMs)
 
-const shouldPublish = (
-  next: DerivedColor,
-  last: Pick<DerivedColor, "mode" | "lab"> | null,
-): boolean => {
+const shouldPublish = (next: DerivedColor, last: Pick<DerivedColor, "lab"> | null): boolean => {
   if (last === null) {
-    return true
-  }
-  if (last.mode !== next.mode) {
     return true
   }
   return deltaEOk(next.lab, last.lab) > DEADBAND
 }
 
-export {
-  NEUTRAL_KELVIN,
-  createReducerState,
-  reduceFrame,
-  reducePrepared,
-  resetSmoothing,
-  shouldPublish,
-}
+export { createReducerState, reduceFrame, reducePrepared, resetSmoothing, shouldPublish }
 export type { DerivedColor, Reduction, ReducerState }

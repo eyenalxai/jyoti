@@ -211,11 +211,6 @@ const tick = Effect.fn("ScreenSync.tick")(function* tick(
   }
 
   const prepared = prepareFrame(frame)
-  if (prepared.blackout) {
-    yield* publishLive(deps, handle, healthPatch("black", frame.ageMs))
-    return
-  }
-
   yield* publishLive(deps, handle, { capture: "ok", frameAgeMs: frame.ageMs })
   if ((yield* Ref.get(handle.phase)) === "paused") {
     return

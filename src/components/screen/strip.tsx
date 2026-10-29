@@ -14,9 +14,6 @@ interface SyncStripProps {
 }
 
 const healthWord = (capture: CaptureHealth): string => {
-  if (capture === "black") {
-    return "black frame"
-  }
   if (capture === "stale") {
     return "capture stale"
   }
@@ -50,7 +47,7 @@ const phaseView = (phase: SyncPhase, capture: CaptureHealth, flashing: boolean):
   if (capture === "lost") {
     return { word: "capture lost", glyph: "○", tone: palette.danger }
   }
-  if (capture === "black" || capture === "stale" || capture === "switching") {
+  if (capture === "stale" || capture === "switching") {
     return { word: healthWord(capture), glyph: "◐", tone: palette.warning }
   }
   if (flashing) {
@@ -64,13 +61,7 @@ const SyncStrip = (props: SyncStripProps) => {
     phaseView(props.status.phase, props.status.capture, props.status.flashing),
   )
   const color = createMemo(() => props.status.color)
-  const colorLabel = createMemo(() => {
-    const current = color()
-    if (current === null) {
-      return "—"
-    }
-    return current.mode === "temperature" ? `${current.kelvin ?? 4000} K` : current.hex
-  })
+  const colorLabel = createMemo(() => color()?.hex ?? "—")
   const swatchTone = createMemo(() => {
     const current = color()
     return current === null ? palette.faint : RGBA.fromHex(current.hex)

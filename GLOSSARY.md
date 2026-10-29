@@ -86,7 +86,7 @@ A sync run that keeps capture, sessions and state but publishes nothing. The bul
 
 ## Sync strip
 
-The two-line panel above the status line while a sync run exists. Its first line carries the state, captured monitor, derived colour or neutral fallback, sync brightness, frame age and reachable/total bulbs; its second line carries the run's keys.
+The two-line panel above the status line while a sync run exists. Its first line carries the state, captured monitor, derived colour, sync brightness, frame age and reachable/total bulbs; its second line carries the run's keys.
 
 ## Captured monitor
 
@@ -94,7 +94,7 @@ The monitor a sync run reads.
 
 ## Derived colour
 
-The single colour the colour reducer produces for a frame: the colour of the winning OKLab cluster — its mean lightness and hue, with the chroma raised toward the cluster's 75th percentile — or the neutral fallback.
+The single colour the colour reducer produces for a frame: the colour of the winning OKLab cluster — its mean lightness and hue, with the chroma raised toward the cluster's 75th percentile. It is sent as it is, white, grey and black included.
 
 ## Scene brightness
 
@@ -112,10 +112,6 @@ The rule that watches the last three target sync brightness values. A direction 
 
 A sync run whose flash guard is holding brightness. Colour keeps updating; the strip says `flashing scene` until the hold ends.
 
-## Blackout hold
-
-Holding the last derived colour and sync brightness while the frame is near-black, so a black scene does not pump the room through neutral.
-
 ## Stale frame
 
 A captured frame older than about one second. The run holds the last colour until a fresh frame arrives.
@@ -127,10 +123,6 @@ A sync run with no fresh frame for about five seconds. Publishing stops but the 
 ## Self-capture warning
 
 The `⚠ jyoti` marker in the sync strip when the captured monitor is the one running jyoti: the only monitor, or an unknown focus. Monitor selection is the only self-mask; the run is allowed with the warning.
-
-## Neutral fallback
-
-The 4000 K temperature mode used when the scene has too little chroma for a colour.
 
 ## miIO session
 

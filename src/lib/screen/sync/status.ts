@@ -2,7 +2,7 @@ import type { BulbId } from "@/lib/bulbs/schema"
 import type { DerivedColor } from "@/lib/screen/reducer"
 
 type SyncPhase = "idle" | "starting" | "syncing" | "paused" | "stopping"
-type CaptureHealth = "ok" | "switching" | "black" | "stale" | "lost"
+type CaptureHealth = "ok" | "switching" | "stale" | "lost"
 type BulbSyncPhase = "syncing" | "unreachable" | "restored" | "not-restored"
 
 interface SyncedBulb {
