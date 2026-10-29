@@ -12,7 +12,7 @@ const resolveSelection = (
   bulbs: readonly Bulb[],
   previous: BulbSelection | null,
 ): BulbSelection | null => {
-  if (previous?.kind === "all" && bulbs.length >= 2) {
+  if (bulbs.length >= 2 && (previous === null || previous.kind === "all")) {
     return allSelection
   }
   const kept =
@@ -49,4 +49,25 @@ const moveSelection = (
   return bulb === undefined ? current : bulbSelection(bulb.id)
 }
 
-export { allSelection, bulbSelection, moveSelection, resolveSelection, type BulbSelection }
+const selectionAfterAdd = (
+  before: number,
+  id: BulbId,
+  current: BulbSelection | null,
+): BulbSelection => {
+  if (before === 0) {
+    return bulbSelection(id)
+  }
+  if (before === 1) {
+    return allSelection
+  }
+  return current ?? bulbSelection(id)
+}
+
+export {
+  allSelection,
+  bulbSelection,
+  moveSelection,
+  resolveSelection,
+  selectionAfterAdd,
+  type BulbSelection,
+}

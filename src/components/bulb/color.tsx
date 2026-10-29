@@ -2,19 +2,14 @@ import { useKeyboard } from "@opentui/solid"
 import { Show, createMemo, createSignal, onCleanup, onMount } from "solid-js"
 
 import type { Mode } from "@/components/bulb/color/mode"
-import type { ChannelRange, Oklch } from "@/lib/color"
+import type { Rgb } from "@/lib/bulbs/schema"
+import type { ChannelRange } from "@/lib/color"
 
 import { ModeTabs } from "@/components/bulb/color/mode"
 import { Swatch } from "@/components/bulb/color/swatch"
 import { Slider } from "@/components/ui/slider"
-import {
-  CHROMA_RANGE,
-  HUE_RANGE,
-  LIGHTNESS_RANGE,
-  hexToOklch,
-  oklchToSrgb,
-  rgbToOklch,
-} from "@/lib/color"
+import { formatColor, packColor, parseColor } from "@/lib/bulbs/schema"
+import { HUE_MAX, PERCENT_MAX, hsbToRgb, rgbToHsb, withHue, withSaturation } from "@/lib/color/hsb"
 import { clamp } from "@/lib/format"
 import { palette } from "@/lib/theme"
 import { after, cancel } from "@/lib/timers"
@@ -23,27 +18,28 @@ interface ColorProps {
   readonly initial: string
   readonly busy: boolean
   readonly error: string | null
-  readonly onSubmit: (hex: string) => void
+  readonly width: number
+  readonly onPreview: (hex: string) => void
+  readonly onSubmit: () => void
 }
 
 type PickerFocus = 0 | 1 | 2 | 3
 
-const HEX_FOCUS: PickerFocus = 3
-const focusOrder: readonly PickerFocus[] = [0, 1, 2, HEX_FOCUS]
 const RGB_RANGE: ChannelRange = { min: 0, max: 255, step: 1 }
-const WHITE: Oklch = { lightness: 100, chroma: 0, hue: 0 }
+const HUE_RANGE: ChannelRange = { min: 0, max: HUE_MAX, step: 1 }
+const SATURATION_RANGE: ChannelRange = { min: 0, max: PERCENT_MAX, step: 1 }
+const WHITE: Rgb = { red: 255, green: 255, blue: 255 }
 
-const formatLightness = (value: number): string => `${Math.round(value)}`
-const formatChroma = (value: number): string => value.toFixed(2)
 const formatHue = (value: number): string => `${Math.round(value)}°`
+const formatPercent = (value: number): string => `${Math.round(value)}%`
 const formatChannel = (value: number): string => `${value}`
 
 const Color = (props: ColorProps) => {
-  const seeded = hexToOklch(props.initial) ?? WHITE
-  const [color, setColor] = createSignal<Oklch>(seeded)
-  const [mode, setMode] = createSignal<Mode>("oklch")
+  const seeded = parseColor(props.initial) ?? WHITE
+  const [rgb, setRgb] = createSignal<Rgb>(seeded)
+  const [mode, setMode] = createSignal<Mode>("hs")
   const [focus, setFocus] = createSignal<PickerFocus>(0)
-  const [hexDraft, setHexDraft] = createSignal(oklchToSrgb(seeded).hex)
+  const [hexDraft, setHexDraft] = createSignal(formatColor(packColor(seeded)))
   const [issue, setIssue] = createSignal<string | null>(null)
   const [ready, setReady] = createSignal(false)
 
@@ -56,75 +52,71 @@ const Color = (props: ColorProps) => {
     })
   })
 
-  const preview = createMemo(() => oklchToSrgb(color()))
-  const rgb = () => preview().rgb
-  const hex = () => preview().hex
-  const clipped = () => preview().clipped
+  const hsb = createMemo(() => rgbToHsb(rgb()))
+  const hex = () => formatColor(packColor(rgb()))
+  const hexFocus = (): PickerFocus => (mode() === "hs" ? 2 : 3)
+  const order = (): readonly PickerFocus[] => (mode() === "hs" ? [0, 1, 2] : [0, 1, 2, 3])
+  const meterWidth = (): number => Math.max(10, Math.min(28, props.width - 30))
 
-  const applyColor = (next: Oklch) => {
-    setColor(next)
-    setHexDraft(oklchToSrgb(next).hex)
+  const applyRgb = (next: Rgb, preview = true) => {
+    setRgb(next)
+    setHexDraft(formatColor(packColor(next)))
     setIssue(null)
+    if (preview) {
+      props.onPreview(formatColor(packColor(next)))
+    }
   }
 
   const adjust = (direction: number) => {
-    if (mode() === "oklch") {
-      const current = color()
+    if (mode() === "hs") {
+      const current = hsb()
       if (focus() === 0) {
-        applyColor({
-          ...current,
-          lightness: clamp(
-            current.lightness + direction * LIGHTNESS_RANGE.step,
-            LIGHTNESS_RANGE.min,
-            LIGHTNESS_RANGE.max,
-          ),
-        })
+        const base =
+          current.saturation === 0 ? hsbToRgb({ ...current, saturation: PERCENT_MAX }) : rgb()
+        applyRgb(withHue(base, clamp(current.hue + direction, HUE_RANGE.min, HUE_RANGE.max)))
       }
       if (focus() === 1) {
-        applyColor({
-          ...current,
-          chroma: clamp(
-            current.chroma + direction * CHROMA_RANGE.step,
-            CHROMA_RANGE.min,
-            CHROMA_RANGE.max,
+        applyRgb(
+          withSaturation(
+            rgb(),
+            clamp(current.saturation + direction, SATURATION_RANGE.min, SATURATION_RANGE.max),
           ),
-        })
-      }
-      if (focus() === 2) {
-        applyColor({
-          ...current,
-          hue: clamp(current.hue + direction * HUE_RANGE.step, HUE_RANGE.min, HUE_RANGE.max),
-        })
+        )
       }
       return
     }
 
     const current = rgb()
     if (focus() === 0) {
-      applyColor(rgbToOklch({ ...current, red: clamp(current.red + direction, 0, 255) }))
+      applyRgb({ ...current, red: clamp(current.red + direction, RGB_RANGE.min, RGB_RANGE.max) })
     }
     if (focus() === 1) {
-      applyColor(rgbToOklch({ ...current, green: clamp(current.green + direction, 0, 255) }))
+      applyRgb({
+        ...current,
+        green: clamp(current.green + direction, RGB_RANGE.min, RGB_RANGE.max),
+      })
     }
     if (focus() === 2) {
-      applyColor(rgbToOklch({ ...current, blue: clamp(current.blue + direction, 0, 255) }))
+      applyRgb({ ...current, blue: clamp(current.blue + direction, RGB_RANGE.min, RGB_RANGE.max) })
     }
   }
 
   const moveFocus = (direction: number) => {
-    const current = focusOrder.indexOf(focus())
-    const next = focusOrder[(current + direction + focusOrder.length) % focusOrder.length]
+    const positions = order()
+    const current = positions.indexOf(focus())
+    const next = positions[(current + direction + positions.length) % positions.length]
     if (next === undefined) {
       return
     }
-    if (next === HEX_FOCUS) {
+    if (next === hexFocus()) {
       setHexDraft(hex())
     }
     setFocus(next)
   }
 
   const switchMode = () => {
-    setMode((current) => (current === "oklch" ? "rgb" : "oklch"))
+    setMode((current) => (current === "hs" ? "rgb" : "hs"))
+    setFocus(0)
     setHexDraft(hex())
     setIssue(null)
   }
@@ -135,10 +127,9 @@ const Color = (props: ColorProps) => {
     if (next === hex()) {
       return
     }
-    const parsed = hexToOklch(next)
+    const parsed = parseColor(next)
     if (parsed !== null) {
-      setColor(parsed)
-      setIssue(null)
+      applyRgb(parsed)
     }
   }
 
@@ -146,14 +137,17 @@ const Color = (props: ColorProps) => {
     if (props.busy) {
       return
     }
-    const parsed = hexToOklch(hexDraft())
+    const parsed = parseColor(hexDraft())
     if (parsed === null) {
       setIssue("Enter six hexadecimal digits, for example #FF8800.")
       return
     }
     setIssue(null)
-    setColor(parsed)
-    props.onSubmit(oklchToSrgb(parsed).hex)
+    const next = formatColor(packColor(parsed))
+    if (next !== hex()) {
+      applyRgb(parsed)
+    }
+    props.onSubmit()
   }
 
   useKeyboard((key) => {
@@ -176,7 +170,7 @@ const Color = (props: ColorProps) => {
       submit()
       return
     }
-    if (focus() === HEX_FOCUS) {
+    if (focus() === hexFocus()) {
       return
     }
     if (key.name === "left" || key.name === "h") {
@@ -201,7 +195,8 @@ const Color = (props: ColorProps) => {
       min={range.min}
       max={range.max}
       text={text}
-      width={27}
+      width={meterWidth()}
+      labelWidth={11}
       focused={focus() === index}
       onFocus={() => {
         setFocus(index)
@@ -209,22 +204,24 @@ const Color = (props: ColorProps) => {
     />
   )
 
-  const status = (): string =>
-    props.error ?? issue() ?? (clipped() ? "Chroma reduced until the colour fits sRGB." : " ")
-  const statusTone = () => {
-    if (props.error !== null || issue() !== null) {
-      return palette.danger
-    }
-    return clipped() ? palette.warning : palette.background
-  }
+  const status = (): string => props.error ?? issue() ?? " "
+  const statusTone = () =>
+    props.error !== null || issue() !== null ? palette.danger : palette.faint
 
   return (
-    <box flexDirection="column" flexGrow={1} gap={0}>
+    <box flexDirection="column" flexGrow={1} gap={0} minHeight={0}>
+      <box flexDirection="row" justifyContent="space-between" height={1}>
+        <text fg={palette.text}>
+          <strong>Set colour</strong>
+        </text>
+        <text fg={palette.faint}>esc close</text>
+      </box>
+
       <ModeTabs mode={mode()} />
 
-      <box flexDirection="column" height={3}>
+      <box flexDirection="column" height={mode() === "hs" ? 2 : 3}>
         <Show
-          when={mode() === "oklch"}
+          when={mode() === "hs"}
           fallback={
             <>
               {slider(0, "Red", rgb().red, RGB_RANGE, formatChannel(rgb().red))}
@@ -233,32 +230,31 @@ const Color = (props: ColorProps) => {
             </>
           }
         >
+          {slider(0, "Hue", hsb().hue, HUE_RANGE, formatHue(hsb().hue))}
           {slider(
-            0,
-            "Light",
-            color().lightness,
-            LIGHTNESS_RANGE,
-            formatLightness(color().lightness),
+            1,
+            "Saturation",
+            hsb().saturation,
+            SATURATION_RANGE,
+            formatPercent(hsb().saturation),
           )}
-          {slider(1, "Chroma", color().chroma, CHROMA_RANGE, formatChroma(color().chroma))}
-          {slider(2, "Hue", color().hue, HUE_RANGE, formatHue(color().hue))}
         </Show>
       </box>
 
       <box height={1} />
 
       <box flexDirection="row" gap={1} height={1}>
-        <text fg={focus() === HEX_FOCUS ? palette.accent : palette.background}>
-          {focus() === HEX_FOCUS ? "›" : " "}
+        <text fg={focus() === hexFocus() ? palette.accent : palette.background}>
+          {focus() === hexFocus() ? "›" : " "}
         </text>
-        <box width={6}>
-          <text fg={focus() === HEX_FOCUS ? palette.accent : palette.muted}>Hex</text>
+        <box width={11}>
+          <text fg={focus() === hexFocus() ? palette.accent : palette.muted}>Hex</text>
         </box>
         <input
           width={12}
           value={hexDraft()}
           onInput={editHex}
-          focused={ready() && focus() === HEX_FOCUS}
+          focused={ready() && focus() === hexFocus()}
           maxLength={7}
           placeholder="#FFFFFF"
           backgroundColor={palette.background}
@@ -270,7 +266,7 @@ const Color = (props: ColorProps) => {
         <text fg={palette.faint}>six digits</text>
       </box>
 
-      <Swatch hex={hex()} clipped={clipped()} />
+      <Swatch hex={hex()} />
 
       <box height={1}>
         <text fg={statusTone()} truncate>
@@ -280,10 +276,10 @@ const Color = (props: ColorProps) => {
 
       <box flexDirection="row" justifyContent="space-between" height={1}>
         <text bg={palette.surfaceRaised} fg={palette.faint}>
-          esc cancel · tab mode · ↑↓ move
+          tab mode · ↑↓ field · ←→ adjust
         </text>
         <text bg={palette.surfaceRaised} fg={props.busy ? palette.faint : palette.accent}>
-          {props.busy ? "applying…" : "enter apply"}
+          {props.busy ? "applying…" : "enter done"}
         </text>
       </box>
     </box>

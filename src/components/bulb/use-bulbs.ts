@@ -6,8 +6,15 @@ import { createEffect, createMemo, createSignal, onMount } from "solid-js"
 import type { Bulb, BulbDraft, BulbId, BulbPatch, BulbState } from "@/lib/bulbs/schema"
 import type { BulbSelection } from "@/lib/bulbs/selection"
 
-import { allSelection, bulbSelection, moveSelection, resolveSelection } from "@/lib/bulbs/selection"
+import {
+  allSelection,
+  bulbSelection,
+  moveSelection,
+  resolveSelection,
+  selectionAfterAdd,
+} from "@/lib/bulbs/selection"
 import { Bulbs } from "@/lib/bulbs/service"
+import { patchStateMap, removeFromMap } from "@/lib/bulbs/state-map"
 import { run } from "@/lib/runtime"
 
 interface UseBulbsOptions {
@@ -68,64 +75,23 @@ const useBulbs = (options: UseBulbsOptions): BulbsModel => {
   const allSelected = createMemo(() => selection()?.kind === "all")
 
   const patchState = (id: BulbId, patch: Partial<BulbState>) => {
-    setStates((previous) => {
-      const current = previous.get(id)
-      if (current === undefined) {
-        return previous
-      }
-      const next: BulbState = {
-        power: patch.power ?? current.power,
-        brightness: patch.brightness ?? current.brightness,
-        temperature: patch.temperature ?? current.temperature,
-        color: patch.color ?? current.color,
-        mode: patch.mode ?? current.mode,
-      }
-      return new Map(previous).set(id, next)
-    })
+    setStates((previous) => patchStateMap(previous, id, patch))
   }
 
   const clearState = (id: string) => {
-    setStates((previous) => {
-      if (!previous.has(id)) {
-        return previous
-      }
-      const next = new Map(previous)
-      next.delete(id)
-      return next
-    })
-    setStateErrors((previous) => {
-      if (!previous.has(id)) {
-        return previous
-      }
-      const next = new Map(previous)
-      next.delete(id)
-      return next
-    })
+    setStates((previous) => removeFromMap(previous, id))
+    setStateErrors((previous) => removeFromMap(previous, id))
   }
 
   const readOne = (id: BulbId): Promise<string | null> =>
     run(Bulbs.use((service) => service.readState(id))).then((result) => {
       if (result.ok) {
         setStates((previous) => new Map(previous).set(id, result.value))
-        setStateErrors((previous) => {
-          if (!previous.has(id)) {
-            return previous
-          }
-          const next = new Map(previous)
-          next.delete(id)
-          return next
-        })
+        setStateErrors((previous) => removeFromMap(previous, id))
         return null
       }
 
-      setStates((previous) => {
-        if (!previous.has(id)) {
-          return previous
-        }
-        const next = new Map(previous)
-        next.delete(id)
-        return next
-      })
+      setStates((previous) => removeFromMap(previous, id))
       setStateErrors((previous) => new Map(previous).set(id, result.message))
       return result.message
     })
@@ -227,8 +193,9 @@ const useBulbs = (options: UseBulbsOptions): BulbsModel => {
       if (!result.ok) {
         return result.message
       }
+      const before = bulbs()
       setBulbs((previous) => [...previous, result.value])
-      setSelection(bulbSelection(result.value.id))
+      setSelection(selectionAfterAdd(before.length, result.value.id, selection()))
       void readOne(result.value.id)
       return null
     })

@@ -2,22 +2,23 @@ import { Array as Arr, String as Str } from "effect"
 import { Show, createMemo } from "solid-js"
 
 import type { ControlFocus } from "@/components/bulb/controls"
+import type { Pane } from "@/components/bulb/pane"
 import type { BulbsModel } from "@/components/bulb/use-bulbs"
 import type { Notice } from "@/components/ui/status"
+import type { LightSide } from "@/lib/bulbs/aggregate"
 import type { BulbId } from "@/lib/bulbs/schema"
 import type { BulbSyncPhase, SyncStatus } from "@/lib/screen/sync/status"
 
 import { AllDetail } from "@/components/bulb/all-detail"
 import { Detail } from "@/components/bulb/detail"
 import { Empty } from "@/components/bulb/empty"
+import { dashboardHint, globalHint as globalHintText } from "@/components/bulb/hints"
 import { Rail } from "@/components/bulb/rail"
 import { SyncStrip } from "@/components/screen/strip"
 import { StatusLine } from "@/components/ui/status"
-import { aggregateState } from "@/lib/bulbs/aggregate"
-import { SYNC_OWNS_CONTROLS, syncKeys } from "@/lib/screen/sync/copy"
+import { aggregateState, lightQualityOf } from "@/lib/bulbs/aggregate"
+import { syncKeys } from "@/lib/screen/sync/copy"
 import { palette } from "@/lib/theme"
-
-type Pane = "bulbs" | "controls"
 
 interface DashboardProps {
   readonly model: BulbsModel
@@ -27,7 +28,14 @@ interface DashboardProps {
   readonly syncStatus: SyncStatus
   readonly width: number
   readonly height: number
+  readonly colorOpen: boolean
+  readonly colorBusy: boolean
+  readonly colorError: string | null
+  readonly colorInitial: string
   readonly onFocus: (focus: ControlFocus) => void
+  readonly onQuality: (quality: LightSide) => void
+  readonly onPreviewColor: (hex: string) => void
+  readonly onSubmitColor: () => void
 }
 
 const Dashboard = (props: DashboardProps) => {
@@ -42,6 +50,11 @@ const Dashboard = (props: DashboardProps) => {
     aggregateState(props.model.bulbs(), props.model.states(), props.model.stateErrors()),
   )
   const showingAll = createMemo(() => props.model.allSelected() && props.model.canSelectAll())
+  const quality = createMemo(() =>
+    props.model.allSelected()
+      ? aggregate().quality
+      : lightQualityOf(props.model.selectedState()?.mode),
+  )
   const syncBulbs = createMemo(() => {
     const map = new Map<BulbId, BulbSyncPhase>()
     for (const bulb of props.syncStatus.bulbs) {
@@ -62,79 +75,30 @@ const Dashboard = (props: DashboardProps) => {
     return `${list.length} ${list.length === 1 ? "bulb" : "bulbs"} · ${on} on`
   })
 
-  const hint = createMemo(() => {
-    if (props.model.bulbs().length === 0) {
-      return "no bulb selected"
-    }
-    if (props.model.selectedError() !== undefined) {
-      return "r retry"
-    }
-    if (props.model.refreshing()) {
-      return "refreshing…"
-    }
-    if (props.pane === "controls" && syncActive() && props.focus !== "power") {
-      return SYNC_OWNS_CONTROLS
-    }
-    if (showingAll()) {
-      if (props.pane === "bulbs") {
-        return "↑/↓ select · tab controls"
-      }
-      switch (props.focus) {
-        case "power": {
-          return "space toggle all · ↑/↓ control · tab bulbs"
-        }
-        case "brightness":
-        case "temperature": {
-          return "←/→ set all · ↑/↓ control · tab bulbs"
-        }
-        case "color": {
-          return "enter or c set all · ↑/↓ control · tab bulbs"
-        }
-        default: {
-          return "tab bulbs"
-        }
-      }
-    }
-    if (props.pane === "bulbs") {
-      return "↑/↓ select · tab controls"
-    }
-    switch (props.focus) {
-      case "power": {
-        return "space toggle · ↑/↓ control · tab bulbs"
-      }
-      case "brightness": {
-        return "←/→ adjust · ↑/↓ control · tab bulbs"
-      }
-      case "temperature": {
-        return "←/→ adjust · ↑/↓ control · tab bulbs"
-      }
-      case "color": {
-        return "enter set color · ↑/↓ control · tab bulbs"
-      }
-      default: {
-        return "tab bulbs"
-      }
-    }
-  })
+  const hint = createMemo(() =>
+    dashboardHint({
+      pane: props.pane,
+      focus: props.focus,
+      quality: quality(),
+      showingAll: showingAll(),
+      hasBulbs: props.model.bulbs().length > 0,
+      error: props.model.selectedError() !== undefined,
+      refreshing: props.model.refreshing(),
+      syncActive: syncActive(),
+    }),
+  )
 
   const syncHint = createMemo(() => syncKeys(props.syncStatus.phase))
 
-  const globalHint = createMemo(() => {
-    if (syncActive()) {
-      if (shellWidth() < 90) {
-        return `${syncHint()} · ? help · q quit`
-      }
-      return `${syncHint()} · r refresh · ? help · q quit`
-    }
-    if (props.model.bulbs().length === 0) {
-      return `${syncHint()} · ? help · q quit`
-    }
-    const all = props.model.canSelectAll() ? "A all · " : ""
-    if (shellWidth() < 90) {
-      return `${all}a add · ${syncHint()} · ? help · q quit`
-    }
-    return `${all}a add · e edit · d remove · r refresh · ${syncHint()} · ? help · q quit`
-  })
+  const footerHint = createMemo(() =>
+    globalHintText({
+      syncActive: syncActive(),
+      shellWidth: shellWidth(),
+      hasBulbs: props.model.bulbs().length > 0,
+      canSelectAll: props.model.canSelectAll(),
+      syncHint: syncHint(),
+    }),
+  )
 
   return (
     <Show
@@ -224,7 +188,14 @@ const Dashboard = (props: DashboardProps) => {
                             syncLocked={syncActive()}
                             width={detailWidth()}
                             meterWidth={meterWidth()}
+                            colorOpen={props.colorOpen}
+                            colorBusy={props.colorBusy}
+                            colorError={props.colorError}
+                            colorInitial={props.colorInitial}
                             onFocus={props.onFocus}
+                            onQuality={props.onQuality}
+                            onPreviewColor={props.onPreviewColor}
+                            onSubmitColor={props.onSubmitColor}
                           />
                         )}
                       </Show>
@@ -237,7 +208,14 @@ const Dashboard = (props: DashboardProps) => {
                       syncLocked={syncActive()}
                       width={detailWidth()}
                       meterWidth={meterWidth()}
+                      colorOpen={props.colorOpen}
+                      colorBusy={props.colorBusy}
+                      colorError={props.colorError}
+                      colorInitial={props.colorInitial}
                       onFocus={props.onFocus}
+                      onQuality={props.onQuality}
+                      onPreviewColor={props.onPreviewColor}
+                      onSubmitColor={props.onSubmitColor}
                     />
                   </Show>
                 </box>
@@ -256,7 +234,7 @@ const Dashboard = (props: DashboardProps) => {
             <box flexDirection="row" justifyContent="space-between" height={1} gap={2}>
               <StatusLine notice={props.notice} fallback={hint()} />
               <text fg={palette.muted} truncate wrapMode="none" flexShrink={0}>
-                {globalHint()}
+                {footerHint()}
               </text>
             </box>
           </box>
@@ -266,4 +244,4 @@ const Dashboard = (props: DashboardProps) => {
   )
 }
 
-export { Dashboard, type Pane }
+export { Dashboard }

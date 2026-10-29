@@ -24,7 +24,7 @@ interface FormsModel {
   readonly submitAdd: (draft: BulbDraft) => void
   readonly submitEdit: (draft: BulbDraft) => void
   readonly confirmRemove: () => void
-  readonly submitColor: (hex: string) => void
+  readonly submitColor: () => void
 }
 
 const useForms = (options: UseFormsOptions): FormsModel => {
@@ -90,28 +90,11 @@ const useForms = (options: UseFormsOptions): FormsModel => {
     })
   }
 
-  const submitColor = (hex: string) => {
-    const all = options.model.allSelected()
-    const bulb = options.activeBulb()
-    if ((!all && bulb === null) || options.busy()) {
-      return
-    }
-    const label = all ? "All bulbs" : (bulb?.name ?? "The bulb")
-    options.setBusy(true)
+  const submitColor = () => {
+    options.controls.flushPending()
     options.setFormError(null)
-    void options.controls.setColor(hex).then((outcome) => {
-      options.setBusy(false)
-      if (outcome.error !== null && !outcome.partial) {
-        options.setFormError(outcome.error)
-        return null
-      }
-      options.setScreen("dashboard")
-      options.setActiveBulb(null)
-      if (outcome.error === null) {
-        options.notify({ kind: "success", message: `${label} set to ${hex}.` })
-      }
-      return null
-    })
+    options.setScreen("dashboard")
+    options.setActiveBulb(null)
   }
 
   return { submitAdd, submitEdit, confirmRemove, submitColor }

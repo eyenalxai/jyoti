@@ -2,8 +2,8 @@ import { useRenderer, useTerminalDimensions } from "@opentui/solid"
 import { createMemo, createSignal, onCleanup } from "solid-js"
 
 import type { ControlFocus } from "@/components/bulb/controls"
-import type { Pane } from "@/components/bulb/dashboard"
 import type { Screen } from "@/components/bulb/modals"
+import type { Pane } from "@/components/bulb/pane"
 import type { Notice } from "@/components/ui/status"
 import type { Bulb } from "@/lib/bulbs/schema"
 import type { Timer } from "@/lib/timers"
@@ -11,22 +11,21 @@ import type { Timer } from "@/lib/timers"
 import { Dashboard } from "@/components/bulb/dashboard"
 import { Modals } from "@/components/bulb/modals"
 import { useBulbActions } from "@/components/bulb/use-actions"
-import { useAppKeys } from "@/components/bulb/use-app-keys"
+import { useAppCommands } from "@/components/bulb/use-app-commands"
 import { useBulbs } from "@/components/bulb/use-bulbs"
 import { useControls } from "@/components/bulb/use-controls"
 import { useForms } from "@/components/bulb/use-forms"
 import { useTerminalPalette } from "@/components/bulb/use-terminal-palette"
 import { useCapturePreview } from "@/components/screen/use-preview"
 import { useScreenSyncModel } from "@/components/screen/use-sync"
-import { aggregateState } from "@/lib/bulbs/aggregate"
-import { BRIGHTNESS_STEP, TEMPERATURE_STEP } from "@/lib/bulbs/schema"
+import { aggregateState, lightQualityOf } from "@/lib/bulbs/aggregate"
+import { NEUTRAL_TEMPERATURE } from "@/lib/bulbs/schema"
+import { kelvinToSrgb } from "@/lib/color"
 import { noticeDuration } from "@/lib/format"
 import { dispose } from "@/lib/runtime"
-import { SYNC_OWNS_CONTROLS } from "@/lib/screen/sync/copy"
 import { palette } from "@/lib/theme"
 import { after, cancel } from "@/lib/timers"
 
-const focusOrder: readonly ControlFocus[] = ["power", "brightness", "temperature", "color"]
 const App = () => {
   const renderer = useRenderer()
   const dimensions = useTerminalDimensions()
@@ -76,8 +75,11 @@ const App = () => {
       renderer.destroy()
     })
   }
-  const syncOwnsControls = () =>
-    syncActive() && (focus() === "brightness" || focus() === "temperature")
+  const selectedQuality = createMemo(() =>
+    model.allSelected()
+      ? aggregateState(model.bulbs(), model.states(), model.stateErrors()).quality
+      : lightQualityOf(model.selectedState()?.mode),
+  )
   const actions = useBulbActions({
     model,
     syncActive,
@@ -99,157 +101,46 @@ const App = () => {
     notify,
   })
   const colorInitial = createMemo(() => {
-    if (!model.allSelected()) {
-      return model.selectedState()?.color ?? "#FFFFFF"
+    const aggregate = model.allSelected()
+      ? aggregateState(model.bulbs(), model.states(), model.stateErrors())
+      : null
+    const current =
+      aggregate === null
+        ? model.selectedState()?.color
+        : aggregate.color?.kind === "equal"
+          ? aggregate.color.hex
+          : undefined
+    if (current !== undefined && current !== null && current !== "#000000") {
+      return current
     }
-    const aggregate = aggregateState(model.bulbs(), model.states(), model.stateErrors())
-    return aggregate.color?.kind === "equal" ? aggregate.color.hex : "#FFFFFF"
+    const kelvin =
+      aggregate === null
+        ? (model.selectedState()?.temperature ?? NEUTRAL_TEMPERATURE)
+        : (aggregate.temperature?.low ?? NEUTRAL_TEMPERATURE)
+    return kelvinToSrgb(kelvin).hex
   })
 
-  const closeScreen = () => {
-    if (busy()) {
-      return
-    }
-    setScreen("dashboard")
-    setActiveBulb(null)
-    setFormError(null)
-  }
-
-  const selectAll = () => {
-    if (!model.canSelectAll()) {
-      notify({
-        kind: "info",
-        message:
-          model.bulbs().length === 0
-            ? "Add a bulb first."
-            : "Add a second bulb to control all of them.",
-      })
-      return
-    }
-    model.selectAll()
-    setFocus("power")
-  }
-
-  const cycleFocus = (direction: number) => {
-    const current = focusOrder.indexOf(focus())
-    const base = current === -1 ? 0 : current
-    const next = focusOrder[(base + direction + focusOrder.length) % focusOrder.length]
-    if (next !== undefined) {
-      setFocus(next)
-    }
-  }
-  const move = (delta: number) => {
-    if (pane() === "bulbs") {
-      model.move(delta)
-      return
-    }
-    cycleFocus(delta)
-  }
-  const adjust = (direction: number) => {
-    if (pane() !== "controls") {
-      return
-    }
-    if (syncOwnsControls()) {
-      notify({ kind: "info", message: SYNC_OWNS_CONTROLS })
-      return
-    }
-    if (focus() === "brightness") {
-      controls.adjustBrightness(direction * BRIGHTNESS_STEP)
-    }
-    if (focus() === "temperature") {
-      controls.adjustTemperature(direction * TEMPERATURE_STEP)
-    }
-  }
-  const activate = () => {
-    if (pane() === "bulbs") {
-      setPane("controls")
-      return
-    }
-    if (focus() === "power") {
-      void controls.togglePower()
-      return
-    }
-    if (focus() === "color") {
-      actions.openColor()
-      return
-    }
-    if (syncOwnsControls()) {
-      notify({ kind: "info", message: SYNC_OWNS_CONTROLS })
-      return
-    }
-    controls.flushPending()
-  }
-
-  const togglePane = () => {
-    setPane((current) => (current === "bulbs" ? "controls" : "bulbs"))
-  }
-
-  const focusControl = (next: ControlFocus) => {
-    setPane("controls")
-    setFocus(next)
-  }
-
-  useAppKeys({
-    screen: () => screen(),
-    onQuit: quit,
-    onClose: closeScreen,
-    onAdd: actions.openAdd,
-    onEdit: actions.openEdit,
-    onRemove: actions.openRemove,
-    onColor: actions.openColor,
-    onRefresh: () => {
-      model.refresh()
-      sync.clearRestore()
-    },
-    onSyncToggle: sync.toggle,
-    onSyncPause: sync.togglePause,
-    onMonitor: () => {
-      if (sync.status().phase === "stopping") {
-        notify({ kind: "info", message: "Wait for sync to stop." })
-        return
-      }
-      sync.openMonitors()
-      setScreen("monitors")
-    },
-    onHelp: () => {
-      setScreen("help")
-    },
-    onTogglePower: () => {
-      void controls.togglePower()
-    },
-    onSelectAll: selectAll,
-    onTogglePane: togglePane,
-    onFocus: focusControl,
-    onMove: move,
-    onAdjust: adjust,
-    onActivate: activate,
-    onConfirmRemove: forms.confirmRemove,
-    onPreview: () => {
-      if (syncActive()) {
-        notify({
-          kind: "info",
-          message: "Stop screen sync before opening the capture preview.",
-        })
-        return
-      }
-      preview.open()
-      setScreen("capture")
-    },
-    onPreviewMove: preview.move,
-    onPreviewToggle: preview.toggle,
-    onPreviewClose: () => {
-      preview.close()
-      setScreen("dashboard")
-    },
-    onMonitorMove: sync.moveMonitor,
-    onMonitorChoose: () => {
-      void sync.chooseMonitor().then((chosen) => {
-        if (chosen) {
-          setScreen("dashboard")
-        }
-        return null
-      })
-    },
+  const commands = useAppCommands({
+    model,
+    controls,
+    actions,
+    sync,
+    preview,
+    screen,
+    focus,
+    pane,
+    busy,
+    syncActive,
+    selectedQuality,
+    colorInitial,
+    setScreen,
+    setActiveBulb,
+    setFormError,
+    setFocus,
+    setPane,
+    notify,
+    quit,
+    confirmRemove: forms.confirmRemove,
   })
 
   onCleanup(() => {
@@ -278,12 +169,18 @@ const App = () => {
         syncStatus={sync.status()}
         width={dimensions().width}
         height={dimensions().height}
-        onFocus={focusControl}
+        colorOpen={screen() === "color"}
+        colorBusy={busy()}
+        colorError={formError()}
+        colorInitial={colorInitial()}
+        onFocus={commands.focusControl}
+        onQuality={commands.setQuality}
+        onPreviewColor={controls.setColorLive}
+        onSubmitColor={forms.submitColor}
       />
       <Modals
         screen={screen()}
         activeBulb={activeBulb()}
-        colorInitial={colorInitial()}
         busy={busy()}
         error={formError()}
         preview={preview}
@@ -291,7 +188,6 @@ const App = () => {
         onSubmitAdd={forms.submitAdd}
         onSubmitEdit={forms.submitEdit}
         onConfirmRemove={forms.confirmRemove}
-        onSubmitColor={forms.submitColor}
       />
     </box>
   )

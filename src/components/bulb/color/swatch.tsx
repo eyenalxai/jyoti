@@ -1,11 +1,9 @@
 import { String as Str } from "effect"
-import { Show } from "solid-js"
 
 import { palette } from "@/lib/theme"
 
 interface SwatchProps {
   readonly hex: string
-  readonly clipped: boolean
 }
 
 const Swatch = (props: SwatchProps) => (
@@ -16,11 +14,9 @@ const Swatch = (props: SwatchProps) => (
     <text bg={palette.surfaceRaised} fg={palette.text}>
       {props.hex}
     </text>
-    <Show when={props.clipped}>
-      <text bg={palette.surfaceRaised} fg={palette.warning}>
-        clipped to sRGB
-      </text>
-    </Show>
+    <text bg={palette.surfaceRaised} fg={palette.faint}>
+      shown = sent
+    </text>
   </box>
 )
 

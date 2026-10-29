@@ -19,6 +19,7 @@ interface AppKeysOptions {
   readonly onTogglePower: () => void
   readonly onSelectAll: () => void
   readonly onTogglePane: () => void
+  readonly onWhite: () => void
   readonly onFocus: (focus: ControlFocus) => void
   readonly onMove: (delta: number) => void
   readonly onAdjust: (direction: number) => void
@@ -148,7 +149,7 @@ const handleSelection = (key: KeyLike, options: AppKeysOptions): boolean => {
     return true
   }
   if (key.name === "t") {
-    options.onFocus("temperature")
+    options.onFocus("light")
     return true
   }
   if (key.name === "left" || key.name === "h") {
@@ -185,6 +186,10 @@ const handleAction = (key: KeyLike, options: AppKeysOptions): boolean => {
   }
   if (key.name === "c") {
     options.onColor()
+    return true
+  }
+  if (key.name === "w") {
+    options.onWhite()
     return true
   }
   if (key.name === "r") {

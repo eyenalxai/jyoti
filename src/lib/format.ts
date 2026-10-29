@@ -1,11 +1,6 @@
 import { Array as Arr, String as Str } from "effect"
 
-import type {
-  AggregateColor,
-  AggregatePower,
-  AggregateState,
-  ValueSpan,
-} from "@/lib/bulbs/aggregate"
+import type { AggregatePower, AggregateState, ValueSpan } from "@/lib/bulbs/aggregate"
 import type { BulbState } from "@/lib/bulbs/schema"
 
 const truncate = (value: string, width: number): string => {
@@ -123,13 +118,6 @@ const spanText = (span: ValueSpan | null | undefined, suffix: string): string =>
   return span.low === span.high ? `${span.low}${suffix}` : `${span.low}–${span.high}${suffix}`
 }
 
-const aggregateColorWord = (color: AggregateColor | null): string => {
-  if (color === null) {
-    return "—"
-  }
-  return color.kind === "equal" ? color.hex : "mixed"
-}
-
 const nameList = (names: readonly string[]): string => {
   const first = names[0]
   const second = names[1]
@@ -169,11 +157,18 @@ const aggregateSummary = (aggregate: AggregateState): string => {
   if (aggregate.brightness !== null) {
     parts.push(spanText(aggregate.brightness, "%"))
   }
-  if (aggregate.temperature !== null) {
+  if (aggregate.quality === "white" && aggregate.temperature !== null) {
     parts.push(spanText(aggregate.temperature, "K"))
   }
-  if (aggregate.color?.kind === "equal") {
-    parts.push(aggregate.color.hex)
+  if (aggregate.quality === "color") {
+    if (aggregate.color?.kind === "equal") {
+      parts.push(aggregate.color.hex)
+    } else if (aggregate.color?.kind === "mixed") {
+      parts.push("colours differ")
+    }
+  }
+  if (aggregate.quality === "mixed") {
+    parts.push("qualities differ")
   }
   return Arr.join(parts, " · ")
 }
@@ -184,7 +179,6 @@ const noticeDuration = (message: string): number => {
 }
 
 export {
-  aggregateColorWord,
   aggregateGlyph,
   aggregateShort,
   aggregateSummary,

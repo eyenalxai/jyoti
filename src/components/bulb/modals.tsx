@@ -4,7 +4,6 @@ import type { CapturePreviewModel } from "@/components/screen/use-preview"
 import type { ScreenSyncModel } from "@/components/screen/use-sync"
 import type { Bulb, BulbDraft } from "@/lib/bulbs/schema"
 
-import { Color } from "@/components/bulb/color"
 import { Form } from "@/components/bulb/form"
 import { Help } from "@/components/bulb/help"
 import { Remove } from "@/components/bulb/remove"
@@ -17,7 +16,6 @@ type Screen = "dashboard" | "add" | "edit" | "remove" | "color" | "help" | "capt
 interface ModalsProps {
   readonly screen: Screen
   readonly activeBulb: Bulb | null
-  readonly colorInitial: string
   readonly busy: boolean
   readonly error: string | null
   readonly preview: CapturePreviewModel
@@ -25,7 +23,6 @@ interface ModalsProps {
   readonly onSubmitAdd: (draft: BulbDraft) => void
   readonly onSubmitEdit: (draft: BulbDraft) => void
   readonly onConfirmRemove: () => void
-  readonly onSubmitColor: (hex: string) => void
 }
 
 const Modals = (props: ModalsProps) => (
@@ -64,17 +61,6 @@ const Modals = (props: ModalsProps) => (
           </Modal>
         )}
       </Show>
-    </Show>
-
-    <Show when={props.screen === "color" && props.activeBulb !== undefined}>
-      <Modal title="Set color" hint="esc cancel" width={58} height={15}>
-        <Color
-          initial={props.colorInitial}
-          busy={props.busy}
-          error={props.error}
-          onSubmit={props.onSubmitColor}
-        />
-      </Modal>
     </Show>
 
     <Show when={props.screen === "help"}>

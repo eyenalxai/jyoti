@@ -7,6 +7,10 @@ interface ValueSpan {
 
 type AggregatePower = "on" | "off" | "mixed" | "unknown"
 
+type LightSide = "white" | "color"
+
+type LightQuality = LightSide | "mixed" | "unknown"
+
 type AggregateColor =
   | { readonly kind: "equal"; readonly hex: ColorHex }
   | { readonly kind: "mixed" }
@@ -16,6 +20,7 @@ interface AggregateState {
   readonly reachable: number
   readonly failed: number
   readonly power: AggregatePower
+  readonly quality: LightQuality
   readonly brightness: ValueSpan | null
   readonly temperature: ValueSpan | null
   readonly color: AggregateColor | null
@@ -69,12 +74,36 @@ const colorOf = (values: readonly ColorHex[]): AggregateColor | null => {
   return { kind: "equal", hex: first }
 }
 
+const qualityOf = (values: readonly LightQuality[]): LightQuality => {
+  const first = values[0]
+  if (first === undefined) {
+    return "unknown"
+  }
+  for (const value of values) {
+    if (value !== first) {
+      return "mixed"
+    }
+  }
+  return first
+}
+
+const lightQualityOf = (mode: BulbState["mode"] | undefined): LightQuality => {
+  if (mode === "temperature") {
+    return "white"
+  }
+  if (mode === "color") {
+    return "color"
+  }
+  return "unknown"
+}
+
 const aggregateState = (
   bulbs: readonly Bulb[],
   states: ReadonlyMap<string, BulbState>,
   stateErrors: ReadonlyMap<string, string>,
 ): AggregateState => {
   const powers: boolean[] = []
+  const qualities: LightQuality[] = []
   const brightness: number[] = []
   const temperatures: number[] = []
   const colors: ColorHex[] = []
@@ -90,6 +119,10 @@ const aggregateState = (
       continue
     }
     reachable += 1
+    const quality = lightQualityOf(state.mode)
+    if (quality !== "unknown") {
+      qualities.push(quality)
+    }
     if (state.power !== null) {
       powers.push(state.power)
     }
@@ -109,6 +142,7 @@ const aggregateState = (
     reachable,
     failed,
     power: powerOf(powers),
+    quality: qualityOf(qualities),
     brightness: spanOf(brightness),
     temperature: spanOf(temperatures),
     color: colorOf(colors),
@@ -118,8 +152,11 @@ const aggregateState = (
 export {
   absoluteStep,
   aggregateState,
+  lightQualityOf,
   type AggregateColor,
   type AggregatePower,
+  type LightQuality,
+  type LightSide,
   type AggregateState,
   type ValueSpan,
 }

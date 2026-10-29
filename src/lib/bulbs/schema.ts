@@ -103,6 +103,7 @@ const BRIGHTNESS_STEP = 5
 const TEMPERATURE_MIN = 2700
 const TEMPERATURE_MAX = 6500
 const TEMPERATURE_STEP = 100
+const NEUTRAL_TEMPERATURE = 4000
 
 const SIID_LIGHT = 2
 const PIID_POWER = 1
@@ -124,6 +125,13 @@ const parseColor = (value: string): Rgb | null => {
     green: Number.parseInt(Str.slice(2, 4)(hex), 16),
     blue: Number.parseInt(Str.slice(4, 6)(hex), 16),
   }
+}
+
+const normalizeColor = (value: string): ColorHex | null => {
+  const normalized = Str.toUpperCase(Str.trim(value))
+  const withHash = Str.startsWith("#")(normalized) ? normalized : `#${normalized}`
+  const decoded = Schema.decodeResult(ColorHexSchema)(withHash)
+  return Result.isSuccess(decoded) ? decoded.success : null
 }
 
 const packColor = (rgb: Rgb): number => rgb.red * 65_536 + rgb.green * 256 + rgb.blue
@@ -195,6 +203,7 @@ export {
   BulbStateSchema,
   ColorHexSchema,
   MiioReplySchema,
+  NEUTRAL_TEMPERATURE,
   PIID_BRIGHTNESS,
   PIID_COLOR,
   PIID_COLOR_MODE,
@@ -207,6 +216,7 @@ export {
   TokenSchema,
   formatColor,
   isToken,
+  normalizeColor,
   packColor,
   parseColor,
   validateDraft,

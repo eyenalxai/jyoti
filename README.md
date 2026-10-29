@@ -9,6 +9,7 @@ Bulbs are added inside the app. Their tokens go to the OS keyring; only non-secr
 - Lists any number of bulbs, with live power, brightness, color temperature and RGB color.
 - Adds, edits and removes bulbs without touching a config file by hand.
 - Sends power, brightness, warmth and color changes to the selected bulb, or to every bulb when All bulbs is selected, over UDP.
+- Selects All bulbs on first load when two or more bulbs exist, so the common job starts in one place.
 - Keeps every action on the keyboard, with an inline error when a bulb does not answer.
 - Uses the terminal's default foreground, background and ANSI palette, so it follows the active terminal theme.
 - Starts empty. It does not read `~/.local/share/xiaomi-bulbs/tokens.env`; that file remains the reference script's input.
@@ -51,7 +52,8 @@ The build writes `native/build/libjyoti-capture.so` and the generated Wayland pr
 | `←` `→` / `h` `l` | Adjust the focused control                   |
 | `space` / `p`     | Toggle power                                 |
 | `enter`           | Open controls, or act on the focused control |
-| `c`               | Open the colour picker                       |
+| `w`               | Switch to white light                        |
+| `c`               | Switch to colour and open the picker         |
 | `a`               | Add a bulb                                   |
 | `e`               | Edit the selected bulb                       |
 | `d`               | Remove the selected bulb                     |
@@ -63,11 +65,11 @@ The build writes `native/build/libjyoti-capture.so` and the generated Wayland pr
 | `?`               | Show the key map                             |
 | `q` / `ctrl+c`    | Quit                                         |
 
-Brightness moves in 5% steps, warmth in 100 K steps. Changes update immediately and are sent after a short idle; a failed command restores the bulb's real state and explains what went wrong.
+Brightness moves in 5% steps and warmth in 100 K steps. Hue moves in 1° steps and saturation in 1% steps. Changes update immediately and are sent after a short idle; a failed command restores the bulb's real state and explains what went wrong.
 
-The colour picker starts in OKLCH mode with L, C and H sliders. `tab` switches to RGB sliders; the hex field stays editable in either mode. The swatch and hex readout follow the sliders, `↑` `↓` move between controls, `←` `→` adjust the focused slider, and `enter` applies. Unsupported chroma is reduced to fit sRGB and marked as clipped.
+The light has two qualities: **White** (warmth) and **Colour** (packed RGB). The `Light` switch makes the choice explicit, and only the active quality's row is shown. The colour picker edits hue and saturation; every value it can produce is an sRGB colour, so the swatch is exactly what is sent. `tab` switches between hue/saturation and RGB, the hex field accepts an exact colour, `↑` `↓` move between fields, `←` `→` adjust the focused slider, and `enter` closes the picker after the live preview settles. Colour applies live after the same short idle as brightness and warmth.
 
-With two or more bulbs, `A` selects **All bulbs**: the panel shows the aggregate power, brightness, warmth and colour. `space` turns every bulb off when all of them are on, or on otherwise. `←` `→` set the same brightness or warmth on every bulb, starting from the aggregate — right from the brightest, left from the dimmest — and `c` applies one colour to all of them. Each bulb is addressed independently, so one slow bulb does not hold up the rest; a partial failure names the bulbs that failed and keeps the successes. Edit and remove stay per bulb.
+With two or more bulbs, **All bulbs** is selected on first load and `A` returns to it. The panel shows the aggregate power, brightness, quality and the active quality value. When the bulbs disagree on quality the switch says `mixed`; choosing White or Colour applies it to every bulb. `space` turns every bulb off when all of them are on, or on otherwise. `←` `→` set the same brightness or warmth on every bulb, starting from the aggregate — right from the brightest, left from the dimmest — and `c` applies one colour to all of them. Each bulb is addressed independently, so one slow bulb does not hold up the rest; a partial failure names the bulbs that failed and keeps the successes. Edit and remove stay per bulb.
 
 ## Screen sync
 

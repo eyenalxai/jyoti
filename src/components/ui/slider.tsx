@@ -10,6 +10,7 @@ interface SliderProps {
   readonly max: number
   readonly text: string
   readonly width: number
+  readonly labelWidth?: number
   readonly focused: boolean
   readonly onFocus: () => void
 }
@@ -19,7 +20,7 @@ const Slider = (props: SliderProps) => (
     <text fg={props.focused ? palette.accent : palette.background}>
       {props.focused ? "›" : " "}
     </text>
-    <box width={6}>
+    <box width={props.labelWidth ?? 6}>
       <text fg={props.focused ? palette.accent : palette.muted}>{props.label}</text>
     </box>
     <Meter
