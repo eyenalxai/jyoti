@@ -33,12 +33,12 @@ interface DetailProps {
   readonly meterWidth: number
   readonly colorOpen: boolean
   readonly colorBusy: boolean
-  readonly colorError: string | null
   readonly colorInitial: string
   readonly onFocus: (focus: ControlFocus) => void
   readonly onQuality: (quality: LightSide) => void
-  readonly onPreviewColor: (hex: string) => void
-  readonly onSubmitColor: () => void
+  readonly onPreviewColor: (hex: string) => Promise<boolean>
+  readonly onSubmitColor: (hex: string) => void
+  readonly onDismissColor: () => void
 }
 
 const valueText = (value: number | null | undefined, suffix: string, width: number): string =>
@@ -202,10 +202,10 @@ const Detail = (props: DetailProps) => {
           <Color
             initial={props.colorInitial}
             busy={props.colorBusy}
-            error={props.colorError}
             width={props.width}
             onPreview={props.onPreviewColor}
             onSubmit={props.onSubmitColor}
+            onDismiss={props.onDismissColor}
           />
         }
       >

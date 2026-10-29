@@ -78,7 +78,15 @@ The All bulbs quality when at least two reachable bulbs disagree. The switch sho
 
 ## Colour picker
 
-The inline editor for the Colour quality. It edits hue and saturation, switches to RGB on `tab`, and accepts an exact hex value. Every value it can produce is an sRGB colour, so the swatch and the sent colour cannot diverge. Brightness is the shared dimmer and is not repeated inside the picker.
+The inline editor for the Colour quality. It edits hue and saturation, switches to RGB on `tab`, and accepts an exact hex value. Every value it can produce is an sRGB colour, so the swatch and the sent colour cannot diverge. Changes are sent after a short idle, so the bulb follows the picker. Brightness is the shared dimmer and is not repeated inside the picker.
+
+## Revert
+
+Leaving the colour picker with `esc` restores the colour and mode each target had when the picker opened. `enter` keeps the current colour. The snapshot is taken before the opening colour is seeded.
+
+## Toast
+
+A transient notification in the top-right corner. Toasts queue, dismiss on their own, and can be dismissed with a click. Errors and successes use the same surface.
 
 ## Default selection
 
@@ -102,7 +110,7 @@ A sync run that keeps capture, sessions and state but publishes nothing. The bul
 
 ## Sync strip
 
-The two-line panel above the status line while a sync run exists. Its first line carries the state, captured monitor, derived colour or neutral fallback, sync brightness, frame age and reachable/total bulbs; its second line carries the run's keys.
+The two-line panel above the footer while a sync run exists. Its first line carries the state, captured monitor, derived colour, sync brightness, frame age and reachable/total bulbs; its second line carries the run's keys.
 
 ## Captured monitor
 
@@ -110,7 +118,7 @@ The monitor a sync run reads.
 
 ## Derived colour
 
-The single colour the colour reducer produces for a frame: the colour of the winning OKLab cluster — its mean lightness and hue, with the chroma raised toward the cluster's 75th percentile — or the neutral fallback.
+The single colour the colour reducer produces for a frame: the colour of the winning OKLab cluster — its mean lightness and hue, with the chroma raised toward the cluster's 75th percentile. It is sent as it is, white, grey and black included.
 
 ## Scene brightness
 
@@ -128,10 +136,6 @@ The rule that watches the last three target sync brightness values. A direction 
 
 A sync run whose flash guard is holding brightness. Colour keeps updating; the strip says `flashing scene` until the hold ends.
 
-## Blackout hold
-
-Holding the last derived colour and sync brightness while the frame is near-black, so a black scene does not pump the room through neutral.
-
 ## Stale frame
 
 A captured frame older than about one second. The run holds the last colour until a fresh frame arrives.
@@ -143,10 +147,6 @@ A sync run with no fresh frame for about five seconds. Publishing stops but the 
 ## Self-capture warning
 
 The `⚠ jyoti` marker in the sync strip when the captured monitor is the one running jyoti: the only monitor, or an unknown focus. Monitor selection is the only self-mask; the run is allowed with the warning.
-
-## Neutral fallback
-
-The 4000 K temperature mode used when the scene has too little chroma for a colour.
 
 ## miIO session
 

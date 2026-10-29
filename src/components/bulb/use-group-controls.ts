@@ -1,7 +1,8 @@
 import type { Effect } from "effect"
 
-import { Array as Arr, Result, Schema, String as Str } from "effect"
+import { Array as Arr } from "effect"
 
+import type { ColorOutcome } from "@/components/bulb/color/outcome"
 import type { BulbsModel } from "@/components/bulb/use-bulbs"
 import type { ValueSpan } from "@/lib/bulbs/aggregate"
 import type { BulbsError } from "@/lib/bulbs/error"
@@ -13,7 +14,7 @@ import { failuresOf, runBatch } from "@/lib/bulbs/batch"
 import {
   BRIGHTNESS_MAX,
   BRIGHTNESS_MIN,
-  ColorHexSchema,
+  normalizeColor,
   NEUTRAL_TEMPERATURE,
   TEMPERATURE_MAX,
   TEMPERATURE_MIN,
@@ -27,7 +28,7 @@ interface GroupControlsModel {
   readonly setWhite: () => Promise<string | null>
   readonly adjustBrightness: (delta: number) => void
   readonly adjustTemperature: (delta: number) => void
-  readonly setColor: (hex: string) => Promise<void>
+  readonly setColor: (hex: string) => Promise<ColorOutcome>
 }
 
 type Schedule = (id: BulbId, control: string, send: () => void) => void
@@ -236,15 +237,12 @@ const useGroupControls = (options: UseGroupControlsOptions): GroupControlsModel 
     )
   }
 
-  const setColor = (hex: string): Promise<void> => {
-    const normalized = Str.toUpperCase(Str.trim(hex))
-    const withHash = Str.startsWith("#")(normalized) ? normalized : `#${normalized}`
-    const decoded = Schema.decodeResult(ColorHexSchema)(withHash)
-    if (Result.isFailure(decoded)) {
-      return Promise.resolve()
+  const setColor = (hex: string): Promise<ColorOutcome> => {
+    const color = normalizeColor(hex)
+    if (color === null) {
+      return Promise.resolve({ error: "Enter a color as #RRGGBB.", partial: false })
     }
 
-    const color = decoded.success
     const bulbs = options.model.bulbs()
     const states = options.model.states()
     for (const bulb of bulbs) {
@@ -257,7 +255,7 @@ const useGroupControls = (options: UseGroupControlsOptions): GroupControlsModel 
         for (const bulb of bulbs) {
           void options.model.readOne(bulb.id)
         }
-        return void 0
+        return { error: result.message, partial: false }
       }
 
       const failures = failuresOf(result.entries)
@@ -267,13 +265,13 @@ const useGroupControls = (options: UseGroupControlsOptions): GroupControlsModel 
         }
       }
       if (failures.length === 0) {
-        return void 0
+        return { error: null, partial: false }
       }
 
       const names = nameList(Arr.map(failures, (entry) => entry.bulb.name))
       const message = `${names} failed · ${result.entries.length - failures.length} of ${result.entries.length} changed`
       options.onError(message)
-      return void 0
+      return { error: message, partial: failures.length < result.entries.length }
     })
   }
 

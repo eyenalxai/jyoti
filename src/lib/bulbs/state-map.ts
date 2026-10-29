@@ -22,10 +22,10 @@ const patchStateMap = (
     return previous
   }
   const next: BulbState = {
-    power: patch.power ?? current.power,
-    brightness: patch.brightness ?? current.brightness,
-    temperature: patch.temperature ?? current.temperature,
-    color: patch.color ?? current.color,
+    power: patch.power === undefined ? current.power : patch.power,
+    brightness: patch.brightness === undefined ? current.brightness : patch.brightness,
+    temperature: patch.temperature === undefined ? current.temperature : patch.temperature,
+    color: patch.color === undefined ? current.color : patch.color,
     mode: patch.mode ?? current.mode,
   }
   return new Map(previous).set(id, next)

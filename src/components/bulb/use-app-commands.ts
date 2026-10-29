@@ -1,5 +1,6 @@
 import type { Accessor, Setter } from "solid-js"
 
+import type { ColorSessionModel } from "@/components/bulb/color/use-session"
 import type { ControlFocus } from "@/components/bulb/controls"
 import type { Screen } from "@/components/bulb/modals"
 import type { Pane } from "@/components/bulb/pane"
@@ -8,7 +9,7 @@ import type { BulbsModel } from "@/components/bulb/use-bulbs"
 import type { ControlsModel } from "@/components/bulb/use-controls"
 import type { CapturePreviewModel } from "@/components/screen/use-preview"
 import type { ScreenSyncModel } from "@/components/screen/use-sync"
-import type { Notice } from "@/components/ui/status"
+import type { Notice } from "@/components/ui/toast"
 import type { LightQuality, LightSide } from "@/lib/bulbs/aggregate"
 import type { Bulb } from "@/lib/bulbs/schema"
 
@@ -29,9 +30,9 @@ interface UseAppCommandsOptions {
   readonly syncActive: Accessor<boolean>
   readonly selectedQuality: Accessor<LightQuality>
   readonly colorInitial: Accessor<string>
+  readonly colorSession: ColorSessionModel
   readonly setScreen: Setter<Screen>
   readonly setActiveBulb: Setter<Bulb | null>
-  readonly setFormError: Setter<string | null>
   readonly setFocus: Setter<ControlFocus>
   readonly setPane: Setter<Pane>
   readonly notify: (notice: Notice) => void
@@ -42,6 +43,7 @@ interface UseAppCommandsOptions {
 interface AppCommands {
   readonly focusControl: (focus: ControlFocus) => void
   readonly setQuality: (quality: LightSide) => void
+  readonly dismissColor: () => void
 }
 
 const focusOrder: readonly ControlFocus[] = ["power", "brightness", "light"]
@@ -55,11 +57,13 @@ const useAppCommands = (options: UseAppCommandsOptions): AppCommands => {
       return
     }
     if (options.screen() === "color") {
-      options.controls.flushPending()
+      if (options.colorSession.dirty()) {
+        options.colorSession.revert()
+      }
+      options.colorSession.reset()
     }
     options.setScreen("dashboard")
     options.setActiveBulb(null)
-    options.setFormError(null)
   }
 
   const selectAll = () => {
@@ -114,6 +118,22 @@ const useAppCommands = (options: UseAppCommandsOptions): AppCommands => {
     }
   }
 
+  const openColor = () => {
+    if (options.syncActive()) {
+      options.notify({ kind: "info", message: SYNC_OWNS_CONTROLS })
+      return
+    }
+    options.colorSession.capture()
+    void options.colorSession.commit(options.colorInitial())
+    options.actions.openColor()
+  }
+
+  const dismissColor = () => {
+    options.colorSession.reset()
+    options.setScreen("dashboard")
+    options.setActiveBulb(null)
+  }
+
   const activate = () => {
     if (options.pane() === "bulbs") {
       options.setPane("controls")
@@ -125,7 +145,7 @@ const useAppCommands = (options: UseAppCommandsOptions): AppCommands => {
     }
     if (options.focus() === "light") {
       if (options.selectedQuality() === "color") {
-        options.actions.openColor()
+        openColor()
         return
       }
       if (options.selectedQuality() === "white") {
@@ -149,15 +169,6 @@ const useAppCommands = (options: UseAppCommandsOptions): AppCommands => {
   const focusControl = (next: ControlFocus) => {
     options.setPane("controls")
     options.setFocus(next)
-  }
-
-  const openColor = () => {
-    if (options.syncActive()) {
-      options.notify({ kind: "info", message: SYNC_OWNS_CONTROLS })
-      return
-    }
-    options.controls.setColorLive(options.colorInitial())
-    options.actions.openColor()
   }
 
   const setQuality = (quality: LightSide) => {
@@ -237,7 +248,7 @@ const useAppCommands = (options: UseAppCommandsOptions): AppCommands => {
     },
   })
 
-  return { focusControl, setQuality }
+  return { focusControl, setQuality, dismissColor }
 }
 
 export { useAppCommands, type AppCommands }

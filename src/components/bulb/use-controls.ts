@@ -1,18 +1,21 @@
 import type { Effect } from "effect"
 import type { Accessor } from "solid-js"
 
+import type { ColorOutcome } from "@/components/bulb/color/outcome"
+import type { ColorSnapshot } from "@/components/bulb/color/snapshot"
 import type { BulbsModel } from "@/components/bulb/use-bulbs"
 import type { BulbsError } from "@/lib/bulbs/error"
 import type { BulbId } from "@/lib/bulbs/schema"
 import type { Timer } from "@/lib/timers"
 
-import { useColor } from "@/components/bulb/use-color"
+import { revertColors as revertColorBatch } from "@/components/bulb/color/revert"
 import { useGroupControls } from "@/components/bulb/use-group-controls"
 import { usePower } from "@/components/bulb/use-power"
 import {
   BRIGHTNESS_MAX,
   BRIGHTNESS_MIN,
   NEUTRAL_TEMPERATURE,
+  normalizeColor,
   TEMPERATURE_MAX,
   TEMPERATURE_MIN,
 } from "@/lib/bulbs/schema"
@@ -34,7 +37,8 @@ interface ControlsModel {
   readonly adjustBrightness: (delta: number) => void
   readonly adjustTemperature: (delta: number) => void
   readonly setWhite: () => void
-  readonly setColorLive: (hex: string) => void
+  readonly setColor: (hex: string) => Promise<ColorOutcome>
+  readonly revertColors: (snapshot: ColorSnapshot) => Promise<ColorOutcome>
   readonly flushPending: () => void
 }
 
@@ -97,23 +101,7 @@ const useControls = (options: UseControlsOptions): ControlsModel => {
     })
   }
 
-  const color = useColor({
-    model: options.model,
-    blocked,
-    syncLocked: options.syncLocked,
-    group,
-    schedule,
-    cancelPending,
-    sendColor: (id, hex) => {
-      sendControl(
-        id,
-        Bulbs.use((service) => service.setColor(id, hex)),
-      )
-    },
-  })
-
   const flushPending = () => {
-    color.flush()
     if (blocked()) {
       for (const entry of pending.values()) {
         cancel(entry.timer)
@@ -165,8 +153,6 @@ const useControls = (options: UseControlsOptions): ControlsModel => {
       return
     }
     if (options.model.allSelected()) {
-      color.cancel()
-      color.cancelColorPending()
       group.adjustTemperature(delta)
       return
     }
@@ -198,8 +184,6 @@ const useControls = (options: UseControlsOptions): ControlsModel => {
       return
     }
     if (options.model.allSelected()) {
-      color.cancel()
-      color.cancelColorPending()
       void group.setWhite()
       return
     }
@@ -219,12 +203,52 @@ const useControls = (options: UseControlsOptions): ControlsModel => {
     })
   }
 
+  const setColor = (hex: string): Promise<ColorOutcome> => {
+    if (blocked()) {
+      return Promise.resolve({ error: null, partial: false })
+    }
+    const color = normalizeColor(hex)
+    if (color === null) {
+      return Promise.resolve({ error: "Enter a color as #RRGGBB.", partial: false })
+    }
+
+    if (options.model.allSelected()) {
+      for (const bulb of options.model.bulbs()) {
+        cancelPending(bulb.id, "temperature")
+      }
+      return group.setColor(color)
+    }
+
+    const bulb = options.model.selected()
+    if (bulb === null) {
+      return Promise.resolve({ error: null, partial: false })
+    }
+    const state = options.model.states().get(bulb.id)
+    if (state?.color === color && state.mode === "color") {
+      return Promise.resolve({ error: null, partial: false })
+    }
+    cancelPending(bulb.id, "temperature")
+    options.model.patchState(bulb.id, { color, mode: "color" })
+    return run(Bulbs.use((service) => service.setColor(bulb.id, color))).then((result) => {
+      if (result.ok) {
+        return { error: null, partial: false }
+      }
+      options.onError(result.message)
+      void options.model.readOne(bulb.id)
+      return { error: result.message, partial: false }
+    })
+  }
+
+  const revertColors = (snapshot: ColorSnapshot): Promise<ColorOutcome> =>
+    revertColorBatch({ model: options.model, onError: options.onError }, snapshot)
+
   return {
     togglePower: power.togglePower,
     adjustBrightness,
     adjustTemperature,
     setWhite,
-    setColorLive: color.setColorLive,
+    setColor,
+    revertColors,
     flushPending,
   }
 }

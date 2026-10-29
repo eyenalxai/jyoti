@@ -4,7 +4,6 @@ import { Show, createMemo } from "solid-js"
 import type { ControlFocus } from "@/components/bulb/controls"
 import type { Pane } from "@/components/bulb/pane"
 import type { BulbsModel } from "@/components/bulb/use-bulbs"
-import type { Notice } from "@/components/ui/status"
 import type { LightSide } from "@/lib/bulbs/aggregate"
 import type { BulbId } from "@/lib/bulbs/schema"
 import type { BulbSyncPhase, SyncStatus } from "@/lib/screen/sync/status"
@@ -15,7 +14,6 @@ import { Empty } from "@/components/bulb/empty"
 import { dashboardHint, globalHint as globalHintText } from "@/components/bulb/hints"
 import { Rail } from "@/components/bulb/rail"
 import { SyncStrip } from "@/components/screen/strip"
-import { StatusLine } from "@/components/ui/status"
 import { aggregateState, lightQualityOf } from "@/lib/bulbs/aggregate"
 import { syncKeys } from "@/lib/screen/sync/copy"
 import { palette } from "@/lib/theme"
@@ -24,18 +22,17 @@ interface DashboardProps {
   readonly model: BulbsModel
   readonly focus: ControlFocus
   readonly pane: Pane
-  readonly notice: Notice | null
   readonly syncStatus: SyncStatus
   readonly width: number
   readonly height: number
   readonly colorOpen: boolean
   readonly colorBusy: boolean
-  readonly colorError: string | null
   readonly colorInitial: string
   readonly onFocus: (focus: ControlFocus) => void
   readonly onQuality: (quality: LightSide) => void
-  readonly onPreviewColor: (hex: string) => void
-  readonly onSubmitColor: () => void
+  readonly onPreviewColor: (hex: string) => Promise<boolean>
+  readonly onSubmitColor: (hex: string) => void
+  readonly onDismissColor: () => void
 }
 
 const Dashboard = (props: DashboardProps) => {
@@ -190,12 +187,12 @@ const Dashboard = (props: DashboardProps) => {
                             meterWidth={meterWidth()}
                             colorOpen={props.colorOpen}
                             colorBusy={props.colorBusy}
-                            colorError={props.colorError}
                             colorInitial={props.colorInitial}
                             onFocus={props.onFocus}
                             onQuality={props.onQuality}
                             onPreviewColor={props.onPreviewColor}
                             onSubmitColor={props.onSubmitColor}
+                            onDismissColor={props.onDismissColor}
                           />
                         )}
                       </Show>
@@ -210,12 +207,12 @@ const Dashboard = (props: DashboardProps) => {
                       meterWidth={meterWidth()}
                       colorOpen={props.colorOpen}
                       colorBusy={props.colorBusy}
-                      colorError={props.colorError}
                       colorInitial={props.colorInitial}
                       onFocus={props.onFocus}
                       onQuality={props.onQuality}
                       onPreviewColor={props.onPreviewColor}
                       onSubmitColor={props.onSubmitColor}
+                      onDismissColor={props.onDismissColor}
                     />
                   </Show>
                 </box>
@@ -232,7 +229,9 @@ const Dashboard = (props: DashboardProps) => {
               {Str.repeat(shellWidth())("─")}
             </text>
             <box flexDirection="row" justifyContent="space-between" height={1} gap={2}>
-              <StatusLine notice={props.notice} fallback={hint()} />
+              <text fg={palette.muted} truncate wrapMode="none" flexGrow={1}>
+                {hint()}
+              </text>
               <text fg={palette.muted} truncate wrapMode="none" flexShrink={0}>
                 {footerHint()}
               </text>

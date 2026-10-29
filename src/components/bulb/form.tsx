@@ -14,7 +14,6 @@ interface FormProps {
   readonly initial: Bulb | null
   readonly inputWidth: number
   readonly busy: boolean
-  readonly error: string | null
   readonly onSubmit: (draft: BulbDraft) => void
 }
 
@@ -221,16 +220,6 @@ const Form = (props: FormProps) => {
             </text>
           </box>
         </box>
-      </box>
-
-      <box height={1}>
-        <text
-          bg={palette.surfaceRaised}
-          fg={props.error === null ? palette.background : palette.danger}
-          truncate
-        >
-          {props.error ?? " "}
-        </text>
       </box>
 
       <box flexDirection="row" justifyContent="space-between" height={1}>

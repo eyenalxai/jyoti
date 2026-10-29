@@ -1,47 +1,46 @@
 import { useKeyboard } from "@opentui/solid"
-import { Show, createMemo, createSignal, onCleanup, onMount } from "solid-js"
+import { Effect } from "effect"
+import { createMemo, createSignal, onCleanup, onMount } from "solid-js"
 
 import type { Mode } from "@/components/bulb/color/mode"
+import type { PickerFocus } from "@/components/bulb/color/sliders"
 import type { Rgb } from "@/lib/bulbs/schema"
-import type { ChannelRange } from "@/lib/color"
+import type { Timer } from "@/lib/timers"
 
 import { ModeTabs } from "@/components/bulb/color/mode"
+import { ColorSliders } from "@/components/bulb/color/sliders"
 import { Swatch } from "@/components/bulb/color/swatch"
-import { Slider } from "@/components/ui/slider"
 import { formatColor, packColor, parseColor } from "@/lib/bulbs/schema"
 import { HUE_MAX, PERCENT_MAX, hsbToRgb, rgbToHsb, withHue, withSaturation } from "@/lib/color/hsb"
 import { clamp } from "@/lib/format"
+import { forkEffect } from "@/lib/runtime"
 import { palette } from "@/lib/theme"
 import { after, cancel } from "@/lib/timers"
 
 interface ColorProps {
   readonly initial: string
   readonly busy: boolean
-  readonly error: string | null
   readonly width: number
-  readonly onPreview: (hex: string) => void
-  readonly onSubmit: () => void
+  readonly onPreview: (hex: string) => Promise<boolean>
+  readonly onSubmit: (hex: string) => void
+  readonly onDismiss: () => void
 }
 
-type PickerFocus = 0 | 1 | 2 | 3
-
-const RGB_RANGE: ChannelRange = { min: 0, max: 255, step: 1 }
-const HUE_RANGE: ChannelRange = { min: 0, max: HUE_MAX, step: 1 }
-const SATURATION_RANGE: ChannelRange = { min: 0, max: PERCENT_MAX, step: 1 }
+const PREVIEW_DELAY_MS = 180
 const WHITE: Rgb = { red: 255, green: 255, blue: 255 }
-
-const formatHue = (value: number): string => `${Math.round(value)}°`
-const formatPercent = (value: number): string => `${Math.round(value)}%`
-const formatChannel = (value: number): string => `${value}`
 
 const Color = (props: ColorProps) => {
   const seeded = parseColor(props.initial) ?? WHITE
+  const seededHex = formatColor(packColor(seeded))
   const [rgb, setRgb] = createSignal<Rgb>(seeded)
   const [mode, setMode] = createSignal<Mode>("hs")
   const [focus, setFocus] = createSignal<PickerFocus>(0)
-  const [hexDraft, setHexDraft] = createSignal(formatColor(packColor(seeded)))
+  const [hexDraft, setHexDraft] = createSignal(seededHex)
+  const [appliedHex, setAppliedHex] = createSignal(seededHex)
   const [issue, setIssue] = createSignal<string | null>(null)
   const [ready, setReady] = createSignal(false)
+  let previewTimer: Timer | null = null
+  let generation = 0
 
   onMount(() => {
     const timer = after(10, () => {
@@ -52,18 +51,43 @@ const Color = (props: ColorProps) => {
     })
   })
 
+  onCleanup(() => {
+    if (previewTimer !== null) {
+      cancel(previewTimer)
+    }
+  })
+
   const hsb = createMemo(() => rgbToHsb(rgb()))
   const hex = () => formatColor(packColor(rgb()))
   const hexFocus = (): PickerFocus => (mode() === "hs" ? 2 : 3)
   const order = (): readonly PickerFocus[] => (mode() === "hs" ? [0, 1, 2] : [0, 1, 2, 3])
   const meterWidth = (): number => Math.max(10, Math.min(28, props.width - 30))
 
+  const sendPreview = Effect.fn("Color.sendPreview")(function* sendPreview(next: string) {
+    generation += 1
+    const current = generation
+    const applied = yield* Effect.promise(() => props.onPreview(next))
+    if (applied && current === generation && hex() === next) {
+      setAppliedHex(next)
+    }
+  })
+
+  const schedulePreview = () => {
+    if (previewTimer !== null) {
+      cancel(previewTimer)
+    }
+    previewTimer = after(PREVIEW_DELAY_MS, () => {
+      previewTimer = null
+      forkEffect(sendPreview(hex()).pipe(Effect.ignoreCause))
+    })
+  }
+
   const applyRgb = (next: Rgb, preview = true) => {
     setRgb(next)
     setHexDraft(formatColor(packColor(next)))
     setIssue(null)
     if (preview) {
-      props.onPreview(formatColor(packColor(next)))
+      schedulePreview()
     }
   }
 
@@ -73,31 +97,23 @@ const Color = (props: ColorProps) => {
       if (focus() === 0) {
         const base =
           current.saturation === 0 ? hsbToRgb({ ...current, saturation: PERCENT_MAX }) : rgb()
-        applyRgb(withHue(base, clamp(current.hue + direction, HUE_RANGE.min, HUE_RANGE.max)))
+        applyRgb(withHue(base, clamp(current.hue + direction, 0, HUE_MAX)))
       }
       if (focus() === 1) {
-        applyRgb(
-          withSaturation(
-            rgb(),
-            clamp(current.saturation + direction, SATURATION_RANGE.min, SATURATION_RANGE.max),
-          ),
-        )
+        applyRgb(withSaturation(rgb(), clamp(current.saturation + direction, 0, PERCENT_MAX)))
       }
       return
     }
 
     const current = rgb()
     if (focus() === 0) {
-      applyRgb({ ...current, red: clamp(current.red + direction, RGB_RANGE.min, RGB_RANGE.max) })
+      applyRgb({ ...current, red: clamp(current.red + direction, 0, 255) })
     }
     if (focus() === 1) {
-      applyRgb({
-        ...current,
-        green: clamp(current.green + direction, RGB_RANGE.min, RGB_RANGE.max),
-      })
+      applyRgb({ ...current, green: clamp(current.green + direction, 0, 255) })
     }
     if (focus() === 2) {
-      applyRgb({ ...current, blue: clamp(current.blue + direction, RGB_RANGE.min, RGB_RANGE.max) })
+      applyRgb({ ...current, blue: clamp(current.blue + direction, 0, 255) })
     }
   }
 
@@ -137,6 +153,10 @@ const Color = (props: ColorProps) => {
     if (props.busy) {
       return
     }
+    if (previewTimer !== null) {
+      cancel(previewTimer)
+      previewTimer = null
+    }
     const parsed = parseColor(hexDraft())
     if (parsed === null) {
       setIssue("Enter six hexadecimal digits, for example #FF8800.")
@@ -144,10 +164,12 @@ const Color = (props: ColorProps) => {
     }
     setIssue(null)
     const next = formatColor(packColor(parsed))
-    if (next !== hex()) {
-      applyRgb(parsed)
+    if (next === appliedHex()) {
+      props.onDismiss()
+      return
     }
-    props.onSubmit()
+    setRgb(parsed)
+    props.onSubmit(next)
   }
 
   useKeyboard((key) => {
@@ -182,31 +204,8 @@ const Color = (props: ColorProps) => {
     }
   })
 
-  const slider = (
-    index: PickerFocus,
-    label: string,
-    value: number,
-    range: ChannelRange,
-    text: string,
-  ) => (
-    <Slider
-      label={label}
-      value={value}
-      min={range.min}
-      max={range.max}
-      text={text}
-      width={meterWidth()}
-      labelWidth={11}
-      focused={focus() === index}
-      onFocus={() => {
-        setFocus(index)
-      }}
-    />
-  )
-
-  const status = (): string => props.error ?? issue() ?? " "
-  const statusTone = () =>
-    props.error !== null || issue() !== null ? palette.danger : palette.faint
+  const status = (): string => issue() ?? " "
+  const statusTone = () => (issue() === null ? palette.faint : palette.danger)
 
   return (
     <box flexDirection="column" flexGrow={1} gap={0} minHeight={0}>
@@ -214,32 +213,21 @@ const Color = (props: ColorProps) => {
         <text fg={palette.text}>
           <strong>Set colour</strong>
         </text>
-        <text fg={palette.faint}>esc close</text>
+        <text fg={palette.faint}>esc revert</text>
       </box>
 
       <ModeTabs mode={mode()} />
 
-      <box flexDirection="column" height={mode() === "hs" ? 2 : 3}>
-        <Show
-          when={mode() === "hs"}
-          fallback={
-            <>
-              {slider(0, "Red", rgb().red, RGB_RANGE, formatChannel(rgb().red))}
-              {slider(1, "Green", rgb().green, RGB_RANGE, formatChannel(rgb().green))}
-              {slider(2, "Blue", rgb().blue, RGB_RANGE, formatChannel(rgb().blue))}
-            </>
-          }
-        >
-          {slider(0, "Hue", hsb().hue, HUE_RANGE, formatHue(hsb().hue))}
-          {slider(
-            1,
-            "Saturation",
-            hsb().saturation,
-            SATURATION_RANGE,
-            formatPercent(hsb().saturation),
-          )}
-        </Show>
-      </box>
+      <ColorSliders
+        mode={mode()}
+        focus={focus()}
+        hsb={hsb()}
+        rgb={rgb()}
+        width={meterWidth()}
+        onFocus={(next) => {
+          setFocus(next)
+        }}
+      />
 
       <box height={1} />
 
@@ -276,7 +264,7 @@ const Color = (props: ColorProps) => {
 
       <box flexDirection="row" justifyContent="space-between" height={1}>
         <text bg={palette.surfaceRaised} fg={palette.faint}>
-          tab mode · ↑↓ field · ←→ adjust
+          esc revert · tab mode · ↑↓ field
         </text>
         <text bg={palette.surfaceRaised} fg={props.busy ? palette.faint : palette.accent}>
           {props.busy ? "applying…" : "enter done"}

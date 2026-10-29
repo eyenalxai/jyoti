@@ -23,13 +23,7 @@ const oklchFromLab = (lab: Lab): Oklch => ({
   hue: normalizeHue((Math.atan2(lab.b, lab.a) * 180) / Math.PI),
 })
 
-const mixLab = (from: Lab, to: Lab, weight: number): Lab => ({
-  l: from.l + (to.l - from.l) * weight,
-  a: from.a + (to.a - from.a) * weight,
-  b: from.b + (to.b - from.b) * weight,
-})
-
 const deltaEOk = (a: Lab, b: Lab): number => Math.hypot(a.l - b.l, a.a - b.a, a.b - b.b)
 
-export { deltaEOk, labFromOklch, mixLab, normalizeHue, oklchFromLab }
+export { deltaEOk, labFromOklch, normalizeHue, oklchFromLab }
 export type { Lab }

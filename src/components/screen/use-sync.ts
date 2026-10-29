@@ -3,7 +3,7 @@ import type { Accessor } from "solid-js"
 import { Array as Arr, Effect, Option, Stream } from "effect"
 import { createSignal, onCleanup, onMount } from "solid-js"
 
-import type { Notice } from "@/components/ui/status"
+import type { Notice } from "@/components/ui/toast"
 import type { BulbId } from "@/lib/bulbs/schema"
 import type { Monitor } from "@/lib/screen/frame"
 import type { RestoreReport } from "@/lib/screen/sync/restore"
@@ -26,7 +26,6 @@ interface ScreenSyncModel {
   readonly monitors: Accessor<readonly Monitor[]>
   readonly monitorIndex: Accessor<number>
   readonly monitorBusy: Accessor<boolean>
-  readonly monitorError: Accessor<string | null>
   readonly toggle: () => void
   readonly togglePause: () => void
   readonly stop: () => Promise<RestoreReport | null>
@@ -43,7 +42,6 @@ const useScreenSyncModel = (options: UseScreenSyncOptions): ScreenSyncModel => {
   const [monitors, setMonitors] = createSignal<readonly Monitor[]>([])
   const [monitorIndex, setMonitorIndex] = createSignal(0)
   const [monitorBusy, setMonitorBusy] = createSignal(false)
-  const [monitorError, setMonitorError] = createSignal<string | null>(null)
 
   const selectedMonitorName = (): string | null => status().pendingMonitor ?? status().monitor
 
@@ -159,13 +157,12 @@ const useScreenSyncModel = (options: UseScreenSyncOptions): ScreenSyncModel => {
   }
 
   const openMonitors = () => {
-    setMonitorError(null)
     setMonitors([])
     setMonitorBusy(true)
     void runScreen(ScreenSyncEngine.use((service) => service.listMonitors())).then((result) => {
       setMonitorBusy(false)
       if (!result.ok) {
-        setMonitorError(result.message)
+        options.onError(result.message)
         return null
       }
       setMonitors(result.value)
@@ -198,10 +195,9 @@ const useScreenSyncModel = (options: UseScreenSyncOptions): ScreenSyncModel => {
       (result) => {
         setMonitorBusy(false)
         if (!result.ok) {
-          setMonitorError(result.message)
+          options.onError(result.message)
           return false
         }
-        setMonitorError(null)
         options.onNotice({
           kind: "info",
           message:
@@ -243,7 +239,6 @@ const useScreenSyncModel = (options: UseScreenSyncOptions): ScreenSyncModel => {
     monitors,
     monitorIndex,
     monitorBusy,
-    monitorError,
     toggle,
     togglePause,
     stop,

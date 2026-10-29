@@ -24,7 +24,6 @@ interface PreparedFrame {
   readonly chroma: Float32Array
   readonly meanDrive: number
   readonly p90Chroma: number
-  readonly blackout: boolean
 }
 
 const isNearBlack = (pixels: Uint8Array, offset: number): boolean =>
@@ -51,9 +50,7 @@ const darkFraction = (
   return dark / count
 }
 
-const detectContentRect = (
-  frame: ScreenFrame,
-): { readonly rect: ContentRect; readonly rejected: boolean } => {
+const detectContentRect = (frame: ScreenFrame): ContentRect => {
   const { width, height, pixels } = frame
   let top = 0
   let bottom = height - 1
@@ -80,32 +77,13 @@ const detectContentRect = (
     candidateHeight <= 0 ||
     candidateWidth * candidateHeight < width * height * MINIMUM_SURVIVAL
   ) {
-    return { rect: { x: 0, y: 0, width, height }, rejected: true }
+    return { x: 0, y: 0, width, height }
   }
-  return {
-    rect: { x: left, y: top, width: candidateWidth, height: candidateHeight },
-    rejected: false,
-  }
-}
-
-const fullDarkFraction = (frame: ScreenFrame): number => {
-  const { pixels } = frame
-  const total = pixels.length / 4
-  if (total === 0) {
-    return 1
-  }
-  let dark = 0
-  for (let offset = 0; offset < pixels.length; offset += 4) {
-    if (isNearBlack(pixels, offset)) {
-      dark += 1
-    }
-  }
-  return dark / total
+  return { x: left, y: top, width: candidateWidth, height: candidateHeight }
 }
 
 const prepareFrame = (frame: ScreenFrame): PreparedFrame => {
-  const detected = detectContentRect(frame)
-  const { rect } = detected
+  const rect = detectContentRect(frame)
   const pixelCount = rect.width * rect.height
   const lab = new Float32Array(pixelCount * 3)
   const chroma = new Float32Array(pixelCount)
@@ -139,7 +117,6 @@ const prepareFrame = (frame: ScreenFrame): PreparedFrame => {
     chroma,
     meanDrive: sumDrive / Math.max(1, pixelCount),
     p90Chroma: percentile(chroma, 0.9),
-    blackout: detected.rejected && fullDarkFraction(frame) >= BAR_COVERAGE,
   }
 }
 

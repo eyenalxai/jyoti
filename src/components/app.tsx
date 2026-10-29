@@ -4,10 +4,10 @@ import { createMemo, createSignal, onCleanup } from "solid-js"
 import type { ControlFocus } from "@/components/bulb/controls"
 import type { Screen } from "@/components/bulb/modals"
 import type { Pane } from "@/components/bulb/pane"
-import type { Notice } from "@/components/ui/status"
 import type { Bulb } from "@/lib/bulbs/schema"
-import type { Timer } from "@/lib/timers"
 
+import { initialColor } from "@/components/bulb/color/initial"
+import { useColorSession } from "@/components/bulb/color/use-session"
 import { Dashboard } from "@/components/bulb/dashboard"
 import { Modals } from "@/components/bulb/modals"
 import { useBulbActions } from "@/components/bulb/use-actions"
@@ -18,13 +18,11 @@ import { useForms } from "@/components/bulb/use-forms"
 import { useTerminalPalette } from "@/components/bulb/use-terminal-palette"
 import { useCapturePreview } from "@/components/screen/use-preview"
 import { useScreenSyncModel } from "@/components/screen/use-sync"
+import { Toaster } from "@/components/ui/toast"
+import { useToasts } from "@/components/ui/use-toasts"
 import { aggregateState, lightQualityOf } from "@/lib/bulbs/aggregate"
-import { NEUTRAL_TEMPERATURE } from "@/lib/bulbs/schema"
-import { kelvinToSrgb } from "@/lib/color"
-import { noticeDuration } from "@/lib/format"
 import { dispose } from "@/lib/runtime"
 import { palette } from "@/lib/theme"
-import { after, cancel } from "@/lib/timers"
 
 const App = () => {
   const renderer = useRenderer()
@@ -32,29 +30,17 @@ const App = () => {
   useTerminalPalette()
   const [screen, setScreen] = createSignal<Screen>("dashboard")
   const [activeBulb, setActiveBulb] = createSignal<Bulb | null>(null)
-  const [formError, setFormError] = createSignal<string | null>(null)
   const [busy, setBusy] = createSignal(false)
   const [focus, setFocus] = createSignal<ControlFocus>("power")
   const [pane, setPane] = createSignal<Pane>("bulbs")
-  const [notice, setNotice] = createSignal<Notice | null>(null)
-  let noticeTimer: Timer | null = null
+  const { toasts, notify, dismiss: dismissToast } = useToasts()
   let quitting = false
-
-  const notify = (next: Notice) => {
-    if (noticeTimer !== null) {
-      cancel(noticeTimer)
-    }
-    setNotice(next)
-    noticeTimer = after(noticeDuration(next.message), () => {
-      setNotice(null)
-    })
-  }
 
   const fail = (message: string) => {
     notify({ kind: "error", message })
   }
 
-  const preview = useCapturePreview()
+  const preview = useCapturePreview({ onError: fail })
   const sync = useScreenSyncModel({ onNotice: notify, onError: fail })
   const model = useBulbs({ onError: fail, onPower: sync.notePowers })
   const syncActive = createMemo(() => sync.status().phase !== "idle")
@@ -66,6 +52,7 @@ const App = () => {
       notify({ kind: "info", message })
     },
   })
+  const colorSession = useColorSession({ model, controls, notify })
   const quit = () => {
     if (quitting) {
       return
@@ -86,40 +73,19 @@ const App = () => {
     busy,
     notify,
     setActiveBulb,
-    setFormError,
     setScreen,
   })
   const forms = useForms({
     model,
-    controls,
+    sendColor: colorSession.commit,
     activeBulb,
     busy,
     setActiveBulb,
     setBusy,
-    setFormError,
     setScreen,
     notify,
   })
-  const colorInitial = createMemo(() => {
-    const aggregate = model.allSelected()
-      ? aggregateState(model.bulbs(), model.states(), model.stateErrors())
-      : null
-    const current =
-      aggregate === null
-        ? model.selectedState()?.color
-        : aggregate.color?.kind === "equal"
-          ? aggregate.color.hex
-          : undefined
-    if (current !== undefined && current !== null && current !== "#000000") {
-      return current
-    }
-    const kelvin =
-      aggregate === null
-        ? (model.selectedState()?.temperature ?? NEUTRAL_TEMPERATURE)
-        : (aggregate.temperature?.low ?? NEUTRAL_TEMPERATURE)
-    return kelvinToSrgb(kelvin).hex
-  })
-
+  const colorInitial = createMemo(() => initialColor(model))
   const commands = useAppCommands({
     model,
     controls,
@@ -133,9 +99,9 @@ const App = () => {
     syncActive,
     selectedQuality,
     colorInitial,
+    colorSession,
     setScreen,
     setActiveBulb,
-    setFormError,
     setFocus,
     setPane,
     notify,
@@ -144,9 +110,6 @@ const App = () => {
   })
 
   onCleanup(() => {
-    if (noticeTimer !== null) {
-      cancel(noticeTimer)
-    }
     void sync.stop().finally(() => {
       void dispose()
     })
@@ -165,30 +128,29 @@ const App = () => {
         model={model}
         focus={focus()}
         pane={pane()}
-        notice={notice()}
         syncStatus={sync.status()}
         width={dimensions().width}
         height={dimensions().height}
         colorOpen={screen() === "color"}
         colorBusy={busy()}
-        colorError={formError()}
         colorInitial={colorInitial()}
         onFocus={commands.focusControl}
         onQuality={commands.setQuality}
-        onPreviewColor={controls.setColorLive}
+        onPreviewColor={colorSession.preview}
         onSubmitColor={forms.submitColor}
+        onDismissColor={commands.dismissColor}
       />
       <Modals
         screen={screen()}
         activeBulb={activeBulb()}
         busy={busy()}
-        error={formError()}
         preview={preview}
         syncModel={sync}
         onSubmitAdd={forms.submitAdd}
         onSubmitEdit={forms.submitEdit}
         onConfirmRemove={forms.confirmRemove}
       />
+      <Toaster toasts={toasts()} onDismiss={dismissToast} />
     </box>
   )
 }

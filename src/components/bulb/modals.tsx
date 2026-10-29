@@ -17,7 +17,6 @@ interface ModalsProps {
   readonly screen: Screen
   readonly activeBulb: Bulb | null
   readonly busy: boolean
-  readonly error: string | null
   readonly preview: CapturePreviewModel
   readonly syncModel: ScreenSyncModel
   readonly onSubmitAdd: (draft: BulbDraft) => void
@@ -34,7 +33,6 @@ const Modals = (props: ModalsProps) => (
           initial={null}
           inputWidth={41}
           busy={props.busy}
-          error={props.error}
           onSubmit={props.onSubmitAdd}
         />
       </Modal>
@@ -47,7 +45,6 @@ const Modals = (props: ModalsProps) => (
           initial={props.activeBulb}
           inputWidth={41}
           busy={props.busy}
-          error={props.error}
           onSubmit={props.onSubmitEdit}
         />
       </Modal>
@@ -57,7 +54,7 @@ const Modals = (props: ModalsProps) => (
       <Show when={props.activeBulb}>
         {(bulb) => (
           <Modal title="Remove bulb" hint="y or n" width={50} height={12}>
-            <Remove bulb={bulb()} busy={props.busy} error={props.error} />
+            <Remove bulb={bulb()} busy={props.busy} />
           </Modal>
         )}
       </Show>
@@ -83,7 +80,6 @@ const Modals = (props: ModalsProps) => (
           captured={props.syncModel.status().monitor}
           pending={props.syncModel.status().pendingMonitor}
           busy={props.syncModel.monitorBusy()}
-          error={props.syncModel.monitorError()}
         />
       </Modal>
     </Show>

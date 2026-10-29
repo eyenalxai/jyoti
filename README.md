@@ -10,7 +10,7 @@ Bulbs are added inside the app. Their tokens go to the OS keyring; only non-secr
 - Adds, edits and removes bulbs without touching a config file by hand.
 - Sends power, brightness, warmth and color changes to the selected bulb, or to every bulb when All bulbs is selected, over UDP.
 - Selects All bulbs on first load when two or more bulbs exist, so the common job starts in one place.
-- Keeps every action on the keyboard, with an inline error when a bulb does not answer.
+- Keeps every action on the keyboard, with a transient toast when a bulb does not answer.
 - Uses the terminal's default foreground, background and ANSI palette, so it follows the active terminal theme.
 - Starts empty. It does not read `~/.local/share/xiaomi-bulbs/tokens.env`; that file remains the reference script's input.
 
@@ -65,11 +65,13 @@ The build writes `native/build/libjyoti-capture.so` and the generated Wayland pr
 | `?`               | Show the key map                             |
 | `q` / `ctrl+c`    | Quit                                         |
 
-Brightness moves in 5% steps and warmth in 100 K steps. Hue moves in 1° steps and saturation in 1% steps. Changes update immediately and are sent after a short idle; a failed command restores the bulb's real state and explains what went wrong.
+Brightness moves in 5% steps and warmth in 100 K steps. Hue moves in 1° steps and saturation in 1% steps. Changes update immediately and are sent after a short idle; a failed command restores the bulb's real state and reports the failure in a toast.
 
-The light has two qualities: **White** (warmth) and **Colour** (packed RGB). The `Light` switch makes the choice explicit, and only the active quality's row is shown. The colour picker edits hue and saturation; every value it can produce is an sRGB colour, so the swatch is exactly what is sent. `tab` switches between hue/saturation and RGB, the hex field accepts an exact colour, `↑` `↓` move between fields, `←` `→` adjust the focused slider, and `enter` closes the picker after the live preview settles. Colour applies live after the same short idle as brightness and warmth.
+Notifications and errors appear as transient toasts in the top-right corner. They queue, dismiss on their own, and can be dismissed with a click.
 
-With two or more bulbs, **All bulbs** is selected on first load and `A` returns to it. The panel shows the aggregate power, brightness, quality and the active quality value. When the bulbs disagree on quality the switch says `mixed`; choosing White or Colour applies it to every bulb. `space` turns every bulb off when all of them are on, or on otherwise. `←` `→` set the same brightness or warmth on every bulb, starting from the aggregate — right from the brightest, left from the dimmest — and `c` applies one colour to all of them. Each bulb is addressed independently, so one slow bulb does not hold up the rest; a partial failure names the bulbs that failed and keeps the successes. Edit and remove stay per bulb.
+The light has two qualities: **White** (warmth) and **Colour** (packed RGB). The `Light` switch makes the choice explicit, and only the active quality's row is shown. The colour picker edits hue and saturation; every value it can produce is an sRGB colour, so the swatch is exactly what is sent. `tab` switches between hue/saturation and RGB, the hex field accepts an exact colour, `↑` `↓` move between fields, and `←` `→` adjust the focused slider. Each change is sent after a short idle, so the bulb follows the picker. `enter` keeps the colour and closes; `esc` reverts to the colour and mode each target had when the picker opened.
+
+With two or more bulbs, **All bulbs** is selected on first load and `A` returns to it. The panel shows the aggregate power, brightness, quality and the active quality value. When the bulbs disagree on quality the switch says `mixed`; choosing White or Colour applies it to every bulb. `space` turns every bulb off when all of them are on, or on otherwise. `←` `→` set the same brightness or warmth on every bulb, starting from the aggregate — right from the brightest, left from the dimmest — and `c` applies one colour to all of them as you adjust; `esc` reverts each bulb's own previous colour. Each bulb is addressed independently, so one slow bulb does not hold up the rest; a partial failure names the bulbs that failed and keeps the successes. Edit and remove stay per bulb.
 
 ## Screen sync
 
@@ -77,15 +79,15 @@ Screen sync is being built in slices. `s` starts a sync run that captures one mo
 
 The default captured monitor is the only monitor, otherwise the first monitor that is not focused, otherwise the first enumerated monitor. `m` lists the monitors with their name, resolution, refresh rate and focus marker. A choice while stopped applies to the next run only; a choice during a run switches immediately; the choice is never persisted. A single monitor, or unknown focus, is captured with a persistent `⚠ jyoti` warning in the strip.
 
-The two-line sync strip above the status line shows the state, captured monitor, derived colour or `4000 K`, sync brightness, frame age and reachable/total bulbs. It reports starting, paused, black frame, capture stale, capture lost, switching monitor, flashing scene and stopping, and its second line carries the run keys. Per-bulb dots in the rail show syncing, unreachable, restored and not restored. A near-black frame holds the last colour and brightness and never sends neutral or touches power. A stale frame holds them too; after five seconds publishing stops but the run stays alive. A white document falls back to 4000 K at the brightness cap.
+The two-line sync strip above the footer shows the state, captured monitor, derived colour, sync brightness, frame age and reachable/total bulbs. It reports starting, paused, capture stale, capture lost, switching monitor, flashing scene and stopping, and its second line carries the run keys. Per-bulb dots in the rail show syncing, unreachable, restored and not restored. A stale frame holds the last colour and brightness; after five seconds publishing stops but the run stays alive.
 
-A coloured scene writes the packed RGB value of the winning cluster's own colour — its mean lightness and hue, with the chroma raised toward the cluster's 75th percentile — so a solid primary round-trips, while a low-chroma scene writes 4000 K. Sync brightness follows the scene brightness, the frame's mean drive, through an 8–100% envelope; once seeded it moves at most eight points per tick, and a bulb that turns on later starts at the current target. It is written only to bulbs known to be on: an off bulb still receives colour so it is current when switched on, but never a brightness write, and a bulb with unknown power receives colour only. Power is never written. When three brightness targets flip direction with a peak-to-peak over 25 points, the flash guard holds the current brightness for two seconds, shows `flashing scene` and keeps updating colour at the normal tick. It re-arms after three same-direction targets or a peak-to-peak of 25 or less. While a run is active, the colour, brightness and warmth controls are disabled and say that sync owns them; power, refresh and navigation keep working. The TUI feeds the run's known power from its power actions and refreshes.
+A scene writes the packed RGB value of the winning cluster's own colour — its mean lightness and hue, with the chroma raised toward the cluster's 75th percentile — so a solid colour round-trips as itself, white, grey and black included. Sync never writes colour temperature; temperature stays in the manual controls and the pre-sync restore. Sync brightness follows the scene brightness, the frame's mean drive, through an 8–100% envelope; once seeded it moves at most eight points per tick, and a bulb that turns on later starts at the current target. It is written only to bulbs known to be on: an off bulb still receives colour so it is current when switched on, but never a brightness write, and a bulb with unknown power receives colour only. Power is never written. When three brightness targets flip direction with a peak-to-peak over 25 points, the flash guard holds the current brightness for two seconds, shows `flashing scene` and keeps updating colour at the normal tick. It re-arms after three same-direction targets or a peak-to-peak of 25 or less. While a run is active, the colour, brightness and warmth controls are disabled and say that sync owns them; power, refresh and navigation keep working. The TUI feeds the run's known power from its power actions and refreshes.
 
 Stopping restores each bulb's pre-sync colour or temperature and, when the run drove it, brightness, with confirmed sends bounded to about two seconds: a bulb with no confirmed snapshot, no restore value or a failed restore is named as not restored while the others restore. `q` and `ctrl+c` restore before exiting. A bulb that misses three consecutive sends is marked unreachable, probed with a hello every five seconds and rejoins the run automatically when it answers.
 
 The capture library is built from source and loaded lazily with `bun:ffi`. A missing library is reported as a typed error at capture start and leaves every other jyoti feature working.
 
-`v` opens a development preview. It lists the monitors with their resolution, refresh rate and the focused one, captures the selected monitor through the native library, and shows the derived colour, the scene brightness, the frame age and the blackout state. `enter` starts or stops the capture, `↑` `↓` choose a monitor, and `esc` closes the preview. The preview does not write to any bulb.
+`v` opens a development preview. It lists the monitors with their resolution, refresh rate and the focused one, captures the selected monitor through the native library, and shows the derived colour, the scene brightness and the frame age. `enter` starts or stops the capture, `↑` `↓` choose a monitor, and `esc` closes the preview. The preview does not write to any bulb.
 
 ## Storage and security
 
@@ -115,7 +117,7 @@ src/
     app.tsx                screen state and actions
     bulb/                  dashboard, rail, detail, forms, keyboard
     screen/                sync strip, monitor picker, capture preview
-    ui/                    modal, meter, status, key hint
+    ui/                    modal, meter, toast, key hint
   lib/
     bulbs/                 schemas, config file store, repository
     keyring/               Secret Service adapter
