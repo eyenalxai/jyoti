@@ -127,6 +127,8 @@ const ignorePatterns = [
   "**/*.d.ts",
   "**/*.config.{js,ts,mjs,cjs}",
   "**/tsconfig.tsbuildinfo",
+  // Throwaway wayfinder prototypes are primary sources, not production code.
+  "prototype/**",
 ]
 
 export default defineConfig({

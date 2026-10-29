@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Field notes</title>
+    <style>
+      :root {
+        color-scheme: light;
+      }
+      body {
+        margin: 0;
+        background: #fdfdfb;
+        color: #171717;
+        font-family: Georgia, "Times New Roman", serif;
+      }
+      .page {
+        max-width: 980px;
+        margin: 0 auto;
+        padding: 72px 64px 96px;
+      }
+      .masthead {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        border-bottom: 1px solid #d8d8d2;
+        padding-bottom: 18px;
+        margin-bottom: 42px;
+        font-family: Inter, system-ui, sans-serif;
+        font-size: 13px;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        color: #5c5c56;
+      }
+      .mark {
+        width: 46px;
+        height: 46px;
+        border-radius: 10px;
+        background: #1a56db;
+      }
+      h1 {
+        font-size: 54px;
+        line-height: 1.05;
+        letter-spacing: -0.02em;
+        margin: 0 0 18px;
+      }
+      .standfirst {
+        font-size: 24px;
+        line-height: 1.45;
+        color: #3c3c38;
+        margin: 0 0 40px;
+        max-width: 760px;
+      }
+      h2 {
+        font-family: Inter, system-ui, sans-serif;
+        font-size: 19px;
+        letter-spacing: 0.01em;
+        margin: 44px 0 14px;
+      }
+      p,
+      li {
+        font-size: 19px;
+        line-height: 1.62;
+        margin: 0 0 18px;
+      }
+      a {
+        color: #1a56db;
+        text-decoration-thickness: 1px;
+        text-underline-offset: 3px;
+      }
+      .note {
+        border-left: 3px solid #1a56db;
+        padding: 4px 0 4px 20px;
+        color: #3c3c38;
+        font-style: italic;
+      }
+      .byline {
+        font-family: Inter, system-ui, sans-serif;
+        font-size: 14px;
+        color: #6b6b64;
+        margin-bottom: 36px;
+      }
+      ul {
+        padding-left: 24px;
+      }
+    </style>
+  </head>
+  <body>
+    <main class="page">
+      <div class="masthead">
+        <div class="mark"></div>
+        <span>Field notes / issue 41</span>
+      </div>
+      <h1>What the room remembers</h1>
+      <p class="byline">By A. Moreno · 12 minute read · <a href="#">Subscribe</a></p>
+      <p class="standfirst">
+        A screen is a window with no weather. We spent a month watching light move across a small
+        apartment and learned that the room notices more than we do.
+      </p>
+      <p>
+        The first thing to go was the lamp. It had been a reliable object for six years, a warm
+        circle on the ceiling that arrived before anyone spoke. Then the screen grew larger and the
+        lamp began to look like a second opinion. At dusk the room was blue; at noon it was white.
+        Nobody had decided this. It simply happened, the way a room fills with the colour of the
+        thing everyone is looking at.
+      </p>
+      <p>
+        We measured the wall behind the sofa at seven in the evening. The reading was not the colour
+        of the paint, nor the colour of the film. It was a third colour, made by the room itself.
+        This is the part that is easy to miss: light does not arrive; it accumulates. A wall is a
+        slow instrument.
+      </p>
+      <h2>The problem with an average</h2>
+      <p>
+        The obvious approach is to average the screen. The average knows about quantity and nothing
+        about attention. A white document with a blue link averages to white, which is correct, but
+        a night scene with one red window averages to near-black, which is useless. The average is
+        honest and slightly stupid. It answers a question nobody asked.
+      </p>
+      <p class="note">
+        A neutral scene should produce a neutral light. This sounds obvious until you build a system
+        that is very good at finding the one saturated thing in a white room.
+      </p>
+      <p>
+        The alternative is to ask what the eye is doing. The eye is not a sampler; it is a narrator.
+        It finds the face, the fire, the lit window, and it lets the rest fall away. A screen full
+        of text is mostly paper to the eye, even when the paper is a dark editor and the text is a
+        small bright animal. See the <a href="#">method notes</a> and the
+        <a href="#">frame archive</a> for the raw captures.
+      </p>
+      <h2>Three ways of looking</h2>
+      <ul>
+        <li>
+          <strong>Dominant colour.</strong> Group the pixels, weigh the groups by size and
+          saturation, and keep the hue that survives. This is the <a href="#">baseline</a>.
+        </li>
+        <li>
+          <strong>Background.</strong> Ignore the edges and the faces; average the least salient
+          part of the frame. This is the <a href="#">ambient</a> reading.
+        </li>
+        <li>
+          <strong>Histogram.</strong> Count hues in perceptual bins and take the mode. This is the
+          <a href="#">vote</a>.
+        </li>
+      </ul>
+      <p>
+        None of them is a theory of attention. They are three different ways of being wrong, and the
+        work is to choose the wrongness that feels right in a dark room. The fire should be orange.
+        The document should be white. The ocean should not turn the ceiling teal because a wave
+        caught the light for half a second.
+      </p>
+      <p>
+        At the end of the month we turned the lamp back on and left it there. The screen still
+        changes. The room still remembers. But now there is a rule, written on a sticky note by the
+        door: <em>when in doubt, be neutral</em>.
+      </p>
+    </main>
+  </body>
+</html>

@@ -1,0 +1,474 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>color.ts — jyoti</title>
+    <style>
+      :root {
+        color-scheme: dark;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        height: 100vh;
+        overflow: hidden;
+        background: #11111b;
+        color: #cdd6f4;
+        font-family: "JetBrains Mono", "Fira Code", monospace;
+        font-size: 15px;
+      }
+      .app {
+        display: grid;
+        grid-template-columns: 56px 300px 1fr 280px;
+        height: 100vh;
+      }
+      .rail {
+        background: #0b0b12;
+        border-right: 1px solid #1e1e2e;
+        padding-top: 18px;
+        text-align: center;
+        color: #6c7086;
+        font-size: 18px;
+      }
+      .rail div {
+        margin-bottom: 26px;
+      }
+      .rail .active {
+        color: #89b4fa;
+      }
+      .tree {
+        background: #181825;
+        border-right: 1px solid #1e1e2e;
+        padding: 14px 0;
+        font-size: 13px;
+        line-height: 2;
+      }
+      .tree .head {
+        color: #a6adc8;
+        padding: 0 16px 10px;
+        font-family: Inter, system-ui, sans-serif;
+        font-size: 11px;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+      }
+      .tree .row {
+        padding: 0 16px;
+        color: #bac2de;
+        white-space: nowrap;
+      }
+      .tree .row.dim {
+        color: #6c7086;
+      }
+      .tree .row.sel {
+        background: #313244;
+        color: #cdd6f4;
+      }
+      .tree .row .icon {
+        display: inline-block;
+        width: 18px;
+        color: #89b4fa;
+      }
+      .editor {
+        display: flex;
+        flex-direction: column;
+        min-width: 0;
+      }
+      .tabs {
+        display: flex;
+        height: 38px;
+        background: #181825;
+        border-bottom: 1px solid #1e1e2e;
+        font-size: 13px;
+      }
+      .tab {
+        padding: 10px 18px;
+        color: #9399b2;
+        border-right: 1px solid #1e1e2e;
+      }
+      .tab.active {
+        background: #11111b;
+        color: #cdd6f4;
+        border-top: 1px solid #89b4fa;
+      }
+      .code {
+        padding: 18px 0 0;
+        overflow: hidden;
+        flex: 1;
+        font-size: 15px;
+        line-height: 1.55;
+      }
+      .line {
+        display: flex;
+        white-space: pre;
+      }
+      .num {
+        width: 54px;
+        text-align: right;
+        padding-right: 18px;
+        color: #45475a;
+        user-select: none;
+      }
+      .kw {
+        color: #cba6f7;
+      }
+      .str {
+        color: #a6e3a1;
+      }
+      .numlit {
+        color: #fab387;
+      }
+      .fn {
+        color: #89b4fa;
+      }
+      .comment {
+        color: #6c7086;
+        font-style: italic;
+      }
+      .type {
+        color: #f9e2af;
+      }
+      .op {
+        color: #89dceb;
+      }
+      .panel {
+        background: #181825;
+        border-left: 1px solid #1e1e2e;
+        padding: 16px;
+        font-family: Inter, system-ui, sans-serif;
+        font-size: 12px;
+        color: #a6adc8;
+      }
+      .panel h3 {
+        margin: 0 0 14px;
+        font-size: 11px;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        color: #6c7086;
+        font-weight: 600;
+      }
+      .thumb {
+        height: 158px;
+        border-radius: 8px;
+        background:
+          radial-gradient(circle at 62% 34%, #e8b48f 0 16%, transparent 17%),
+          radial-gradient(circle at 58% 58%, #2b2b3a 0 34%, transparent 35%),
+          linear-gradient(160deg, #24344a 0%, #10121c 70%);
+        border: 1px solid #313244;
+        margin-bottom: 16px;
+      }
+      .kv {
+        display: flex;
+        justify-content: space-between;
+        padding: 5px 0;
+        border-bottom: 1px solid #1e1e2e;
+      }
+      .kv b {
+        color: #cdd6f4;
+        font-weight: 500;
+      }
+      .status {
+        height: 24px;
+        background: #89b4fa;
+        color: #11111b;
+        font-family: Inter, system-ui, sans-serif;
+        font-size: 11px;
+        display: flex;
+        align-items: center;
+        gap: 22px;
+        padding: 0 14px;
+        font-weight: 600;
+      }
+      .status .right {
+        margin-left: auto;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="app">
+      <div class="rail">
+        <div class="active">◧</div>
+        <div>⌕</div>
+        <div>⑂</div>
+        <div>▤</div>
+        <div>⚙</div>
+      </div>
+      <div class="tree">
+        <div class="head">Explorer</div>
+        <div class="row dim">jyoti</div>
+        <div class="row"><span class="icon">▾</span>src</div>
+        <div class="row"><span class="icon">▾</span>lib</div>
+        <div class="row"><span class="icon">▾</span>screen</div>
+        <div class="row sel"><span class="icon">·</span>color.ts</div>
+        <div class="row"><span class="icon">·</span>frame.ts</div>
+        <div class="row"><span class="icon">·</span>capture.ts</div>
+        <div class="row"><span class="icon">·</span>pipeline.ts</div>
+        <div class="row"><span class="icon">▸</span>bulbs</div>
+        <div class="row"><span class="icon">▸</span>miio</div>
+        <div class="row"><span class="icon">▸</span>keyring</div>
+        <div class="row"><span class="icon">▸</span>components</div>
+        <div class="row dim">package.json</div>
+        <div class="row dim">tsconfig.json</div>
+        <div class="row dim">GLOSSARY.md</div>
+      </div>
+      <div class="editor">
+        <div class="tabs">
+          <div class="tab active">color.ts</div>
+          <div class="tab">frame.ts</div>
+          <div class="tab">pipeline.ts</div>
+        </div>
+        <div class="code">
+          <div class="line">
+            <span class="num">1</span
+            ><span
+              ><span class="kw">import</span> { <span class="type">Schema</span> }
+              <span class="kw">from</span> <span class="str">"effect"</span></span
+            >
+          </div>
+          <div class="line">
+            <span class="num">2</span
+            ><span
+              ><span class="kw">import</span> { <span class="fn">oklab</span>,
+              <span class="fn">oklch</span> } <span class="kw">from</span>
+              <span class="str">"./space"</span></span
+            >
+          </div>
+          <div class="line"><span class="num">3</span><span></span></div>
+          <div class="line">
+            <span class="num">4</span
+            ><span
+              ><span class="comment"
+                >// A frame is a small grid; the colour maths is pure.</span
+              ></span
+            >
+          </div>
+          <div class="line">
+            <span class="num">5</span
+            ><span
+              ><span class="kw">export const</span> <span class="type">Grid</span> =
+              <span class="type">Schema</span>.<span class="fn">Struct</span>({</span
+            >
+          </div>
+          <div class="line">
+            <span class="num">6</span
+            ><span> width: <span class="type">Schema</span>.<span class="fn">Int</span>,</span>
+          </div>
+          <div class="line">
+            <span class="num">7</span
+            ><span> height: <span class="type">Schema</span>.<span class="fn">Int</span>,</span>
+          </div>
+          <div class="line">
+            <span class="num">8</span
+            ><span>
+              pixels: <span class="type">Schema</span>.<span class="fn">Uint8Array</span>,</span
+            >
+          </div>
+          <div class="line"><span class="num">9</span><span>})</span></div>
+          <div class="line"><span class="num">10</span><span></span></div>
+          <div class="line">
+            <span class="num">11</span
+            ><span
+              ><span class="kw">const</span> <span class="fn">neutralChroma</span> =
+              <span class="numlit">0.03</span></span
+            >
+          </div>
+          <div class="line">
+            <span class="num">12</span
+            ><span
+              ><span class="kw">const</span> <span class="fn">deadband</span> =
+              <span class="numlit">0.02</span></span
+            >
+          </div>
+          <div class="line"><span class="num">13</span><span></span></div>
+          <div class="line">
+            <span class="num">14</span
+            ><span
+              ><span class="kw">export const</span> <span class="fn">derive</span> = (frame:
+              <span class="type">Grid</span>): <span class="type">Lch</span> =&gt; {</span
+            >
+          </div>
+          <div class="line">
+            <span class="num">15</span
+            ><span>
+              <span class="kw">const</span> lab = <span class="fn">toOklab</span>(frame)</span
+            >
+          </div>
+          <div class="line">
+            <span class="num">16</span
+            ><span>
+              <span class="kw">if</span> (<span class="fn">p90</span>(lab.chroma) &lt;
+              <span class="fn">neutralChroma</span>) {</span
+            >
+          </div>
+          <div class="line">
+            <span class="num">17</span
+            ><span>
+              <span class="kw">return</span> <span class="fn">neutral</span>(<span class="numlit"
+                >4000</span
+              >)</span
+            >
+          </div>
+          <div class="line"><span class="num">18</span><span> }</span></div>
+          <div class="line">
+            <span class="num">19</span
+            ><span>
+              <span class="kw">const</span> clusters = <span class="fn">kmeans</span>(lab,
+              <span class="numlit">5</span>)</span
+            >
+          </div>
+          <div class="line">
+            <span class="num">20</span
+            ><span>
+              <span class="kw">const</span> winner = <span class="fn">score</span>(clusters)</span
+            >
+          </div>
+          <div class="line">
+            <span class="num">21</span
+            ><span>
+              <span class="kw">return</span> <span class="fn">cap</span>(winner,
+              <span class="numlit">0.04</span> + <span class="numlit">0.0009</span> * lab.l *
+              <span class="numlit">100</span>)</span
+            >
+          </div>
+          <div class="line"><span class="num">22</span><span>}</span></div>
+          <div class="line"><span class="num">23</span><span></span></div>
+          <div class="line">
+            <span class="num">24</span
+            ><span><span class="kw">export const</span> <span class="fn">publish</span> = (</span>
+          </div>
+          <div class="line">
+            <span class="num">25</span
+            ><span> last: <span class="type">Lch</span> | <span class="kw">null</span>,</span>
+          </div>
+          <div class="line">
+            <span class="num">26</span><span> next: <span class="type">Lch</span>,</span>
+          </div>
+          <div class="line">
+            <span class="num">27</span><span>): <span class="type">Lch</span> =&gt; {</span>
+          </div>
+          <div class="line">
+            <span class="num">28</span
+            ><span>
+              <span class="kw">if</span> (last === <span class="kw">null</span>)
+              <span class="kw">return</span> next</span
+            >
+          </div>
+          <div class="line">
+            <span class="num">29</span
+            ><span>
+              <span class="kw">return</span> <span class="fn">deltaE</span>(last, next) &gt;=
+              <span class="fn">deadband</span> ? next : last</span
+            >
+          </div>
+          <div class="line"><span class="num">30</span><span>}</span></div>
+          <div class="line"><span class="num">31</span><span></span></div>
+          <div class="line">
+            <span class="num">32</span
+            ><span
+              ><span class="comment"
+                >// TODO: measure the fire cut at 1.5 Hz before trusting the EMA.</span
+              ></span
+            >
+          </div>
+          <div class="line">
+            <span class="num">33</span
+            ><span><span class="kw">const</span> tau = <span class="numlit">450</span></span>
+          </div>
+          <div class="line">
+            <span class="num">34</span
+            ><span
+              ><span class="kw">const</span> alpha = <span class="numlit">1</span> - Math.<span
+                class="fn"
+                >exp</span
+              >(-<span class="numlit">667</span> / tau)</span
+            >
+          </div>
+          <div class="line"><span class="num">35</span><span></span></div>
+          <div class="line">
+            <span class="num">36</span
+            ><span
+              ><span class="kw">export const</span> <span class="fn">smooth</span> = (prev:
+              <span class="type">Lch</span>, next: <span class="type">Lch</span>):
+              <span class="type">Lch</span> =&gt; ({</span
+            >
+          </div>
+          <div class="line">
+            <span class="num">37</span><span> l: prev.l + (next.l - prev.l) * alpha,</span>
+          </div>
+          <div class="line">
+            <span class="num">38</span><span> c: prev.c + (next.c - prev.c) * alpha,</span>
+          </div>
+          <div class="line">
+            <span class="num">39</span
+            ><span> h: <span class="fn">lerpHue</span>(prev.h, next.h, alpha),</span>
+          </div>
+          <div class="line"><span class="num">40</span><span>})</span></div>
+          <div class="line"><span class="num">41</span><span></span></div>
+          <div class="line">
+            <span class="num">42</span
+            ><span
+              ><span class="kw">export const</span> <span class="fn">gamut</span> = (c:
+              <span class="type">Lch</span>): <span class="type">Rgb</span> =&gt; {</span
+            >
+          </div>
+          <div class="line">
+            <span class="num">43</span
+            ><span> <span class="kw">let</span> lo = <span class="numlit">0</span></span>
+          </div>
+          <div class="line">
+            <span class="num">44</span><span> <span class="kw">let</span> hi = c.c</span>
+          </div>
+          <div class="line">
+            <span class="num">45</span
+            ><span>
+              <span class="kw">for</span> (<span class="kw">let</span> i =
+              <span class="numlit">0</span>; i &lt; <span class="numlit">28</span>; i++) {</span
+            >
+          </div>
+          <div class="line">
+            <span class="num">46</span
+            ><span>
+              <span class="kw">const</span> mid = (lo + hi) / <span class="numlit">2</span></span
+            >
+          </div>
+          <div class="line">
+            <span class="num">47</span
+            ><span>
+              <span class="kw">if</span> (<span class="fn">inGamut</span>({ ...c, c: mid })) lo =
+              mid</span
+            >
+          </div>
+          <div class="line">
+            <span class="num">48</span><span> <span class="kw">else</span> hi = mid</span>
+          </div>
+          <div class="line"><span class="num">49</span><span> }</span></div>
+          <div class="line">
+            <span class="num">50</span
+            ><span>
+              <span class="kw">return</span> <span class="fn">toRgb</span>({ ...c, c: lo })</span
+            >
+          </div>
+          <div class="line"><span class="num">51</span><span>}</span></div>
+        </div>
+        <div class="status">
+          <span>main*</span><span>0 errors</span><span>TypeScript</span><span>UTF-8</span>
+          <span class="right">Ln 42, Col 18</span>
+        </div>
+      </div>
+      <div class="panel">
+        <h3>Preview</h3>
+        <div class="thumb"></div>
+        <div class="kv"><span>Capture</span><b>wlr-screencopy</b></div>
+        <div class="kv"><span>Grid</span><b>128 × 72</b></div>
+        <div class="kv"><span>Rate</span><b>10 Hz</b></div>
+        <div class="kv"><span>Tick</span><b>1.5 Hz</b></div>
+        <div class="kv"><span>Deadband</span><b>ΔE 0.02</b></div>
+        <div class="kv"><span>Fallback</span><b>4000 K</b></div>
+        <h3 style="margin-top: 22px">Problems</h3>
+        <div class="kv"><span>TypeScript</span><b>0</b></div>
+        <div class="kv"><span>ESLint</span><b>0</b></div>
+      </div>
+    </div>
+  </body>
+</html>
