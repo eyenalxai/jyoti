@@ -13,6 +13,8 @@ interface AppKeysOptions {
   readonly onColor: () => void
   readonly onRefresh: () => void
   readonly onSyncToggle: () => void
+  readonly onSyncPause: () => void
+  readonly onMonitor: () => void
   readonly onHelp: () => void
   readonly onTogglePower: () => void
   readonly onSelectAll: () => void
@@ -26,6 +28,8 @@ interface AppKeysOptions {
   readonly onPreviewMove: (delta: number) => void
   readonly onPreviewToggle: () => void
   readonly onPreviewClose: () => void
+  readonly onMonitorMove: (delta: number) => void
+  readonly onMonitorChoose: () => void
 }
 
 interface KeyLike {
@@ -41,58 +45,97 @@ const isQuestionMark = (key: KeyLike): boolean =>
 const isSelectAll = (key: KeyLike): boolean =>
   !key.ctrl && (key.name === "A" || (key.shift && key.name === "a"))
 
+const isUp = (key: KeyLike): boolean => key.name === "up" || key.name === "k"
+const isDown = (key: KeyLike): boolean => key.name === "down" || key.name === "j"
+const isEnter = (key: KeyLike): boolean => key.name === "enter" || key.name === "return"
+const isEscape = (key: KeyLike): boolean => key.name === "escape"
+
+const handlePreview = (key: KeyLike, options: AppKeysOptions): void => {
+  if (isEscape(key) || key.name === "v") {
+    options.onPreviewClose()
+    return
+  }
+  if (key.name === "q") {
+    options.onQuit()
+    return
+  }
+  if (isUp(key)) {
+    options.onPreviewMove(-1)
+    return
+  }
+  if (isDown(key)) {
+    options.onPreviewMove(1)
+    return
+  }
+  if (isEnter(key)) {
+    options.onPreviewToggle()
+  }
+}
+
+const handleMonitors = (key: KeyLike, options: AppKeysOptions): void => {
+  if (isEscape(key)) {
+    options.onClose()
+    return
+  }
+  if (isUp(key)) {
+    options.onMonitorMove(-1)
+    return
+  }
+  if (isDown(key)) {
+    options.onMonitorMove(1)
+    return
+  }
+  if (isEnter(key)) {
+    options.onMonitorChoose()
+  }
+}
+
+const handleHelp = (key: KeyLike, options: AppKeysOptions): void => {
+  if (isEscape(key) || isQuestionMark(key)) {
+    options.onClose()
+  }
+  if (key.name === "q") {
+    options.onQuit()
+  }
+}
+
+const handleRemove = (key: KeyLike, options: AppKeysOptions): void => {
+  if (key.name === "y") {
+    options.onConfirmRemove()
+  }
+  if (key.name === "n" || isEscape(key)) {
+    options.onClose()
+  }
+}
+
 const handleModal = (key: KeyLike, screen: Screen, options: AppKeysOptions): void => {
   if (screen === "capture") {
-    if (key.name === "escape" || key.name === "v") {
-      options.onPreviewClose()
-      return
-    }
-    if (key.name === "q") {
-      options.onQuit()
-      return
-    }
-    if (key.name === "up" || key.name === "k") {
-      options.onPreviewMove(-1)
-      return
-    }
-    if (key.name === "down" || key.name === "j") {
-      options.onPreviewMove(1)
-      return
-    }
-    if (key.name === "enter" || key.name === "return") {
-      options.onPreviewToggle()
-    }
+    handlePreview(key, options)
+    return
+  }
+  if (screen === "monitors") {
+    handleMonitors(key, options)
     return
   }
   if (screen === "help") {
-    if (key.name === "escape" || isQuestionMark(key)) {
-      options.onClose()
-    }
-    if (key.name === "q") {
-      options.onQuit()
-    }
+    handleHelp(key, options)
     return
   }
   if (screen === "remove") {
-    if (key.name === "y") {
-      options.onConfirmRemove()
-    }
-    if (key.name === "n" || key.name === "escape") {
-      options.onClose()
-    }
+    handleRemove(key, options)
     return
   }
-  if (key.name === "escape") {
+  if (isEscape(key)) {
     options.onClose()
   }
 }
 
 const handleSelection = (key: KeyLike, options: AppKeysOptions): boolean => {
-  if (key.name === "up" || key.name === "k") {
+  if (isUp(key)) {
     options.onMove(-1)
     return true
   }
-  if (key.name === "down" || key.name === "j") {
+  if (isDown(key)) {
     options.onMove(1)
     return true
   }
@@ -152,6 +195,14 @@ const handleAction = (key: KeyLike, options: AppKeysOptions): boolean => {
     options.onSyncToggle()
     return true
   }
+  if (key.name === "x") {
+    options.onSyncPause()
+    return true
+  }
+  if (key.name === "m") {
+    options.onMonitor()
+    return true
+  }
   if (key.name === "v") {
     options.onPreview()
     return true
@@ -164,7 +215,7 @@ const handleAction = (key: KeyLike, options: AppKeysOptions): boolean => {
     options.onTogglePower()
     return true
   }
-  if (key.name === "enter" || key.name === "return") {
+  if (isEnter(key)) {
     options.onActivate()
     return true
   }

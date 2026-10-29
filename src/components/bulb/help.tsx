@@ -1,3 +1,4 @@
+import { SYNC_OWNS_CONTROLS } from "@/lib/screen/sync/copy"
 import { palette } from "@/lib/theme"
 
 const KeyRow = (props: { readonly keys: string; readonly label: string }) => (
@@ -13,14 +14,22 @@ const KeyRow = (props: { readonly keys: string; readonly label: string }) => (
   </box>
 )
 
+const NoteRow = (props: { readonly label: string }) => (
+  <box flexDirection="row" gap={1} height={1} flexShrink={0}>
+    <box width={14} flexShrink={0} />
+    <text fg={palette.faint} bg={palette.surfaceRaised}>
+      {props.label}
+    </text>
+  </box>
+)
+
 const Help = () => (
   <box flexDirection="column" gap={0}>
     <text fg={palette.faint} bg={palette.surfaceRaised} height={1} flexShrink={0}>
       bulbs
     </text>
     <KeyRow keys="↑ ↓  j k" label="Select a bulb or control" />
-    <KeyRow keys="A" label="Select all bulbs" />
-    <KeyRow keys="a  e  d" label="Add, edit or remove" />
+    <KeyRow keys="A  a  e  d" label="All bulbs, add, edit or remove" />
 
     <text fg={palette.faint} bg={palette.surfaceRaised} height={1} flexShrink={0}>
       controls
@@ -31,10 +40,13 @@ const Help = () => (
     <KeyRow keys="c" label="Set color" />
 
     <text fg={palette.faint} bg={palette.surfaceRaised} height={1} flexShrink={0}>
-      screen
+      screen sync
     </text>
-    <KeyRow keys="s" label="Start or stop screen sync" />
-    <KeyRow keys="v" label="Capture preview" />
+    <KeyRow keys="s  x" label="Start or stop · pause or resume" />
+    <KeyRow keys="m" label="Choose the captured monitor" />
+    <KeyRow keys="v" label="Capture preview (dev)" />
+    <NoteRow label={SYNC_OWNS_CONTROLS} />
+    <NoteRow label="power untouched · 4000 K neutral · 1.5 Hz" />
 
     <text fg={palette.faint} bg={palette.surfaceRaised} height={1} flexShrink={0}>
       app

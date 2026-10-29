@@ -76,6 +76,10 @@ One start-to-stop period of screen sync. A run is not a miIO session: it covers 
 
 A sync run that keeps capture, sessions and state but publishes nothing. The bulbs stay on the last derived colour and sync brightness.
 
+## Sync strip
+
+The two-line panel above the status line while a sync run exists. Its first line carries the state, captured monitor, derived colour or neutral fallback, sync brightness, frame age and reachable/total bulbs; its second line carries the run's keys.
+
 ## Captured monitor
 
 The monitor a sync run reads.
@@ -99,6 +103,14 @@ Holding the last derived colour and sync brightness while the frame is near-blac
 ## Stale frame
 
 A captured frame older than about one second. The run holds the last colour until a fresh frame arrives.
+
+## Capture lost
+
+A sync run with no fresh frame for about five seconds. Publishing stops but the run stays alive; a fresh frame resumes it.
+
+## Self-capture warning
+
+The `⚠ jyoti` marker in the sync strip when the captured monitor is the one running jyoti: the only monitor, or an unknown focus. Monitor selection is the only self-mask; the run is allowed with the warning.
 
 ## Neutral fallback
 

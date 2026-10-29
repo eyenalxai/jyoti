@@ -1,4 +1,5 @@
 import type { Effect } from "effect"
+import type { Accessor } from "solid-js"
 
 import { Result, Schema, String as Str } from "effect"
 
@@ -19,11 +20,14 @@ import {
 import { Bulbs } from "@/lib/bulbs/service"
 import { clamp } from "@/lib/format"
 import { run } from "@/lib/runtime"
+import { SYNC_OWNS_CONTROLS } from "@/lib/screen/sync/copy"
 import { after, cancel } from "@/lib/timers"
 
 interface UseControlsOptions {
   readonly model: BulbsModel
   readonly onError: (message: string) => void
+  readonly syncLocked: Accessor<boolean>
+  readonly onBlocked: (message: string) => void
 }
 
 interface ControlsModel {
@@ -42,6 +46,14 @@ interface Pending {
 const useControls = (options: UseControlsOptions): ControlsModel => {
   const pending = new Map<string, Pending>()
 
+  const blocked = (): boolean => {
+    if (!options.syncLocked()) {
+      return false
+    }
+    options.onBlocked(SYNC_OWNS_CONTROLS)
+    return true
+  }
+
   const schedule = (id: BulbId, control: string, send: () => void) => {
     const key = `${id}:${control}`
     const previous = pending.get(key)
@@ -50,6 +62,9 @@ const useControls = (options: UseControlsOptions): ControlsModel => {
     }
     const timer = after(180, () => {
       pending.delete(key)
+      if (options.syncLocked()) {
+        return
+      }
       send()
     })
     pending.set(key, { timer, send })
@@ -73,6 +88,13 @@ const useControls = (options: UseControlsOptions): ControlsModel => {
   }
 
   const flushPending = () => {
+    if (blocked()) {
+      for (const entry of pending.values()) {
+        cancel(entry.timer)
+      }
+      pending.clear()
+      return
+    }
     for (const entry of pending.values()) {
       cancel(entry.timer)
       entry.send()
@@ -122,6 +144,9 @@ const useControls = (options: UseControlsOptions): ControlsModel => {
   }
 
   const adjustBrightness = (delta: number) => {
+    if (blocked()) {
+      return
+    }
     if (options.model.allSelected()) {
       group.adjustBrightness(delta)
       return
@@ -149,6 +174,9 @@ const useControls = (options: UseControlsOptions): ControlsModel => {
   }
 
   const adjustTemperature = (delta: number) => {
+    if (blocked()) {
+      return
+    }
     if (options.model.allSelected()) {
       group.adjustTemperature(delta)
       return
@@ -176,6 +204,9 @@ const useControls = (options: UseControlsOptions): ControlsModel => {
   }
 
   const setColor = (hex: string): Promise<ColorOutcome> => {
+    if (blocked()) {
+      return Promise.resolve({ error: null, partial: false })
+    }
     if (options.model.allSelected()) {
       return group.setColor(hex)
     }

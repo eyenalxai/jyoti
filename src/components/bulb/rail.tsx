@@ -3,6 +3,7 @@ import { For, Show, createMemo } from "solid-js"
 
 import type { AggregateState } from "@/lib/bulbs/aggregate"
 import type { Bulb, BulbId, BulbState } from "@/lib/bulbs/schema"
+import type { BulbSyncPhase } from "@/lib/screen/sync/status"
 
 import { aggregateGlyph, aggregateShort, powerGlyph, shortState, truncate } from "@/lib/format"
 import { palette } from "@/lib/theme"
@@ -15,11 +16,33 @@ interface RailProps {
   readonly selectedId: BulbId | null
   readonly allSelected: boolean
   readonly canSelectAll: boolean
+  readonly syncActive: boolean
+  readonly syncBulbs: ReadonlyMap<BulbId, BulbSyncPhase>
   readonly height: number
   readonly width: number
   readonly active: boolean
   readonly onSelect: (id: BulbId) => void
   readonly onSelectAll: () => void
+}
+
+const syncGlyph = (status: BulbSyncPhase): string => {
+  if (status === "syncing") {
+    return "●"
+  }
+  if (status === "unreachable") {
+    return "○"
+  }
+  if (status === "restored") {
+    return "✓"
+  }
+  return "✗"
+}
+
+const syncTone = (status: BulbSyncPhase) => {
+  if (status === "syncing" || status === "restored") {
+    return palette.success
+  }
+  return palette.danger
 }
 
 const Rail = (props: RailProps) => {
@@ -113,6 +136,7 @@ const Rail = (props: RailProps) => {
             const selected = () => bulb.id === props.selectedId
             const state = () => props.states.get(bulb.id)
             const error = () => props.stateErrors.get(bulb.id)
+            const sync = () => (props.syncActive ? props.syncBulbs.get(bulb.id) : undefined)
             const glyphColor = () => {
               if (error() !== undefined) {
                 return palette.danger
@@ -156,6 +180,11 @@ const Rail = (props: RailProps) => {
                   >
                     <span style={{ fg: glyphColor() }}>{powerGlyph(state())}</span>{" "}
                     {truncate(bulb.name, Math.max(4, props.width - 6))}
+                    <Show when={sync()}>
+                      {(status) => (
+                        <span style={{ fg: syncTone(status()) }}> {syncGlyph(status())}</span>
+                      )}
+                    </Show>
                   </text>
                 </box>
                 <box flexDirection="row" paddingLeft={2} height={1}>

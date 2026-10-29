@@ -10,6 +10,7 @@ import type { Timer } from "@/lib/timers"
 
 import { Dashboard } from "@/components/bulb/dashboard"
 import { Modals } from "@/components/bulb/modals"
+import { useBulbActions } from "@/components/bulb/use-actions"
 import { useAppKeys } from "@/components/bulb/use-app-keys"
 import { useBulbs } from "@/components/bulb/use-bulbs"
 import { useControls } from "@/components/bulb/use-controls"
@@ -21,6 +22,7 @@ import { aggregateState } from "@/lib/bulbs/aggregate"
 import { BRIGHTNESS_STEP, TEMPERATURE_STEP } from "@/lib/bulbs/schema"
 import { noticeDuration } from "@/lib/format"
 import { dispose } from "@/lib/runtime"
+import { SYNC_OWNS_CONTROLS } from "@/lib/screen/sync/copy"
 import { palette } from "@/lib/theme"
 import { after, cancel } from "@/lib/timers"
 
@@ -37,6 +39,7 @@ const App = () => {
   const [pane, setPane] = createSignal<Pane>("bulbs")
   const [notice, setNotice] = createSignal<Notice | null>(null)
   let noticeTimer: Timer | null = null
+  let quitting = false
 
   const notify = (next: Notice) => {
     if (noticeTimer !== null) {
@@ -53,9 +56,38 @@ const App = () => {
   }
 
   const model = useBulbs({ onError: fail })
-  const controls = useControls({ model, onError: fail })
   const preview = useCapturePreview()
   const sync = useScreenSyncModel({ onNotice: notify, onError: fail })
+  const syncActive = createMemo(() => sync.status().phase !== "idle")
+  const controls = useControls({
+    model,
+    onError: fail,
+    syncLocked: syncActive,
+    onBlocked: (message) => {
+      notify({ kind: "info", message })
+    },
+  })
+  const quit = () => {
+    if (quitting) {
+      return
+    }
+    quitting = true
+    void sync.stop().finally(() => {
+      renderer.destroy()
+    })
+  }
+  const syncOwnsControls = createMemo(
+    () => syncActive() && (focus() === "brightness" || focus() === "temperature"),
+  )
+  const actions = useBulbActions({
+    model,
+    syncActive,
+    busy,
+    notify,
+    setActiveBulb,
+    setFormError,
+    setScreen,
+  })
   const forms = useForms({
     model,
     controls,
@@ -83,55 +115,6 @@ const App = () => {
     setScreen("dashboard")
     setActiveBulb(null)
     setFormError(null)
-  }
-
-  const openAdd = () => {
-    if (busy()) {
-      return
-    }
-    setFormError(null)
-    setActiveBulb(null)
-    setScreen("add")
-  }
-
-  const openEdit = () => {
-    if (model.allSelected()) {
-      notify({ kind: "info", message: "All bulbs is a group. Select a bulb to edit it." })
-      return
-    }
-    const bulb = model.selected()
-    if (bulb === null || busy()) {
-      return
-    }
-    setFormError(null)
-    setActiveBulb(bulb)
-    setScreen("edit")
-  }
-
-  const openRemove = () => {
-    if (model.allSelected()) {
-      notify({ kind: "info", message: "All bulbs is a group. Select a bulb to remove it." })
-      return
-    }
-    const bulb = model.selected()
-    if (bulb === null || busy()) {
-      return
-    }
-    setFormError(null)
-    setActiveBulb(bulb)
-    setScreen("remove")
-  }
-
-  const openColor = () => {
-    if (busy()) {
-      return
-    }
-    if (!model.allSelected() && model.selected() === null) {
-      return
-    }
-    setFormError(null)
-    setActiveBulb(model.selected())
-    setScreen("color")
   }
 
   const selectAll = () => {
@@ -168,6 +151,10 @@ const App = () => {
     if (pane() !== "controls") {
       return
     }
+    if (syncOwnsControls()) {
+      notify({ kind: "info", message: SYNC_OWNS_CONTROLS })
+      return
+    }
     if (focus() === "brightness") {
       controls.adjustBrightness(direction * BRIGHTNESS_STEP)
     }
@@ -185,7 +172,11 @@ const App = () => {
       return
     }
     if (focus() === "color") {
-      openColor()
+      actions.openColor()
+      return
+    }
+    if (syncOwnsControls()) {
+      notify({ kind: "info", message: SYNC_OWNS_CONTROLS })
       return
     }
     controls.flushPending()
@@ -202,16 +193,23 @@ const App = () => {
 
   useAppKeys({
     screen: () => screen(),
-    onQuit: () => {
-      renderer.destroy()
-    },
+    onQuit: quit,
     onClose: closeScreen,
-    onAdd: openAdd,
-    onEdit: openEdit,
-    onRemove: openRemove,
-    onColor: openColor,
+    onAdd: actions.openAdd,
+    onEdit: actions.openEdit,
+    onRemove: actions.openRemove,
+    onColor: actions.openColor,
     onRefresh: model.refresh,
     onSyncToggle: sync.toggle,
+    onSyncPause: sync.togglePause,
+    onMonitor: () => {
+      if (sync.status().phase === "stopping") {
+        notify({ kind: "info", message: "Wait for sync to stop." })
+        return
+      }
+      sync.openMonitors()
+      setScreen("monitors")
+    },
     onHelp: () => {
       setScreen("help")
     },
@@ -226,7 +224,7 @@ const App = () => {
     onActivate: activate,
     onConfirmRemove: forms.confirmRemove,
     onPreview: () => {
-      if (sync.running() || sync.busy()) {
+      if (syncActive()) {
         notify({
           kind: "info",
           message: "Stop screen sync before opening the capture preview.",
@@ -241,6 +239,15 @@ const App = () => {
     onPreviewClose: () => {
       preview.close()
       setScreen("dashboard")
+    },
+    onMonitorMove: sync.moveMonitor,
+    onMonitorChoose: () => {
+      void sync.chooseMonitor().then((chosen) => {
+        if (chosen) {
+          setScreen("dashboard")
+        }
+        return null
+      })
     },
   })
 
@@ -267,7 +274,7 @@ const App = () => {
         focus={focus()}
         pane={pane()}
         notice={notice()}
-        syncing={sync.running()}
+        syncStatus={sync.status()}
         width={dimensions().width}
         height={dimensions().height}
         onFocus={focusControl}
@@ -279,6 +286,7 @@ const App = () => {
         busy={busy()}
         error={formError()}
         preview={preview}
+        syncModel={sync}
         onSubmitAdd={forms.submitAdd}
         onSubmitEdit={forms.submitEdit}
         onConfirmRemove={forms.confirmRemove}

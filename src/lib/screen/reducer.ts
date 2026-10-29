@@ -49,6 +49,12 @@ const createReducerState = (): ReducerState => ({
   sceneL: null,
 })
 
+const resetSmoothing = (state: ReducerState): ReducerState => ({
+  ...state,
+  color: null,
+  sceneL: null,
+})
+
 const smoothing = (tauMs: number, elapsedMs: number): number =>
   1 - Math.exp(-Math.max(0, elapsedMs) / tauMs)
 
@@ -211,5 +217,12 @@ const shouldPublish = (
   return deltaEOk(next.lab, last.lab) > DEADBAND
 }
 
-export { NEUTRAL_KELVIN, createReducerState, reduceFrame, reducePrepared, shouldPublish }
+export {
+  NEUTRAL_KELVIN,
+  createReducerState,
+  reduceFrame,
+  reducePrepared,
+  resetSmoothing,
+  shouldPublish,
+}
 export type { DerivedColor, Reduction, ReducerState }

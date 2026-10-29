@@ -15,6 +15,7 @@ import {
   TEMPERATURE_MIN,
 } from "@/lib/bulbs/schema"
 import { powerGlyph, powerWord, stateSummary, truncate } from "@/lib/format"
+import { SYNC_OWNS_CONTROLS } from "@/lib/screen/sync/copy"
 import { palette } from "@/lib/theme"
 
 interface DetailProps {
@@ -23,6 +24,7 @@ interface DetailProps {
   readonly error: string | undefined
   readonly focus: ControlFocus
   readonly active: boolean
+  readonly syncLocked: boolean
   readonly width: number
   readonly meterWidth: number
   readonly onFocus: (focus: ControlFocus) => void
@@ -53,20 +55,27 @@ const PowerControl = (props: {
 const BrightnessControl = (props: {
   readonly state: BulbState | undefined
   readonly focused: boolean
+  readonly disabled: boolean
   readonly meterWidth: number
   readonly onFocus: () => void
 }) => (
   <ControlRow
     label="Brightness"
     focused={props.focused}
+    disabled={props.disabled}
     onFocus={props.onFocus}
-    value={<text fg={palette.text}>{valueText(props.state?.brightness, "%", 4)}</text>}
+    value={
+      <text fg={props.disabled ? palette.faint : palette.text}>
+        {valueText(props.state?.brightness, "%", 4)}
+      </text>
+    }
     detail={
       <Meter
         value={props.state?.brightness ?? null}
         min={BRIGHTNESS_MIN}
         max={BRIGHTNESS_MAX}
         width={props.meterWidth}
+        color={props.disabled ? palette.faint : palette.accent}
       />
     }
   />
@@ -75,20 +84,27 @@ const BrightnessControl = (props: {
 const TemperatureControl = (props: {
   readonly state: BulbState | undefined
   readonly focused: boolean
+  readonly disabled: boolean
   readonly meterWidth: number
   readonly onFocus: () => void
 }) => (
   <ControlRow
     label="Warmth"
     focused={props.focused}
+    disabled={props.disabled}
     onFocus={props.onFocus}
-    value={<text fg={palette.text}>{valueText(props.state?.temperature, "K", 5)}</text>}
+    value={
+      <text fg={props.disabled ? palette.faint : palette.text}>
+        {valueText(props.state?.temperature, "K", 5)}
+      </text>
+    }
     detail={
       <Meter
         value={props.state?.temperature ?? null}
         min={TEMPERATURE_MIN}
         max={TEMPERATURE_MAX}
         width={props.meterWidth}
+        color={props.disabled ? palette.faint : palette.accent}
       />
     }
   />
@@ -97,18 +113,24 @@ const TemperatureControl = (props: {
 const ColorControl = (props: {
   readonly state: BulbState | undefined
   readonly focused: boolean
+  readonly disabled: boolean
   readonly meterWidth: number
   readonly onFocus: () => void
 }) => (
   <ControlRow
     label="Color"
     focused={props.focused}
+    disabled={props.disabled}
     onFocus={props.onFocus}
-    value={<text fg={palette.text}>{props.state?.color ?? "—"}</text>}
+    value={
+      <text fg={props.disabled ? palette.faint : palette.text}>{props.state?.color ?? "—"}</text>
+    }
     detail={
-      <text fg={props.state?.color ?? palette.border}>
+      <text fg={props.disabled ? palette.faint : (props.state?.color ?? palette.border)}>
         {Str.repeat(Math.max(4, Math.min(12, props.meterWidth)))("█")}
-        <span style={{ fg: palette.faint }}> enter to set</span>
+        <span style={{ fg: palette.faint }}>
+          {props.disabled ? " sync owns it" : " enter to set"}
+        </span>
       </text>
     }
   />
@@ -149,6 +171,12 @@ const Detail = (props: DetailProps) => (
       {Str.repeat(Math.max(0, props.width))("─")}
     </text>
 
+    <Show when={props.syncLocked}>
+      <text fg={palette.warning} truncate wrapMode="none" height={1}>
+        {SYNC_OWNS_CONTROLS}
+      </text>
+    </Show>
+
     <box flexDirection="column" flexGrow={1} minHeight={0}>
       <PowerControl
         state={props.state}
@@ -160,6 +188,7 @@ const Detail = (props: DetailProps) => (
       <BrightnessControl
         state={props.state}
         focused={props.active && props.focus === "brightness"}
+        disabled={props.syncLocked}
         meterWidth={props.meterWidth}
         onFocus={() => {
           props.onFocus("brightness")
@@ -168,6 +197,7 @@ const Detail = (props: DetailProps) => (
       <TemperatureControl
         state={props.state}
         focused={props.active && props.focus === "temperature"}
+        disabled={props.syncLocked}
         meterWidth={props.meterWidth}
         onFocus={() => {
           props.onFocus("temperature")
@@ -176,6 +206,7 @@ const Detail = (props: DetailProps) => (
       <ColorControl
         state={props.state}
         focused={props.active && props.focus === "color"}
+        disabled={props.syncLocked}
         meterWidth={props.meterWidth}
         onFocus={() => {
           props.onFocus("color")

@@ -9,24 +9,39 @@ interface ControlRowProps {
   readonly value: JSX.Element
   readonly detail: JSX.Element
   readonly focused: boolean
+  readonly disabled?: boolean
   readonly onFocus?: (() => void) | undefined
 }
 
-const ControlRow = (props: ControlRowProps) => (
-  <box flexDirection="column" height={2} onMouseDown={() => props.onFocus?.()}>
-    <box flexDirection="row" gap={1} height={1}>
-      <text fg={props.focused ? palette.accent : palette.background}>
-        {props.focused ? "›" : " "}
-      </text>
-      <box width={12}>
-        <text fg={props.focused ? palette.accent : palette.muted}>{props.label}</text>
+const ControlRow = (props: ControlRowProps) => {
+  const disabled = () => props.disabled === true
+
+  return (
+    <box
+      flexDirection="column"
+      height={2}
+      onMouseDown={() => {
+        if (!disabled()) {
+          props.onFocus?.()
+        }
+      }}
+    >
+      <box flexDirection="row" gap={1} height={1}>
+        <text fg={props.focused && !disabled() ? palette.accent : palette.background}>
+          {props.focused ? "›" : " "}
+        </text>
+        <box width={12}>
+          <text fg={props.focused && !disabled() ? palette.accent : palette.muted}>
+            {props.label}
+          </text>
+        </box>
+        {props.value}
       </box>
-      {props.value}
+      <box flexDirection="row" paddingLeft={2} height={1}>
+        {props.detail}
+      </box>
     </box>
-    <box flexDirection="row" paddingLeft={2} height={1}>
-      {props.detail}
-    </box>
-  </box>
-)
+  )
+}
 
 export { ControlRow, type ControlFocus, type ControlRowProps }

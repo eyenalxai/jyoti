@@ -1,6 +1,6 @@
-import type { Config, Effect } from "effect"
+import type { Config } from "effect"
 
-import { Layer, ManagedRuntime } from "effect"
+import { Effect, Fiber, Layer, ManagedRuntime, Schema } from "effect"
 
 import { Bulbs } from "@/lib/bulbs/service"
 import { BulbStore } from "@/lib/bulbs/store"
@@ -9,11 +9,13 @@ import { Keyring } from "@/lib/keyring/service"
 import { Miio } from "@/lib/miio/service"
 import { MiioTransport } from "@/lib/miio/transport"
 import { ScreenCapture } from "@/lib/screen/capture"
+import { ScreenSyncError } from "@/lib/screen/error"
 import { ScreenSyncEngine } from "@/lib/screen/sync"
 
 interface UiFailure {
   readonly ok: false
   readonly message: string
+  readonly tag: string | null
 }
 
 interface UiSuccess<A> {
@@ -45,10 +47,17 @@ const syncRuntime: ManagedRuntime.ManagedRuntime<ScreenSyncEngine, Config.Config
 const messageOf = (error: unknown): string =>
   error instanceof Error ? error.message : "Unexpected error. Press r to refresh, or restart jyoti."
 
+const tagOf = (error: unknown): string | null =>
+  Schema.is(ScreenSyncError)(error) ? error.kind : null
+
 const toUiResult = <A>(result: Promise<A>): Promise<UiResult<A>> =>
   result.then(
     (value): UiResult<A> => ({ ok: true, value }),
-    (error: unknown): UiResult<A> => ({ ok: false, message: messageOf(error) }),
+    (error: unknown): UiResult<A> => ({
+      ok: false,
+      message: messageOf(error),
+      tag: tagOf(error),
+    }),
   )
 
 const run = <A, E>(effect: Effect.Effect<A, E, Bulbs>): Promise<UiResult<A>> =>
@@ -61,6 +70,23 @@ const forkScreen = <A, E>(effect: Effect.Effect<A, E, ScreenCapture>): void => {
   screenRuntime.runFork(effect)
 }
 
+const forkSyncEffect = <A, E>(
+  effect: Effect.Effect<A, E, ScreenSyncEngine>,
+): Fiber.Fiber<A, E | Config.ConfigError> => syncRuntime.runFork(effect)
+
+const cancelFiber = <A, E>(fiber: Fiber.Fiber<A, E>): void => {
+  Effect.runFork(Fiber.interrupt(fiber))
+}
+
 const dispose = (): Promise<void> => runtime.dispose()
 
-export { dispose, forkScreen, messageOf, run, runScreen, type UiResult }
+export {
+  cancelFiber,
+  dispose,
+  forkScreen,
+  forkSyncEffect,
+  messageOf,
+  run,
+  runScreen,
+  type UiResult,
+}
