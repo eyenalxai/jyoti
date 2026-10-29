@@ -1,6 +1,6 @@
 # Issue tracker: Linear
 
-Issues and specs for this repository live in Linear, team **JYO** (`Jyoti`) in
+Issues and specs for this repository live in Linear, team **JYOT** (`Jyoti`) in
 the **personal** workspace. Use the `rata` CLI for all operations. GitHub Issues
 is not the tracker.
 
@@ -10,7 +10,7 @@ The repository config lives in rata's local database, not in a committed file.
 On a fresh machine, bind it once from the repository root:
 
 ```sh
-rata link --workspace personal --team JYO
+rata link --workspace personal --team JYOT
 ```
 
 The link is per clone, so every worktree of this repository shares it. When
@@ -20,17 +20,17 @@ The link is per clone, so every worktree of this repository shares it. When
 
 - **Create**: `rata issue create --title "..." --body-file - --assignee me`.
 - **Read**: `rata issue show <ref> --comments --json`.
-- **List**: `rata issue list --team JYO` with the filters you need: `--state`,
+- **List**: `rata issue list --team JYOT` with the filters you need: `--state`,
   `--state-type`, `--label`, `--assignee`, `--parent`, `--text`, `--limit`.
-- **Comment**: `rata issue comment <ref> --body-file -`.
+- **Comment**: `rata issue comment create <ref> --body-file -`.
 - **Apply / remove labels**: `rata issue label add <ref> <label...>` and
   `rata issue label remove <ref> <label...>`.
 - **Close**: `rata issue close <ref> --comment "..."`.
 - **Search**: `rata search "..."`.
 - **Set a priority**: `rata issue update <ref> --priority <value>`.
-- **Assign**: `rata issue assign me <ref>`. Create issues with `--assignee me`.
+- **Assign**: `rata issue assign --assignee me <ref>`. Create issues with `--assignee me`.
 
-An issue reference accepts an identifier (`JYO-42`), a UUID, or a `linear.app`
+An issue reference accepts an identifier (`JYOT-42`), a UUID, or a `linear.app`
 issue URL. List commands return one page; continue with
 `--after <pageInfo.endCursor>` while `pageInfo.hasNextPage` is true.
 
@@ -40,12 +40,12 @@ Issues describe the work; PRs deliver it. Linear's GitHub integration links a PR
 to its issue from the branch name, the PR title, or the PR body, and moves the
 issue by the magic word used:
 
-- **Branch**: `feat/JYO-42-short-slug`. The issue ID in the branch name links
+- **Branch**: `feat/JYOT-42-short-slug`. The issue ID in the branch name links
   the PR automatically.
-- **Title**: `JYO-42 <type>(<scope>): <summary>`. The ID may also trail as
-  `(<JYO-42>)`, but not both.
-- **Body**: `Closes JYO-42` for a PR that completes the issue. Use
-  `Refs JYO-42` or `Part of JYO-42` when the issue stays open.
+- **Title**: `JYOT-42 <type>(<scope>): <summary>`. The ID may also trail as
+  `(<JYOT-42>)`, but not both.
+- **Body**: `Closes JYOT-42` for a PR that completes the issue. Use
+  `Refs JYOT-42` or `Part of JYOT-42` when the issue stays open.
 - **One issue per PR.** When a PR really spans issues, name each one after
   `Closes`. Never put an issue ID you do not mean to touch in the branch name:
   the branch name links the PR even if the body does not.
@@ -57,12 +57,12 @@ Closing magic words: `close`, `closes`, `closed`, `closing`, `fix`, `fixes`,
 `references`, `part of`, `contributes to`, `toward`, `towards`. Relation only:
 `relates to`, `related to`.
 
-`.github/pull_request_template.md` carries the `Closes JYO-` slot.
+`.github/pull_request_template.md` carries the `Closes JYOT-` slot.
 
 ## GitHub integration
 
 The Linear GitHub app must have access to `eyenalxai/jyoti`. Status automation
-is a team setting: **Settings → Teams → JYO → Workflows & automations → Pull
+is a team setting: **Settings → Teams → JYOT → Workflows & automations → Pull
 request and commit automations**. The intended mapping:
 
 | PR event              | Issue state   |
@@ -73,11 +73,11 @@ request and commit automations**. The intended mapping:
 A non-closing word still moves the issue on other events but skips the merge
 destination. A relation word links the PR without changing status.
 
-Autolink references are configured on the repository, so `JYO-42` written in a
+Autolink references are configured on the repository, so `JYOT-42` written in a
 PR, issue, comment, or commit renders as
-`https://linear.app/utbetdix/issue/JYO-42`.
+`https://linear.app/utbetdix/issue/JYOT-42`.
 
-Linear connects one GitHub account to one Linear workspace. The JYO team lives
+Linear connects one GitHub account to one Linear workspace. The JYOT team lives
 in the personal workspace; if the GitHub app is already bound to another
 workspace, the integration cannot be enabled here.
 

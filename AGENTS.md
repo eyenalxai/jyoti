@@ -59,7 +59,7 @@ The recommended Effect lint rules come from `@effect/tsgo` through `oxlint.confi
 
 ### Issue tracker
 
-Issues live in Linear (team JYO, personal workspace), driven with the `rata` CLI; PRs carry `JYO-<n>` and `Closes JYO-<n>`. See `docs/agents/issue-tracker.md`.
+Issues live in Linear (team JYOT, personal workspace), driven with the `rata` CLI; PRs carry `JYOT-<n>` and `Closes JYOT-<n>`. See `docs/agents/issue-tracker.md`.
 
 ### Triage labels
 
