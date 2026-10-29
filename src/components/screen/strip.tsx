@@ -5,7 +5,7 @@ import { createMemo } from "solid-js"
 import type { CaptureHealth, SyncPhase, SyncStatus } from "@/lib/screen/sync/status"
 
 import { truncate } from "@/lib/format"
-import { restoreSummary, syncKeys } from "@/lib/screen/sync/copy"
+import { restoreSummary } from "@/lib/screen/sync/copy"
 import { palette } from "@/lib/theme"
 
 interface SyncStripProps {
@@ -98,7 +98,6 @@ const SyncStrip = (props: SyncStripProps) => {
     }
     return restored() === props.status.total ? palette.success : palette.muted
   })
-  const keys = createMemo(() => syncKeys(props.status.phase))
   const monitor = createMemo(() =>
     truncate(props.status.monitor ?? "—", Math.max(8, Math.floor(props.width * 0.22))),
   )
@@ -122,9 +121,6 @@ const SyncStrip = (props: SyncStripProps) => {
           {restoreTail() ??
             `${brightness()} · frame ${frameAge()} · ${props.status.reachable}/${props.status.total}`}
         </span>
-      </text>
-      <text fg={palette.faint} wrapMode="word">
-        {keys()}
       </text>
     </box>
   )

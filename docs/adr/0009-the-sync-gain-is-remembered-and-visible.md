@@ -2,7 +2,7 @@
 
 Date: 2026-10-29
 
-Status: Accepted
+Status: Accepted; the strip and toast key hints are superseded by ADR 0010, which moves the controls into the Sync panel
 
 ## Context
 
@@ -13,7 +13,7 @@ A colour-lift attempt was tried first: the gain also scaled the derived colour's
 ## Decision
 
 - **Remember the gain.** The gain is stored in `$XDG_CONFIG_HOME/jyoti/prefs.json`, next to `bulbs.json`, as `{ "version": 1, "syncGain": 1.5 }`. The sync engine loads it at start, saves it on every gain change, clamps it to 0.5–2.0 and rounds it to 0.1. A first run starts at 1.0. A missing or unreadable file falls back to 1.0; a failed save leaves the gain applied for the session and surfaces as a toast.
-- **Show the gain always.** The strip renders `57% ×1.0` at the default and `57% ×1.5` after a press while syncing; the paused form is `45% · gain ×1.0` because the brightness is the last one written. The sync-on toast appends `+/- gain`.
+- **Show the gain always.** The strip renders `57% ×1.0` at the default and `57% ×1.5` after a press while syncing; the paused form is `45% · gain ×1.0` because the brightness is the last one written. The sync-on toast appended `+/- gain`; ADR 0010 moves the controls to the Sync panel and removes that hint.
 - **Leave the colour alone.** The gain scales only the rounded envelope result. The derived colour is sent as it is at every gain, so a press never whitens or desaturates it.
 
 ## Consequences

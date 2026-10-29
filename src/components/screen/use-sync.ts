@@ -86,7 +86,7 @@ const useScreenSyncModel = (options: UseScreenSyncOptions): ScreenSyncModel => {
       const count = result.value.bulbCount
       options.onNotice({
         kind: "success",
-        message: `Screen sync on · ${count} ${count === 1 ? "bulb" : "bulbs"} · ${result.value.monitorName} · +/- gain`,
+        message: `Screen sync on · ${count} ${count === 1 ? "bulb" : "bulbs"} · ${result.value.monitorName}`,
       })
       return null
     })

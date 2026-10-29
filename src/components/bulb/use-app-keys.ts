@@ -13,10 +13,11 @@ interface AppKeysOptions {
   readonly onRemove: () => void
   readonly onColor: () => void
   readonly onRefresh: () => void
-  readonly onSyncToggle: () => void
-  readonly onSyncPause: () => void
-  readonly onSyncGain: (direction: SyncGainDirection) => void
-  readonly onMonitor: () => void
+  readonly onSyncPanel: () => void
+  readonly onSyncPanelMove: (delta: number) => void
+  readonly onSyncPanelAdjust: (direction: SyncGainDirection) => void
+  readonly onSyncPanelActivate: () => void
+  readonly onSyncPanelClose: () => void
   readonly onHelp: () => void
   readonly onTogglePower: () => void
   readonly onSelectAll: () => void
@@ -93,6 +94,36 @@ const handleMonitors = (key: KeyLike, options: AppKeysOptions): void => {
   }
 }
 
+const handleSyncPanel = (key: KeyLike, options: AppKeysOptions): void => {
+  if (isEscape(key)) {
+    options.onSyncPanelClose()
+    return
+  }
+  if (key.name === "q") {
+    options.onQuit()
+    return
+  }
+  if (isUp(key)) {
+    options.onSyncPanelMove(-1)
+    return
+  }
+  if (isDown(key)) {
+    options.onSyncPanelMove(1)
+    return
+  }
+  if (key.name === "left" || key.name === "h") {
+    options.onSyncPanelAdjust(-1)
+    return
+  }
+  if (key.name === "right" || key.name === "l") {
+    options.onSyncPanelAdjust(1)
+    return
+  }
+  if (isEnter(key)) {
+    options.onSyncPanelActivate()
+  }
+}
+
 const handleHelp = (key: KeyLike, options: AppKeysOptions): void => {
   if (isEscape(key) || isQuestionMark(key)) {
     options.onClose()
@@ -118,6 +149,10 @@ const handleModal = (key: KeyLike, screen: Screen, options: AppKeysOptions): voi
   }
   if (screen === "monitors") {
     handleMonitors(key, options)
+    return
+  }
+  if (screen === "sync") {
+    handleSyncPanel(key, options)
     return
   }
   if (screen === "help") {
@@ -199,23 +234,7 @@ const handleAction = (key: KeyLike, options: AppKeysOptions): boolean => {
     return true
   }
   if (key.name === "s") {
-    options.onSyncToggle()
-    return true
-  }
-  if (key.name === "x") {
-    options.onSyncPause()
-    return true
-  }
-  if (key.name === "-") {
-    options.onSyncGain(-1)
-    return true
-  }
-  if (key.name === "+" || key.name === "=") {
-    options.onSyncGain(1)
-    return true
-  }
-  if (key.name === "m") {
-    options.onMonitor()
+    options.onSyncPanel()
     return true
   }
   if (key.name === "v") {

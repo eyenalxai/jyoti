@@ -153,6 +153,7 @@ const App = () => {
         busy={busy()}
         preview={preview}
         syncModel={sync}
+        syncRow={commands.syncRow()}
         onSubmitAdd={forms.submitAdd}
         onSubmitEdit={forms.submitEdit}
         onConfirmRemove={forms.confirmRemove}

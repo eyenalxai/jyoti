@@ -1,6 +1,7 @@
 import { useTerminalDimensions } from "@opentui/solid"
 import { Show, createMemo } from "solid-js"
 
+import type { SyncRow } from "@/components/screen/rows"
 import type { CapturePreviewModel } from "@/components/screen/use-preview"
 import type { ScreenSyncModel } from "@/components/screen/use-sync"
 import type { Bulb, BulbDraft } from "@/lib/bulbs/schema"
@@ -9,10 +10,20 @@ import { Form } from "@/components/bulb/form"
 import { Help } from "@/components/bulb/help"
 import { Remove } from "@/components/bulb/remove"
 import { Monitors } from "@/components/screen/monitors"
+import { SyncPanel } from "@/components/screen/panel"
 import { Preview } from "@/components/screen/preview"
 import { Modal } from "@/components/ui/modal"
 
-type Screen = "dashboard" | "add" | "edit" | "remove" | "color" | "help" | "capture" | "monitors"
+type Screen =
+  | "dashboard"
+  | "add"
+  | "edit"
+  | "remove"
+  | "color"
+  | "help"
+  | "capture"
+  | "monitors"
+  | "sync"
 
 interface ModalsProps {
   readonly screen: Screen
@@ -20,6 +31,7 @@ interface ModalsProps {
   readonly busy: boolean
   readonly preview: CapturePreviewModel
   readonly syncModel: ScreenSyncModel
+  readonly syncRow: SyncRow
   readonly onSubmitAdd: (draft: BulbDraft) => void
   readonly onSubmitEdit: (draft: BulbDraft) => void
   readonly onConfirmRemove: () => void
@@ -71,8 +83,17 @@ const Modals = (props: ModalsProps) => {
       <Show when={props.screen === "help"}>
         <Modal title="Keys" hint="esc close" width={58} height={20}>
           <scrollbox flexGrow={1} minHeight={0} focused>
-            <Help />
+            <Help
+              syncActive={props.syncModel.status().phase !== "idle"}
+              colorOpen={props.screen === "color"}
+            />
           </scrollbox>
+        </Modal>
+      </Show>
+
+      <Show when={props.screen === "sync"}>
+        <Modal title="Screen sync" hint="esc close" width={64} height={14}>
+          <SyncPanel model={props.syncModel} selected={props.syncRow} />
         </Modal>
       </Show>
 

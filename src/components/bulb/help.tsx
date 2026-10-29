@@ -1,5 +1,10 @@
 import { palette } from "@/lib/theme"
 
+interface HelpProps {
+  readonly syncActive: boolean
+  readonly colorOpen: boolean
+}
+
 const KeyRow = (props: { readonly keys: string; readonly label: string }) => (
   <box flexDirection="row" gap={1} height={1} flexShrink={0}>
     <box width={12} flexShrink={0}>
@@ -17,27 +22,57 @@ const Section = (props: { readonly label: string }) => (
   </text>
 )
 
-const Help = () => (
-  <box flexDirection="column" gap={0}>
-    <Section label="bulbs" />
-    <KeyRow keys="↑ ↓  j k" label="Select a bulb" />
-    <KeyRow keys="A" label="All bulbs" />
-    <KeyRow keys="a  e  d" label="Add, edit, remove" />
+const Help = (props: HelpProps) => {
+  if (props.colorOpen) {
+    return (
+      <box flexDirection="column" gap={0}>
+        <Section label="colour picker" />
+        <KeyRow keys="↑ ↓" label="Move between fields" />
+        <KeyRow keys="← →" label="Adjust the focused slider" />
+        <KeyRow keys="tab" label="Hue/saturation or RGB" />
+        <KeyRow keys="enter" label="Keep the colour and close" />
+        <KeyRow keys="esc" label="Revert to the opening colour" />
 
-    <Section label="light" />
-    <KeyRow keys="space" label="Power" />
-    <KeyRow keys="← →  h l" label="Value, or switch the mode" />
-    <KeyRow keys="w  c" label="White, or colour and pick" />
-    <KeyRow keys="enter" label="Pick a colour, or apply" />
+        <Section label="app" />
+        <KeyRow keys="q" label="Quit" />
+      </box>
+    )
+  }
 
-    <Section label="screen sync" />
-    <KeyRow keys="s  x" label="Start or stop · pause" />
-    <KeyRow keys="+ -  =" label="Sync brightness gain" />
-    <KeyRow keys="m  v" label="Monitor · capture preview" />
+  return (
+    <box flexDirection="column" gap={0}>
+      <Section label="navigation" />
+      <KeyRow keys="↑ ↓  j k" label="Select a bulb, or move focus" />
+      <KeyRow keys="tab" label="Switch the bulb list and controls" />
+      {props.syncActive ? null : <KeyRow keys="A" label="All bulbs" />}
 
-    <Section label="app" />
-    <KeyRow keys="r  ?  q" label="Refresh, keys, quit" />
-  </box>
-)
+      {props.syncActive ? null : (
+        <>
+          <Section label="bulbs" />
+          <KeyRow keys="a  e  d" label="Add, edit, remove" />
+        </>
+      )}
+
+      <Section label="light" />
+      <KeyRow keys="space" label="Power" />
+      {props.syncActive ? null : (
+        <>
+          <KeyRow keys="← →  h l" label="Value, or switch the mode" />
+          <KeyRow keys="w  c" label="White, or colour and pick" />
+          <KeyRow keys="enter" label="Pick a colour, or apply" />
+        </>
+      )}
+
+      <Section label="screen sync" />
+      <KeyRow keys="s" label="Open the Sync panel" />
+      {props.syncActive ? (
+        <KeyRow keys="—" label="Sync owns colour, brightness and temperature" />
+      ) : null}
+
+      <Section label="app" />
+      <KeyRow keys="r  ?  q" label="Refresh, keys, quit" />
+    </box>
+  )
+}
 
 export { Help }

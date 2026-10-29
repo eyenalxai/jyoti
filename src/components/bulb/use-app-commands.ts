@@ -7,6 +7,7 @@ import type { Pane } from "@/components/bulb/pane"
 import type { BulbActions } from "@/components/bulb/use-actions"
 import type { BulbsModel } from "@/components/bulb/use-bulbs"
 import type { ControlsModel } from "@/components/bulb/use-controls"
+import type { SyncRow } from "@/components/screen/rows"
 import type { CapturePreviewModel } from "@/components/screen/use-preview"
 import type { ScreenSyncModel } from "@/components/screen/use-sync"
 import type { Notice } from "@/components/ui/toast"
@@ -15,6 +16,7 @@ import type { Bulb } from "@/lib/bulbs/schema"
 
 import { canFocus, focusOrder, refusalFor } from "@/components/bulb/focus"
 import { useAppKeys } from "@/components/bulb/use-app-keys"
+import { useSyncPanel } from "@/components/bulb/use-sync-panel"
 import { BRIGHTNESS_STEP, TEMPERATURE_STEP } from "@/lib/bulbs/schema"
 import { SYNC_OWNS_CONTROLS } from "@/lib/screen/sync/copy"
 
@@ -45,6 +47,7 @@ interface AppCommands {
   readonly focusControl: (focus: ControlFocus) => void
   readonly setQuality: (quality: LightSide) => void
   readonly dismissColor: () => void
+  readonly syncRow: Accessor<SyncRow>
 }
 
 const useAppCommands = (options: UseAppCommandsOptions): AppCommands => {
@@ -53,6 +56,8 @@ const useAppCommands = (options: UseAppCommandsOptions): AppCommands => {
     (options.focus() === "quality" ||
       options.focus() === "brightness" ||
       options.focus() === "light")
+
+  const syncPanel = useSyncPanel({ sync: options.sync, setScreen: options.setScreen })
 
   const closeScreen = () => {
     if (options.busy()) {
@@ -234,17 +239,11 @@ const useAppCommands = (options: UseAppCommandsOptions): AppCommands => {
       options.model.refresh()
       options.sync.clearRestore()
     },
-    onSyncToggle: options.sync.toggle,
-    onSyncPause: options.sync.togglePause,
-    onSyncGain: options.sync.adjustGain,
-    onMonitor: () => {
-      if (options.sync.status().phase === "stopping") {
-        options.notify({ kind: "info", message: "Wait for sync to stop." })
-        return
-      }
-      options.sync.openMonitors()
-      options.setScreen("monitors")
-    },
+    onSyncPanel: syncPanel.open,
+    onSyncPanelMove: syncPanel.move,
+    onSyncPanelAdjust: syncPanel.adjust,
+    onSyncPanelActivate: syncPanel.activate,
+    onSyncPanelClose: syncPanel.close,
     onHelp: () => {
       options.setScreen("help")
     },
@@ -287,7 +286,7 @@ const useAppCommands = (options: UseAppCommandsOptions): AppCommands => {
     },
   })
 
-  return { focusControl, setQuality, dismissColor }
+  return { focusControl, setQuality, dismissColor, syncRow: syncPanel.syncRow }
 }
 
 export { useAppCommands, type AppCommands }
