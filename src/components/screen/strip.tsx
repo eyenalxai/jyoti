@@ -66,12 +66,10 @@ const SyncStrip = (props: SyncStripProps) => {
     const current = color()
     return current === null ? palette.faint : RGBA.fromHex(current.hex)
   })
-  const gainLabel = createMemo(() =>
-    props.status.brightnessGain === 1 ? "" : ` ×${props.status.brightnessGain.toFixed(1)}`,
-  )
+  const gainLabel = createMemo(() => ` ×${props.status.brightnessGain.toFixed(1)}`)
   const brightness = createMemo(() => {
     const value = props.status.syncBrightness === null ? "—" : `${props.status.syncBrightness}%`
-    if (props.status.phase === "paused" && gainLabel().length > 0) {
+    if (props.status.phase === "paused") {
       return `${value} · gain${gainLabel()}`
     }
     return `${value}${gainLabel()}`

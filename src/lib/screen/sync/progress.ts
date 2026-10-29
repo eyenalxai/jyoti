@@ -143,6 +143,7 @@ const planSend = (
   target: DerivedColor,
   targetBrightness: number,
   flashHold: boolean,
+  forceColor: boolean,
 ): SendPlan | null => {
   if (entry.status !== "syncing" || entry.inflight) {
     return null
@@ -156,7 +157,7 @@ const planSend = (
       ? targetBrightness
       : null
   const colorRejected = entry.rejected !== null && !shouldPublish(target, entry.rejected)
-  const publishColor = !colorRejected && shouldPublish(target, entry.last)
+  const publishColor = !colorRejected && (forceColor || shouldPublish(target, entry.last))
   if (!publishColor && brightness === null) {
     return null
   }

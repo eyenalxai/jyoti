@@ -4,6 +4,7 @@ import path from "node:path"
 
 interface AppConfigShape {
   readonly configPath: string
+  readonly preferencesPath: string
   readonly keyringService: string
   readonly miioPort: number
   readonly miioTimeout: Duration.Duration
@@ -32,7 +33,13 @@ class AppConfig extends Context.Service<AppConfig, AppConfigShape>()("jyoti/lib/
         Config.withDefault(Duration.seconds(4)),
       )
 
-      return AppConfig.of({ configPath, keyringService, miioPort, miioTimeout })
+      return AppConfig.of({
+        configPath,
+        preferencesPath: path.join(path.dirname(configPath), "prefs.json"),
+        keyringService,
+        miioPort,
+        miioTimeout,
+      })
     }),
   )
 }

@@ -11,8 +11,11 @@ type SyncGainDirection = -1 | 1
 const roundGain = (gain: number): number =>
   Math.round(gain * SYNC_GAIN_PRECISION) / SYNC_GAIN_PRECISION
 
-const nextSyncGain = (gain: number, direction: SyncGainDirection): number =>
-  clamp(roundGain(gain + direction * SYNC_GAIN_STEP), SYNC_GAIN_MIN, SYNC_GAIN_MAX)
+const normalizeSyncGain = (gain: number): number =>
+  clamp(roundGain(gain), SYNC_GAIN_MIN, SYNC_GAIN_MAX)
 
-export { SYNC_GAIN_DEFAULT, nextSyncGain }
+const nextSyncGain = (gain: number, direction: SyncGainDirection): number =>
+  normalizeSyncGain(gain + direction * SYNC_GAIN_STEP)
+
+export { SYNC_GAIN_DEFAULT, nextSyncGain, normalizeSyncGain }
 export type { SyncGainDirection }

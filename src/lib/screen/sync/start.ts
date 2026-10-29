@@ -54,10 +54,11 @@ const startRun = Effect.fn("ScreenSync.startRun")(function* startRun(context: St
     })
   }
 
+  const gain = yield* Ref.get(context.gain)
   const startingStatus: SyncStatus = {
     ...idleSyncStatus,
     phase: "starting",
-    brightnessGain: yield* Ref.get(context.gain),
+    brightnessGain: gain,
   }
   yield* SubscriptionRef.set(context.status, startingStatus)
 
@@ -99,6 +100,7 @@ const startRun = Effect.fn("ScreenSync.startRun")(function* startRun(context: St
         switching: yield* Ref.make(false),
         reducer: yield* Ref.make(createReducerState()),
         flash: yield* Ref.make(initialFlashGuard()),
+        lastGain: yield* Ref.make(gain),
         progress: yield* Ref.make<ReadonlyMap<BulbId, BulbProgress>>(
           initialProgress(listed, snapshot.reachable, snapshot.states),
         ),
@@ -127,7 +129,7 @@ const startRun = Effect.fn("ScreenSync.startRun")(function* startRun(context: St
         pendingMonitor: null,
         color: null,
         syncBrightness: null,
-        brightnessGain: yield* Ref.get(context.gain),
+        brightnessGain: gain,
         frameAgeMs: null,
         selfCapture: selfCaptureFor(monitor, monitors.length === 1),
         error: null,

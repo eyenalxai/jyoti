@@ -19,7 +19,7 @@ The sync gain scales the derived colour's OKLCH lightness as well as the brightn
 - Above 1× a grey lifts toward white and a saturated colour lightens until it clips; below 1× the colour darkens.
 - Black stays black at every gain. A frame with no light is still sent as black; the brightness property follows the envelope separately.
 - The strip's swatch is the gained target colour, so the swatch and the next write carry the same value.
-- No new key: the existing `+` and `-` gain adjusts both. The gain keeps its 0.5–2.0 range, session-only lifetime and default of 1.0 from ADR 0007.
+- No new key: the existing `+` and `-` gain adjusts both. The gain keeps its 0.5–2.0 range and 1.0 default from ADR 0007; its lifetime is the preference file from ADR 0009.
 
 ## Consequences
 

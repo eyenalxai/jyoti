@@ -43,6 +43,7 @@ interface RunHandle {
   readonly switching: Ref.Ref<boolean>
   readonly reducer: Ref.Ref<ReducerState>
   readonly flash: Ref.Ref<FlashGuard>
+  readonly lastGain: Ref.Ref<number>
   readonly progress: Ref.Ref<ReadonlyMap<BulbId, BulbProgress>>
 }
 
@@ -104,6 +105,7 @@ const sendTarget = Effect.fn("ScreenSync.sendTarget")(function* sendTarget(
   target: DerivedColor,
   targetBrightness: number,
   flashHold: boolean,
+  forceColor: boolean,
 ) {
   const progress = yield* Ref.get(handle.progress)
   const sessions = yield* Ref.get(handle.sessions)
@@ -113,7 +115,7 @@ const sendTarget = Effect.fn("ScreenSync.sendTarget")(function* sendTarget(
     if (entry === undefined || session === undefined) {
       continue
     }
-    const plan = planSend(entry, target, targetBrightness, flashHold)
+    const plan = planSend(entry, target, targetBrightness, flashHold, forceColor)
     if (plan === null) {
       continue
     }
@@ -218,6 +220,11 @@ const tick = Effect.fn("ScreenSync.tick")(function* tick(deps: RunDeps, handle: 
   yield* Ref.set(handle.reducer, reduction.state)
 
   const gain = yield* Ref.get(deps.gain)
+  const lastGain = yield* Ref.get(handle.lastGain)
+  const gainChanged = gain !== lastGain
+  if (gainChanged) {
+    yield* Ref.set(handle.lastGain, gain)
+  }
   const target = gainColor(reduction.derived, gain)
   const targetBrightness = syncBrightnessFor(target.sceneBrightness, gain)
   const guarded = guardFlash(yield* Ref.get(handle.flash), targetBrightness, performance.now())
@@ -228,7 +235,7 @@ const tick = Effect.fn("ScreenSync.tick")(function* tick(deps: RunDeps, handle: 
     capture: "ok",
     frameAgeMs: frame.ageMs,
   })
-  yield* sendTarget(deps, handle, target, targetBrightness, guarded.flashing)
+  yield* sendTarget(deps, handle, target, targetBrightness, guarded.flashing, gainChanged)
 })
 
 const runLoop = Effect.fn("ScreenSync.runLoop")(function* runLoop(
