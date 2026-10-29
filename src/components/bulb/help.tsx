@@ -102,23 +102,6 @@ const CaptureHelp = () => (
   </box>
 )
 
-const RemoveHelp = () => (
-  <box flexDirection="column" gap={0}>
-    <Section label="remove bulb" />
-    <KeyRow keys="y" label="Remove the bulb" />
-    <KeyRow keys="n  esc" label="Cancel" />
-  </box>
-)
-
-const FormHelp = () => (
-  <box flexDirection="column" gap={0}>
-    <Section label="form" />
-    <KeyRow keys="tab" label="Move between fields" />
-    <KeyRow keys="enter" label="Submit" />
-    <KeyRow keys="esc" label="Cancel" />
-  </box>
-)
-
 const Help = (props: HelpProps) => {
   if (props.context === "sync") {
     return <SyncHelp />
@@ -131,12 +114,6 @@ const Help = (props: HelpProps) => {
   }
   if (props.context === "capture") {
     return <CaptureHelp />
-  }
-  if (props.context === "remove") {
-    return <RemoveHelp />
-  }
-  if (props.context === "form") {
-    return <FormHelp />
   }
   return <DashboardHelp syncActive={props.syncActive} />
 }

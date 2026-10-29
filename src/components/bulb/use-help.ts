@@ -18,12 +18,6 @@ const contextForScreen = (screen: Screen): HelpContext => {
   if (screen === "capture") {
     return "capture"
   }
-  if (screen === "remove") {
-    return "remove"
-  }
-  if (screen === "add" || screen === "edit") {
-    return "form"
-  }
   return "dashboard"
 }
 
