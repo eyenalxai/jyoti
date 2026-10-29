@@ -106,4 +106,4 @@ The 4000 K temperature mode used when the scene has too little chroma for a colo
 
 ## miIO session
 
-One socket-and-device conversation with a bulb: its own reader, writer, device ID and message counter. A sync run opens one per bulb; it is not the same thing as the run.
+One socket-and-device conversation with a bulb: its own reader, writer, device ID and message counter. A sync run opens one per bulb it drives; it is not the same thing as the run.

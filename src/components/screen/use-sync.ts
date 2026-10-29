@@ -73,4 +73,4 @@ const useScreenSyncModel = (options: UseScreenSyncOptions): ScreenSyncModel => {
   return { running, busy, toggle, stop }
 }
 
-export { useScreenSyncModel, type ScreenSyncModel }
+export { useScreenSyncModel }

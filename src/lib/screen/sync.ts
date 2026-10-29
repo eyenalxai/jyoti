@@ -33,7 +33,10 @@ interface SyncRun {
 
 type RunState =
   | { readonly status: "idle" }
-  | { readonly status: "starting" }
+  | {
+      readonly status: "starting"
+      readonly fiber: Fiber.Fiber<void, ScreenSyncError> | null
+    }
   | { readonly status: "running"; readonly fiber: Fiber.Fiber<void, ScreenSyncError> }
 
 const idleState: RunState = { status: "idle" }
@@ -162,7 +165,9 @@ class ScreenSyncEngine extends Context.Service<ScreenSyncEngine, ScreenSyncShape
 
       const start = Effect.fn("ScreenSync.start")(function* start() {
         const claimed = yield* Ref.modify(runState, (current): readonly [boolean, RunState] =>
-          current.status === "idle" ? [true, { status: "starting" }] : [false, current],
+          current.status === "idle"
+            ? [true, { status: "starting", fiber: null }]
+            : [false, current],
         )
         if (!claimed) {
           return yield* new ScreenSyncError({
@@ -172,34 +177,37 @@ class ScreenSyncEngine extends Context.Service<ScreenSyncEngine, ScreenSyncShape
         }
 
         return yield* Effect.gen(function* startRun() {
-          const listed = yield* bulbs.list().pipe(Effect.mapError(bulbFailure))
-          const bulb = listed[0]
-          if (bulb === undefined) {
-            return yield* new ScreenSyncError({
-              kind: "no-bulbs",
-              message: "Add a bulb before starting screen sync.",
-            })
-          }
-
-          const monitors = yield* capture.listMonitors().pipe(Effect.mapError(captureFailure))
-          const monitor = pickMonitor(monitors)
-          if (monitor === null) {
-            return yield* new ScreenSyncError({
-              kind: "no-monitor",
-              message: "No monitor to capture. Start jyoti inside a Hyprland session.",
-            })
-          }
-
-          const ready = yield* Deferred.make<true, ScreenSyncError>()
+          const ready = yield* Deferred.make<SyncRun, ScreenSyncError>()
           const fiber = yield* Effect.gen(function* run() {
+            const listed = yield* bulbs.list().pipe(Effect.mapError(bulbFailure))
+            const bulb = listed[0]
+            if (bulb === undefined) {
+              return yield* new ScreenSyncError({
+                kind: "no-bulbs",
+                message: "Add a bulb before starting screen sync.",
+              })
+            }
+
+            const monitors = yield* capture.listMonitors().pipe(Effect.mapError(captureFailure))
+            const monitor = pickMonitor(monitors)
+            if (monitor === null) {
+              return yield* new ScreenSyncError({
+                kind: "no-monitor",
+                message: "No monitor to capture. Start jyoti inside a Hyprland session.",
+              })
+            }
+
             const session = yield* bulbs.openSession(bulb.id).pipe(Effect.mapError(bulbFailure))
             yield* Effect.addFinalizer(() => capture.stop())
             yield* Effect.addFinalizer(() => Ref.set(runState, idleState))
             yield* capture
               .start({ monitor: monitor.name, grid: DEFAULT_GRID })
               .pipe(Effect.mapError(captureFailure))
-            yield* Deferred.succeed(ready, true)
-            yield* loop(session)
+            yield* Deferred.succeed(ready, {
+              bulbName: bulb.name,
+              monitorName: monitor.name,
+            })
+            return yield* loop(session)
           }).pipe(
             Effect.catchCause((cause) =>
               Effect.gen(function* reportStartFailure() {
@@ -211,8 +219,10 @@ class ScreenSyncEngine extends Context.Service<ScreenSyncEngine, ScreenSyncShape
             Effect.forkDetach,
           )
 
-          yield* Deferred.await(ready).pipe(Effect.onInterrupt(() => Fiber.interrupt(fiber)))
-          const info: SyncRun = { bulbName: bulb.name, monitorName: monitor.name }
+          yield* Ref.set(runState, { status: "starting", fiber })
+          const info = yield* Deferred.await(ready).pipe(
+            Effect.onInterrupt(() => Fiber.interrupt(fiber)),
+          )
           yield* Ref.set(runState, { status: "running", fiber })
           return info
         }).pipe(
@@ -224,7 +234,7 @@ class ScreenSyncEngine extends Context.Service<ScreenSyncEngine, ScreenSyncShape
 
       const stop = Effect.fn("ScreenSync.stop")(function* stop() {
         const current = yield* Ref.getAndSet(runState, idleState)
-        if (current.status !== "running") {
+        if (current.status === "idle" || current.fiber === null) {
           return
         }
         yield* Fiber.interrupt(current.fiber)
@@ -240,4 +250,4 @@ class ScreenSyncEngine extends Context.Service<ScreenSyncEngine, ScreenSyncShape
   )
 }
 
-export { ScreenSyncEngine, type ScreenSyncShape, type SyncRun }
+export { ScreenSyncEngine }

@@ -67,7 +67,7 @@ The colour picker starts in OKLCH mode with L, C and H sliders. `tab` switches t
 
 With two or more bulbs, `A` selects **All bulbs**: the panel shows the aggregate power, brightness, warmth and colour. `space` turns every bulb off when all of them are on, or on otherwise. `←` `→` set the same brightness or warmth on every bulb, starting from the aggregate — right from the brightest, left from the dimmest — and `c` applies one colour to all of them. Each bulb is addressed independently, so one slow bulb does not hold up the rest; a partial failure names the bulbs that failed and keeps the successes. Edit and remove stay per bulb.
 
-## Screen sync (preview)
+## Screen sync
 
 Screen sync is being built in slices. `s` starts a sync run that captures the default monitor, derives its colour at 1.5 Hz and sends it to the first configured bulb; `s` again stops the run. A coloured scene writes the packed RGB value, while a low-chroma scene writes 4000 K. The run holds the last colour through a black frame or a stale capture and never writes power. Brightness, restore, all-bulb sync, the strip and the monitor picker arrive in the next tickets.
 
