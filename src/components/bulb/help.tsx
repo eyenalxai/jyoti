@@ -1,57 +1,41 @@
-import { SYNC_OWNS_CONTROLS } from "@/lib/screen/sync/copy"
 import { palette } from "@/lib/theme"
 
 const KeyRow = (props: { readonly keys: string; readonly label: string }) => (
   <box flexDirection="row" gap={1} height={1} flexShrink={0}>
-    <box width={14} flexShrink={0}>
-      <text fg={palette.accent} bg={palette.surfaceRaised}>
-        {props.keys}
-      </text>
+    <box width={12} flexShrink={0}>
+      <text fg={palette.accent}>{props.keys}</text>
     </box>
-    <text fg={palette.muted} bg={palette.surfaceRaised}>
+    <text fg={palette.muted} truncate wrapMode="none">
       {props.label}
     </text>
   </box>
 )
 
-const NoteRow = (props: { readonly label: string }) => (
-  <box flexDirection="row" gap={1} height={1} flexShrink={0}>
-    <box width={14} flexShrink={0} />
-    <text fg={palette.faint} bg={palette.surfaceRaised}>
-      {props.label}
-    </text>
-  </box>
+const Section = (props: { readonly label: string }) => (
+  <text fg={palette.faint} height={1} flexShrink={0}>
+    {props.label}
+  </text>
 )
 
 const Help = () => (
   <box flexDirection="column" gap={0}>
-    <text fg={palette.faint} bg={palette.surfaceRaised} height={1} flexShrink={0}>
-      bulbs
-    </text>
-    <KeyRow keys="↑ ↓  j k" label="Select a bulb or control" />
-    <KeyRow keys="A  a  e  d" label="All bulbs, add, edit or remove" />
+    <Section label="bulbs" />
+    <KeyRow keys="↑ ↓  j k" label="Select a bulb" />
+    <KeyRow keys="A" label="All bulbs" />
+    <KeyRow keys="a  e  d" label="Add, edit, remove" />
 
-    <text fg={palette.faint} bg={palette.surfaceRaised} height={1} flexShrink={0}>
-      controls
-    </text>
-    <KeyRow keys="tab" label="Switch bulbs and controls" />
-    <KeyRow keys="← →  h l" label="Brightness or warmth" />
-    <KeyRow keys="space  enter" label="Toggle power or act" />
-    <KeyRow keys="w  c" label="White light or set colour" />
+    <Section label="light" />
+    <KeyRow keys="space" label="Power" />
+    <KeyRow keys="← →  h l" label="Value, or switch the mode" />
+    <KeyRow keys="w  c" label="White, or colour and pick" />
+    <KeyRow keys="enter" label="Pick a colour, or apply" />
 
-    <text fg={palette.faint} bg={palette.surfaceRaised} height={1} flexShrink={0}>
-      screen sync
-    </text>
-    <KeyRow keys="s  x" label="Start or stop (restores) · pause" />
-    <KeyRow keys="m  v" label="Monitor · capture preview (dev)" />
-    <NoteRow label={SYNC_OWNS_CONTROLS} />
-    <NoteRow label="8–100% · flash hold 2 s" />
-    <NoteRow label="power untouched · 5 s lost" />
+    <Section label="screen sync" />
+    <KeyRow keys="s  x" label="Start or stop · pause" />
+    <KeyRow keys="m  v" label="Monitor · capture preview" />
 
-    <text fg={palette.faint} bg={palette.surfaceRaised} height={1} flexShrink={0}>
-      app
-    </text>
-    <KeyRow keys="r  ?  q" label="Refresh, help, quit" />
+    <Section label="app" />
+    <KeyRow keys="r  ?  q" label="Refresh, keys, quit" />
   </box>
 )
 

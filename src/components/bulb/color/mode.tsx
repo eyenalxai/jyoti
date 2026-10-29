@@ -7,17 +7,18 @@ interface ModeTabsProps {
 }
 
 const ModeTabs = (props: ModeTabsProps) => (
-  <box flexDirection="row" justifyContent="space-between" height={1}>
-    <box flexDirection="row" gap={2}>
-      <text bg={palette.surfaceRaised} fg={props.mode === "hs" ? palette.accent : palette.muted}>
-        <strong>Hue + Saturation</strong>
-      </text>
-      <text bg={palette.surfaceRaised} fg={props.mode === "rgb" ? palette.accent : palette.muted}>
-        <strong>RGB</strong>
-      </text>
-    </box>
-    <text bg={palette.surfaceRaised} fg={palette.faint}>
-      tab switch
+  <box flexDirection="row" gap={1} height={1}>
+    <text
+      bg={props.mode === "hs" ? palette.accent : palette.background}
+      fg={props.mode === "hs" ? palette.background : palette.muted}
+    >
+      {` Hue + Saturation `}
+    </text>
+    <text
+      bg={props.mode === "rgb" ? palette.accent : palette.background}
+      fg={props.mode === "rgb" ? palette.background : palette.muted}
+    >
+      {` RGB `}
     </text>
   </box>
 )

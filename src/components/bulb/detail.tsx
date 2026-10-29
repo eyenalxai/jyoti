@@ -9,8 +9,9 @@ import type { Bulb, BulbState } from "@/lib/bulbs/schema"
 
 import { Color } from "@/components/bulb/color"
 import { ControlRow } from "@/components/bulb/controls"
-import { QualitySwitch } from "@/components/bulb/quality"
+import { QualityTabs } from "@/components/bulb/quality"
 import { Meter } from "@/components/ui/meter"
+import { Rule } from "@/components/ui/rule"
 import { lightQualityOf } from "@/lib/bulbs/aggregate"
 import {
   BRIGHTNESS_MAX,
@@ -31,6 +32,10 @@ interface DetailProps {
   readonly syncLocked: boolean
   readonly width: number
   readonly meterWidth: number
+  readonly labelWidth: number
+  readonly valueWidth: number
+  readonly controlWidth: number
+  readonly rowHints: boolean
   readonly colorOpen: boolean
   readonly colorBusy: boolean
   readonly colorInitial: string
@@ -49,120 +54,28 @@ const valueText = (value: number | null | undefined, suffix: string, width: numb
 const powerTone = (state: BulbState | undefined): RGBA =>
   state?.power === true ? palette.accent : palette.muted
 
-const PowerControl = (props: {
-  readonly state: BulbState | undefined
-  readonly focused: boolean
-  readonly onFocus: () => void
-}) => (
-  <ControlRow
-    label="Power"
-    focused={props.focused}
-    onFocus={props.onFocus}
-    value={<text fg={powerTone(props.state)}>{powerWord(props.state)}</text>}
-    hint="space"
-  />
-)
+const hintFor = (show: boolean, hint: string): string | undefined => (show ? hint : undefined)
 
-const BrightnessControl = (props: {
-  readonly state: BulbState | undefined
-  readonly focused: boolean
+const ColourBar = (props: {
+  readonly color: string | null | undefined
+  readonly width: number
   readonly disabled: boolean
-  readonly meterWidth: number
-  readonly onFocus: () => void
 }) => (
-  <ControlRow
-    label="Brightness"
-    focused={props.focused}
-    disabled={props.disabled}
-    onFocus={props.onFocus}
-    value={
-      <>
-        <Meter
-          value={props.state?.brightness ?? null}
-          min={BRIGHTNESS_MIN}
-          max={BRIGHTNESS_MAX}
-          width={props.meterWidth}
-          color={props.disabled ? palette.faint : palette.accent}
-        />
-        <text fg={props.disabled ? palette.faint : palette.text}>
-          {valueText(props.state?.brightness, "%", 4)}
-        </text>
-      </>
-    }
-    hint="←/→"
-  />
-)
-
-const WarmthControl = (props: {
-  readonly state: BulbState | undefined
-  readonly focused: boolean
-  readonly disabled: boolean
-  readonly meterWidth: number
-  readonly onFocus: () => void
-}) => (
-  <ControlRow
-    label="Warmth"
-    focused={props.focused}
-    disabled={props.disabled}
-    onFocus={props.onFocus}
-    value={
-      <>
-        <Meter
-          value={props.state?.temperature ?? null}
-          min={TEMPERATURE_MIN}
-          max={TEMPERATURE_MAX}
-          width={props.meterWidth}
-          color={props.disabled ? palette.faint : palette.accent}
-        />
-        <text fg={props.disabled ? palette.faint : palette.text}>
-          {valueText(props.state?.temperature, "K", 5)}
-        </text>
-      </>
-    }
-    hint="←/→"
-  />
-)
-
-const ColourControl = (props: {
-  readonly state: BulbState | undefined
-  readonly focused: boolean
-  readonly disabled: boolean
-  readonly onFocus: () => void
-}) => (
-  <ControlRow
-    label="Colour"
-    focused={props.focused}
-    disabled={props.disabled}
-    onFocus={props.onFocus}
-    value={
-      <>
-        <text fg={props.disabled ? palette.faint : (props.state?.color ?? palette.border)}>
-          {Str.repeat(10)("█")}
-        </text>
-        <text fg={props.disabled ? palette.faint : palette.text}>{props.state?.color ?? "—"}</text>
-      </>
-    }
-    hint={props.disabled ? "sync owns it" : "enter picks"}
-  />
-)
-
-const UnknownQuality = (props: { readonly focused: boolean; readonly onFocus: () => void }) => (
-  <ControlRow
-    label="Quality"
-    focused={props.focused}
-    onFocus={props.onFocus}
-    value={<text fg={palette.faint}>unknown</text>}
-    hint="r reads it"
-  />
+  <text fg={props.disabled ? palette.faint : (props.color ?? palette.faint)} wrapMode="none">
+    {Str.repeat(Math.max(1, props.width))(
+      props.color === null || props.color === undefined ? "░" : "█",
+    )}
+  </text>
 )
 
 const Detail = (props: DetailProps) => {
   const quality = () => lightQualityOf(props.state?.mode)
-  const qualityFocused = () => props.active && props.focus === "light"
+  const qualityFocused = () => props.active && props.focus === "quality"
+  const valueFocused = () => props.active && props.focus === "light"
   const locked = () => props.syncLocked
 
   return (
-    <box flexDirection="column" flexGrow={1} minWidth={0} gap={0}>
+    <box flexDirection="column" flexGrow={1} minWidth={0}>
       <box flexDirection="row" justifyContent="space-between" height={1}>
         <text fg={palette.text} truncate wrapMode="none">
           <strong>{truncate(props.bulb.name, Math.max(8, props.width - 12))}</strong>
@@ -192,9 +105,7 @@ const Detail = (props: DetailProps) => {
         </Show>
       </box>
 
-      <text fg={palette.border} height={1}>
-        {Str.repeat(Math.max(0, props.width))("─")}
-      </text>
+      <Rule width={props.width} />
 
       <Show
         when={!props.colorOpen}
@@ -215,57 +126,105 @@ const Detail = (props: DetailProps) => {
           </text>
         </Show>
 
-        <box flexDirection="column" flexGrow={1} minHeight={0}>
-          <PowerControl
-            state={props.state}
+        <box flexDirection="column" flexGrow={1} minHeight={0} maxWidth={props.controlWidth}>
+          <ControlRow
+            label="Power"
+            labelWidth={props.labelWidth}
             focused={props.active && props.focus === "power"}
+            hint={hintFor(props.rowHints, "space")}
             onFocus={() => {
               props.onFocus("power")
             }}
+            value={<text fg={powerTone(props.state)}>{powerWord(props.state)}</text>}
           />
-          <BrightnessControl
-            state={props.state}
+
+          <box height={1} />
+
+          <QualityTabs
+            quality={quality()}
+            focused={qualityFocused()}
+            disabled={locked()}
+            hint={hintFor(props.rowHints, "←/→")}
+            onFocus={() => {
+              props.onFocus("quality")
+            }}
+            onSelect={props.onQuality}
+          />
+
+          <ControlRow
+            label="Brightness"
+            labelWidth={props.labelWidth}
             focused={props.active && props.focus === "brightness"}
             disabled={locked()}
-            meterWidth={props.meterWidth}
+            hint={hintFor(props.rowHints, "←/→")}
             onFocus={() => {
               props.onFocus("brightness")
             }}
+            value={
+              <>
+                <Meter
+                  value={props.state?.brightness ?? null}
+                  min={BRIGHTNESS_MIN}
+                  max={BRIGHTNESS_MAX}
+                  width={props.meterWidth}
+                  color={locked() ? palette.faint : palette.accent}
+                />
+                <text fg={locked() ? palette.faint : palette.text} wrapMode="none">
+                  {valueText(props.state?.brightness, "%", props.valueWidth)}
+                </text>
+              </>
+            }
           />
 
-          <text fg={palette.border} height={1}>
-            {Str.repeat(Math.max(0, props.width))("─")}
-          </text>
-
-          <QualitySwitch quality={quality()} disabled={locked()} onQuality={props.onQuality} />
-
           <Show when={quality() === "white"}>
-            <WarmthControl
-              state={props.state}
-              focused={qualityFocused()}
+            <ControlRow
+              label="Warmth"
+              labelWidth={props.labelWidth}
+              focused={valueFocused()}
               disabled={locked()}
-              meterWidth={props.meterWidth}
+              hint={hintFor(props.rowHints, "←/→")}
               onFocus={() => {
                 props.onFocus("light")
               }}
+              value={
+                <>
+                  <Meter
+                    value={props.state?.temperature ?? null}
+                    min={TEMPERATURE_MIN}
+                    max={TEMPERATURE_MAX}
+                    width={props.meterWidth}
+                    color={locked() ? palette.faint : palette.accent}
+                  />
+                  <text fg={locked() ? palette.faint : palette.text} wrapMode="none">
+                    {valueText(props.state?.temperature, "K", props.valueWidth)}
+                  </text>
+                </>
+              }
             />
           </Show>
+
           <Show when={quality() === "color"}>
-            <ColourControl
-              state={props.state}
-              focused={qualityFocused()}
+            <ControlRow
+              label="Colour"
+              labelWidth={props.labelWidth}
+              focused={valueFocused()}
               disabled={locked()}
+              hint={hintFor(props.rowHints, "enter")}
               onFocus={() => {
                 props.onFocus("light")
               }}
-            />
-          </Show>
-          <Show when={quality() === "unknown"}>
-            <UnknownQuality
-              focused={qualityFocused()}
-              onFocus={() => {
-                props.onFocus("light")
-              }}
+              value={
+                <>
+                  <ColourBar
+                    color={props.state?.color}
+                    width={props.meterWidth}
+                    disabled={locked()}
+                  />
+                  <text fg={locked() ? palette.faint : palette.text} wrapMode="none">
+                    {Str.padStart(props.valueWidth, " ")(props.state?.color ?? "—")}
+                  </text>
+                </>
+              }
             />
           </Show>
         </box>
@@ -274,4 +233,4 @@ const Detail = (props: DetailProps) => {
   )
 }
 
-export { Detail }
+export { Detail, type DetailProps }

@@ -4,19 +4,21 @@ import { Show } from "solid-js"
 
 import { palette } from "@/lib/theme"
 
-type ControlFocus = "power" | "brightness" | "light"
+type ControlFocus = "power" | "quality" | "brightness" | "light"
 
 interface ControlRowProps {
   readonly label: string
   readonly value: JSX.Element
-  readonly hint?: string
+  readonly hint?: string | undefined
   readonly focused: boolean
   readonly disabled?: boolean
+  readonly labelWidth: number
   readonly onFocus?: (() => void) | undefined
 }
 
 const ControlRow = (props: ControlRowProps) => {
   const disabled = () => props.disabled === true
+  const active = () => props.focused && !disabled()
 
   return (
     <box
@@ -29,11 +31,9 @@ const ControlRow = (props: ControlRowProps) => {
         }
       }}
     >
-      <text fg={props.focused && !disabled() ? palette.accent : palette.background}>
-        {props.focused ? "›" : " "}
-      </text>
-      <box width={12} flexShrink={0}>
-        <text fg={props.focused && !disabled() ? palette.accent : palette.muted}>
+      <text fg={active() ? palette.accent : palette.background}>{props.focused ? "›" : " "}</text>
+      <box width={props.labelWidth} flexShrink={0}>
+        <text fg={active() ? palette.accent : palette.muted} truncate wrapMode="none">
           {props.label}
         </text>
       </box>
@@ -41,9 +41,11 @@ const ControlRow = (props: ControlRowProps) => {
         {props.value}
       </box>
       <Show when={props.hint}>
-        <text fg={palette.faint} flexShrink={0}>
-          {props.hint}
-        </text>
+        {(hint) => (
+          <text fg={palette.faint} flexShrink={0} wrapMode="none">
+            {hint()}
+          </text>
+        )}
       </Show>
     </box>
   )

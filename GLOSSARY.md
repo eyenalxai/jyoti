@@ -66,11 +66,11 @@ The packed 24-bit RGB value in the `siid 2 / piid 4` property: `(r << 16) | (g <
 
 ## Color mode
 
-The `siid 2 / piid 6` property that reports which control is active: `1` for color, `2` for color temperature. The panel calls the active mode the light's **quality**.
+The `siid 2 / piid 6` property that reports which control is active: `1` for color, `2` for color temperature.
 
 ## Light quality
 
-The kind of light a bulb is producing: **White** (colour temperature) or **Colour** (packed RGB). The two are mutually exclusive on the bulb, so the panel shows one quality row at a time. Choosing a quality switches the bulb's mode.
+The kind of light a bulb is producing: **White** (colour temperature) or **Colour** (packed RGB). The two are mutually exclusive on the bulb, and brightness belongs to both, so the panel shows a White/Colour switch followed by brightness and the value of the chosen quality. Choosing a quality switches the bulb's mode.
 
 ## Mixed quality
 
