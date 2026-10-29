@@ -20,7 +20,6 @@ const PREVIEW_TICK_MS = 667
 interface PreviewFrame {
   readonly sequence: number
   readonly ageMs: number
-  readonly blackout: boolean
   readonly published: boolean
   readonly p90Chroma: number
 }
@@ -90,16 +89,6 @@ const useCapturePreview = (): CapturePreviewModel => {
         const elapsed = Math.max(0, now - lastTick)
         lastTick = now
         const prepared = prepareFrame(next)
-        if (prepared.blackout) {
-          setFrame({
-            sequence: next.sequence,
-            ageMs: next.ageMs,
-            blackout: true,
-            published: false,
-            p90Chroma: prepared.p90Chroma,
-          })
-          return
-        }
         const reduction = reducePrepared(prepared, reducerState, elapsed)
         reducerState = reduction.state
         const published = shouldPublish(reduction.derived, lastPublished)
@@ -110,7 +99,6 @@ const useCapturePreview = (): CapturePreviewModel => {
         setFrame({
           sequence: next.sequence,
           ageMs: next.ageMs,
-          blackout: false,
           published,
           p90Chroma: reduction.p90Chroma,
         })

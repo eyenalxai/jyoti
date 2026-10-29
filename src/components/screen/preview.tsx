@@ -57,10 +57,6 @@ const Preview = (props: PreviewProps) => {
         </Show>
       </box>
 
-      <Show when={frame()?.blackout === true}>
-        <text fg={palette.warning}>black frame · hold</text>
-      </Show>
-
       <Show
         when={derived()}
         fallback={
@@ -78,10 +74,6 @@ const Preview = (props: PreviewProps) => {
             <box flexDirection="row" gap={1} height={1} flexShrink={0}>
               <text fg={RGBA.fromHex(color().hex)}>██████</text>
               <text fg={palette.text}>{color().hex}</text>
-              <Show when={color().kelvin !== null}>
-                <text fg={palette.muted}>{color().kelvin} K</text>
-              </Show>
-              <text fg={palette.faint}>{color().mode}</text>
             </box>
             <box flexDirection="row" gap={2} height={1} flexShrink={0}>
               <text fg={palette.muted}>scene {Math.round(color().sceneBrightness * 100)}%</text>
@@ -91,7 +83,7 @@ const Preview = (props: PreviewProps) => {
                     <text fg={palette.muted}>frame {current().ageMs} ms</text>
                     <text fg={palette.faint}>#{current().sequence}</text>
                     <text fg={palette.faint}>p90 {current().p90Chroma.toFixed(3)}</text>
-                    <Show when={!current().published && !current().blackout}>
+                    <Show when={!current().published}>
                       <text fg={palette.warning}>deadband</text>
                     </Show>
                   </>
