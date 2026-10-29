@@ -1,26 +1,31 @@
 import { Show } from "solid-js"
 
-import type { PickerFocus } from "@/components/bulb/color/focus"
 import type { Mode } from "@/components/bulb/color/mode"
-import type { ChannelRange, Oklch, SrgbColor } from "@/lib/color"
+import type { Rgb } from "@/lib/bulbs/schema"
+import type { ChannelRange } from "@/lib/color"
+import type { Hsb } from "@/lib/color/hsb"
 
 import { Slider } from "@/components/ui/slider"
-import { CHROMA_RANGE, HUE_RANGE, LIGHTNESS_RANGE } from "@/lib/color"
+import { HUE_MAX, PERCENT_MAX } from "@/lib/color/hsb"
+
+type PickerFocus = 0 | 1 | 2 | 3
+
+const RGB_RANGE: ChannelRange = { min: 0, max: 255, step: 1 }
+const HUE_RANGE: ChannelRange = { min: 0, max: HUE_MAX, step: 1 }
+const SATURATION_RANGE: ChannelRange = { min: 0, max: PERCENT_MAX, step: 1 }
+
+const formatHue = (value: number): string => `${Math.round(value)}°`
+const formatPercent = (value: number): string => `${Math.round(value)}%`
+const formatChannel = (value: number): string => `${value}`
 
 interface ColorSlidersProps {
   readonly mode: Mode
   readonly focus: PickerFocus
-  readonly color: Oklch
-  readonly rgb: SrgbColor["rgb"]
+  readonly hsb: Hsb
+  readonly rgb: Rgb
+  readonly width: number
   readonly onFocus: (focus: PickerFocus) => void
 }
-
-const RGB_RANGE: ChannelRange = { min: 0, max: 255, step: 1 }
-
-const formatLightness = (value: number): string => `${Math.round(value)}`
-const formatChroma = (value: number): string => value.toFixed(2)
-const formatHue = (value: number): string => `${Math.round(value)}°`
-const formatChannel = (value: number): string => `${value}`
 
 const ColorSliders = (props: ColorSlidersProps) => {
   const slider = (
@@ -36,7 +41,8 @@ const ColorSliders = (props: ColorSlidersProps) => {
       min={range.min}
       max={range.max}
       text={text}
-      width={27}
+      width={props.width}
+      labelWidth={11}
       focused={props.focus === index}
       onFocus={() => {
         props.onFocus(index)
@@ -45,9 +51,9 @@ const ColorSliders = (props: ColorSlidersProps) => {
   )
 
   return (
-    <box flexDirection="column" height={3}>
+    <box flexDirection="column" height={props.mode === "hs" ? 2 : 3}>
       <Show
-        when={props.mode === "oklch"}
+        when={props.mode === "hs"}
         fallback={
           <>
             {slider(0, "Red", props.rgb.red, RGB_RANGE, formatChannel(props.rgb.red))}
@@ -56,18 +62,17 @@ const ColorSliders = (props: ColorSlidersProps) => {
           </>
         }
       >
+        {slider(0, "Hue", props.hsb.hue, HUE_RANGE, formatHue(props.hsb.hue))}
         {slider(
-          0,
-          "Light",
-          props.color.lightness,
-          LIGHTNESS_RANGE,
-          formatLightness(props.color.lightness),
+          1,
+          "Saturation",
+          props.hsb.saturation,
+          SATURATION_RANGE,
+          formatPercent(props.hsb.saturation),
         )}
-        {slider(1, "Chroma", props.color.chroma, CHROMA_RANGE, formatChroma(props.color.chroma))}
-        {slider(2, "Hue", props.color.hue, HUE_RANGE, formatHue(props.color.hue))}
       </Show>
     </box>
   )
 }
 
-export { ColorSliders }
+export { ColorSliders, type PickerFocus }

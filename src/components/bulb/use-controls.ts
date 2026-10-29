@@ -1,21 +1,21 @@
 import type { Effect } from "effect"
 import type { Accessor } from "solid-js"
 
-import { Result, Schema, String as Str } from "effect"
-
 import type { ColorOutcome } from "@/components/bulb/color/outcome"
 import type { ColorSnapshot } from "@/components/bulb/color/snapshot"
 import type { BulbsModel } from "@/components/bulb/use-bulbs"
 import type { BulbsError } from "@/lib/bulbs/error"
-import type { Bulb, BulbId, BulbState } from "@/lib/bulbs/schema"
+import type { BulbId } from "@/lib/bulbs/schema"
 import type { Timer } from "@/lib/timers"
 
 import { revertColors as revertColorBatch } from "@/components/bulb/color/revert"
 import { useGroupControls } from "@/components/bulb/use-group-controls"
+import { usePower } from "@/components/bulb/use-power"
 import {
   BRIGHTNESS_MAX,
   BRIGHTNESS_MIN,
-  ColorHexSchema,
+  NEUTRAL_TEMPERATURE,
+  normalizeColor,
   TEMPERATURE_MAX,
   TEMPERATURE_MIN,
 } from "@/lib/bulbs/schema"
@@ -36,6 +36,7 @@ interface ControlsModel {
   readonly togglePower: () => Promise<string | null>
   readonly adjustBrightness: (delta: number) => void
   readonly adjustTemperature: (delta: number) => void
+  readonly setWhite: () => void
   readonly setColor: (hex: string) => Promise<ColorOutcome>
   readonly revertColors: (snapshot: ColorSnapshot) => Promise<ColorOutcome>
   readonly flushPending: () => void
@@ -73,6 +74,16 @@ const useControls = (options: UseControlsOptions): ControlsModel => {
     pending.set(key, { timer, send })
   }
 
+  const cancelPending = (id: BulbId, control: string) => {
+    const key = `${id}:${control}`
+    const entry = pending.get(key)
+    if (entry === undefined) {
+      return
+    }
+    cancel(entry.timer)
+    pending.delete(key)
+  }
+
   const group = useGroupControls({
     model: options.model,
     onError: options.onError,
@@ -105,46 +116,7 @@ const useControls = (options: UseControlsOptions): ControlsModel => {
     pending.clear()
   }
 
-  const commitPower = (bulb: Bulb, current: BulbState): Promise<string | null> => {
-    const target = current.power === false
-    options.model.patchState(bulb.id, { power: target })
-    return run(Bulbs.use((service) => service.setPower(bulb.id, target))).then((result) => {
-      if (result.ok) {
-        return null
-      }
-      options.onError(result.message)
-      void options.model.readOne(bulb.id)
-      return result.message
-    })
-  }
-
-  const togglePower = (): Promise<string | null> => {
-    if (options.model.allSelected()) {
-      return group.togglePower()
-    }
-    const bulb = options.model.selected()
-    if (bulb === null) {
-      return Promise.resolve(null)
-    }
-    const state = options.model.states().get(bulb.id)
-    if (state !== undefined && state.power !== null) {
-      return commitPower(bulb, state)
-    }
-
-    return options.model.readOne(bulb.id).then((message) => {
-      if (message !== null) {
-        options.onError(message)
-        return message
-      }
-      const fresh = options.model.states().get(bulb.id)
-      if (fresh === undefined || fresh.power === null) {
-        const unknown = "The power state is unknown. Press r to retry."
-        options.onError(unknown)
-        return unknown
-      }
-      return commitPower(bulb, fresh)
-    })
-  }
+  const power = usePower({ model: options.model, onError: options.onError, group })
 
   const adjustBrightness = (delta: number) => {
     if (blocked()) {
@@ -197,6 +169,7 @@ const useControls = (options: UseControlsOptions): ControlsModel => {
     if (next === state.temperature) {
       return
     }
+    cancelPending(bulb.id, "color")
     options.model.patchState(bulb.id, { temperature: next, mode: "temperature" })
     schedule(bulb.id, "temperature", () => {
       sendControl(
@@ -206,44 +179,74 @@ const useControls = (options: UseControlsOptions): ControlsModel => {
     })
   }
 
+  const setWhite = () => {
+    if (blocked()) {
+      return
+    }
+    if (options.model.allSelected()) {
+      void group.setWhite()
+      return
+    }
+    const bulb = options.model.selected()
+    if (bulb === null) {
+      return
+    }
+    const state = options.model.states().get(bulb.id)
+    const kelvin = state?.temperature ?? NEUTRAL_TEMPERATURE
+    cancelPending(bulb.id, "color")
+    options.model.patchState(bulb.id, { temperature: kelvin, mode: "temperature" })
+    schedule(bulb.id, "temperature", () => {
+      sendControl(
+        bulb.id,
+        Bulbs.use((service) => service.setTemperature(bulb.id, kelvin)),
+      )
+    })
+  }
+
   const setColor = (hex: string): Promise<ColorOutcome> => {
     if (blocked()) {
       return Promise.resolve({ error: null, partial: false })
     }
-    if (options.model.allSelected()) {
-      return group.setColor(hex)
+    const color = normalizeColor(hex)
+    if (color === null) {
+      return Promise.resolve({ error: "Enter a color as #RRGGBB.", partial: false })
     }
+
+    if (options.model.allSelected()) {
+      for (const bulb of options.model.bulbs()) {
+        cancelPending(bulb.id, "temperature")
+      }
+      return group.setColor(color)
+    }
+
     const bulb = options.model.selected()
     if (bulb === null) {
       return Promise.resolve({ error: null, partial: false })
     }
-    const normalized = Str.toUpperCase(Str.trim(hex))
-    const withHash = Str.startsWith("#")(normalized) ? normalized : `#${normalized}`
-    const decoded = Schema.decodeResult(ColorHexSchema)(withHash)
-    if (Result.isFailure(decoded)) {
-      return Promise.resolve({ error: "Enter a color as #RRGGBB.", partial: false })
+    const state = options.model.states().get(bulb.id)
+    if (state?.color === color && state.mode === "color") {
+      return Promise.resolve({ error: null, partial: false })
     }
-
-    options.model.patchState(bulb.id, { color: decoded.success, mode: "color" })
-    return run(Bulbs.use((service) => service.setColor(bulb.id, decoded.success))).then(
-      (result) => {
-        if (result.ok) {
-          return { error: null, partial: false }
-        }
-        options.onError(result.message)
-        void options.model.readOne(bulb.id)
-        return { error: result.message, partial: false }
-      },
-    )
+    cancelPending(bulb.id, "temperature")
+    options.model.patchState(bulb.id, { color, mode: "color" })
+    return run(Bulbs.use((service) => service.setColor(bulb.id, color))).then((result) => {
+      if (result.ok) {
+        return { error: null, partial: false }
+      }
+      options.onError(result.message)
+      void options.model.readOne(bulb.id)
+      return { error: result.message, partial: false }
+    })
   }
 
   const revertColors = (snapshot: ColorSnapshot): Promise<ColorOutcome> =>
     revertColorBatch({ model: options.model, onError: options.onError }, snapshot)
 
   return {
-    togglePower,
+    togglePower: power.togglePower,
     adjustBrightness,
     adjustTemperature,
+    setWhite,
     setColor,
     revertColors,
     flushPending,

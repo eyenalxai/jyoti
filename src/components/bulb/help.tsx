@@ -37,7 +37,7 @@ const Help = () => (
     <KeyRow keys="tab" label="Switch bulbs and controls" />
     <KeyRow keys="← →  h l" label="Brightness or warmth" />
     <KeyRow keys="space  enter" label="Toggle power or act" />
-    <KeyRow keys="c" label="Set color" />
+    <KeyRow keys="w  c" label="White light or set colour" />
 
     <text fg={palette.faint} bg={palette.surfaceRaised} height={1} flexShrink={0}>
       screen sync

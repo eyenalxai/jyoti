@@ -1,6 +1,6 @@
 import type { ColorHex, Rgb } from "@/lib/bulbs/schema"
 
-import { formatColor, packColor, parseColor } from "@/lib/bulbs/schema"
+import { formatColor, packColor } from "@/lib/bulbs/schema"
 import { clamp } from "@/lib/format"
 
 interface Oklch {
@@ -19,7 +19,6 @@ interface SrgbColor {
   readonly rgb: Rgb
   readonly hex: ColorHex
   readonly oklch: Oklch
-  readonly clipped: boolean
 }
 
 interface LinearRgb {
@@ -58,14 +57,14 @@ const inGamut = (rgb: LinearRgb): boolean =>
   rgb.blue >= -GAMUT_EPSILON &&
   rgb.blue <= 1 + GAMUT_EPSILON
 
-const fitToGamut = (color: Oklch): { readonly color: Oklch; readonly clipped: boolean } => {
+const fitToGamut = (color: Oklch): Oklch => {
   const bounded: Oklch = {
     lightness: clamp(color.lightness, LIGHTNESS_RANGE.min, LIGHTNESS_RANGE.max),
     chroma: clamp(color.chroma, CHROMA_RANGE.min, CHROMA_RANGE.max),
     hue: clamp(color.hue, HUE_RANGE.min, HUE_RANGE.max),
   }
   if (inGamut(linearFromOklch(bounded))) {
-    return { color: bounded, clipped: false }
+    return bounded
   }
 
   let low = CHROMA_RANGE.min
@@ -78,7 +77,7 @@ const fitToGamut = (color: Oklch): { readonly color: Oklch; readonly clipped: bo
       high = middle
     }
   }
-  return { color: { ...bounded, chroma: low }, clipped: low < bounded.chroma }
+  return { ...bounded, chroma: low }
 }
 
 const encodeChannel = (value: number): number => {
@@ -94,7 +93,7 @@ const decodeChannel = (value: number): number => {
 
 const oklchToSrgb = (color: Oklch): SrgbColor => {
   const fitted = fitToGamut(color)
-  const linear = linearFromOklch(fitted.color)
+  const linear = linearFromOklch(fitted)
   const rgb: Rgb = {
     red: encodeChannel(linear.red),
     green: encodeChannel(linear.green),
@@ -103,8 +102,7 @@ const oklchToSrgb = (color: Oklch): SrgbColor => {
   return {
     rgb,
     hex: formatColor(packColor(rgb)),
-    oklch: fitted.color,
-    clipped: fitted.clipped,
+    oklch: fitted,
   }
 }
 
@@ -149,22 +147,8 @@ const kelvinToSrgb = (kelvin: number): SrgbColor => {
     rgb,
     hex: formatColor(packColor(rgb)),
     oklch: rgbToOklch(rgb),
-    clipped: false,
   }
 }
 
-const hexToOklch = (hex: string): Oklch | null => {
-  const rgb = parseColor(hex)
-  return rgb === null ? null : rgbToOklch(rgb)
-}
-
-export {
-  CHROMA_RANGE,
-  HUE_RANGE,
-  LIGHTNESS_RANGE,
-  hexToOklch,
-  kelvinToSrgb,
-  oklchToSrgb,
-  rgbToOklch,
-}
+export { kelvinToSrgb, oklchToSrgb, rgbToOklch }
 export type { ChannelRange, Oklch, SrgbColor }

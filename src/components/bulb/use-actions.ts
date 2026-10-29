@@ -12,7 +12,6 @@ interface UseBulbActionsOptions {
   readonly syncActive: Accessor<boolean>
   readonly busy: Accessor<boolean>
   readonly notify: (notice: Notice) => void
-  readonly captureColor: () => void
   readonly setActiveBulb: Setter<Bulb | null>
   readonly setScreen: Setter<Screen>
 }
@@ -91,7 +90,6 @@ const useBulbActions = (options: UseBulbActionsOptions): BulbActions => {
       return
     }
 
-    options.captureColor()
     options.setActiveBulb(options.model.selected())
     options.setScreen("color")
   }

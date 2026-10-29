@@ -30,7 +30,7 @@ Xiaomi's UDP protocol on port 54321. A request sends a 32-byte hello, receives t
 
 ## All bulbs
 
-A selection that stands for every configured bulb at once. It is not a bulb: it has no ID, address, token or stored state, so edit and remove do not act on it. The row appears first in the rail while two or more bulbs exist. Its state is the aggregate of the bulbs: power is on, off or mixed; brightness and colour temperature show one value when equal and a range when not; colour shows a swatch when equal and mixed otherwise. Power uses a quorum: if every reachable bulb is on, one toggle turns them all off; otherwise it turns them all on. Brightness and warmth set one absolute value on every bulb, anchored at the aggregate's high end for an increase and its low end for a decrease. Colour applies one packed colour to every bulb. Each bulb is addressed independently, so a slow bulb does not delay the others; a failure names the bulbs that failed while the successes stay applied.
+A selection that stands for every configured bulb at once. It is not a bulb: it has no ID, address, token or stored state, so edit and remove do not act on it. The row appears first in the rail while two or more bulbs exist, and it is the default selection on first load. Its state is the aggregate of the bulbs: power is on, off or mixed; quality is White or Colour when every reachable bulb agrees and mixed when they do not; brightness and colour temperature show one value when equal and a range when not; colour shows a swatch when equal and mixed otherwise. Power uses a quorum: if every reachable bulb is on, one toggle turns them all off; otherwise it turns them all on. Brightness and warmth set one absolute value on every bulb, anchored at the aggregate's high end for an increase and its low end for a decrease. Colour applies one packed colour to every bulb. Each bulb is addressed independently, so a slow bulb does not delay the others; a failure names the bulbs that failed while the successes stay applied.
 
 ## State
 
@@ -62,11 +62,35 @@ The integer `siid 2 / piid 3` property in kelvin, from `2700` to `6500`.
 
 ## Color
 
-The packed 24-bit RGB value in the `siid 2 / piid 4` property: `(r << 16) | (g << 8) | b`. The UI presents it as `#RRGGBB`.
+The packed 24-bit RGB value in the `siid 2 / piid 4` property: `(r << 16) | (g << 8) | b`. The UI presents it as `#RRGGBB`. The picker's hue and saturation are derived from this value; setting them writes a new packed colour.
 
 ## Color mode
 
-The `siid 2 / piid 6` property that reports which control is active: `1` for color, `2` for color temperature.
+The `siid 2 / piid 6` property that reports which control is active: `1` for color, `2` for color temperature. The panel calls the active mode the light's **quality**.
+
+## Light quality
+
+The kind of light a bulb is producing: **White** (colour temperature) or **Colour** (packed RGB). The two are mutually exclusive on the bulb, so the panel shows one quality row at a time. Choosing a quality switches the bulb's mode.
+
+## Mixed quality
+
+The All bulbs quality when at least two reachable bulbs disagree. The switch shows `mixed` with neither side active; choosing White or Colour applies that quality to every bulb.
+
+## Colour picker
+
+The inline editor for the Colour quality. It edits hue and saturation, switches to RGB on `tab`, and accepts an exact hex value. Every value it can produce is an sRGB colour, so the swatch and the sent colour cannot diverge. Changes are sent after a short idle, so the bulb follows the picker. Brightness is the shared dimmer and is not repeated inside the picker.
+
+## Revert
+
+Leaving the colour picker with `esc` restores the colour and mode each target had when the picker opened. `enter` keeps the current colour. The snapshot is taken before the opening colour is seeded.
+
+## Toast
+
+A transient notification in the top-right corner. Toasts queue, dismiss on their own, and can be dismissed with a click. Errors and successes use the same surface.
+
+## Default selection
+
+All bulbs on first load when two or more bulbs exist. Choosing a bulb overrides it until the next launch; adding the second bulb switches to All, adding a later bulb keeps the current choice.
 
 ## Tokens file
 
@@ -86,7 +110,7 @@ A sync run that keeps capture, sessions and state but publishes nothing. The bul
 
 ## Sync strip
 
-The two-line panel above the status line while a sync run exists. Its first line carries the state, captured monitor, derived colour, sync brightness, frame age and reachable/total bulbs; its second line carries the run's keys.
+The two-line panel above the footer while a sync run exists. Its first line carries the state, captured monitor, derived colour, sync brightness, frame age and reachable/total bulbs; its second line carries the run's keys.
 
 ## Captured monitor
 

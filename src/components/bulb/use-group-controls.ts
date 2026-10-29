@@ -1,6 +1,6 @@
 import type { Effect } from "effect"
 
-import { Array as Arr, Result, Schema, String as Str } from "effect"
+import { Array as Arr } from "effect"
 
 import type { ColorOutcome } from "@/components/bulb/color/outcome"
 import type { BulbsModel } from "@/components/bulb/use-bulbs"
@@ -14,7 +14,8 @@ import { failuresOf, runBatch } from "@/lib/bulbs/batch"
 import {
   BRIGHTNESS_MAX,
   BRIGHTNESS_MIN,
-  ColorHexSchema,
+  normalizeColor,
+  NEUTRAL_TEMPERATURE,
   TEMPERATURE_MAX,
   TEMPERATURE_MIN,
 } from "@/lib/bulbs/schema"
@@ -24,6 +25,7 @@ import { run } from "@/lib/runtime"
 
 interface GroupControlsModel {
   readonly togglePower: () => Promise<string | null>
+  readonly setWhite: () => Promise<string | null>
   readonly adjustBrightness: (delta: number) => void
   readonly adjustTemperature: (delta: number) => void
   readonly setColor: (hex: string) => Promise<ColorOutcome>
@@ -121,6 +123,53 @@ const useGroupControls = (options: UseGroupControlsOptions): GroupControlsModel 
     })
   }
 
+  const setWhite = (): Promise<string | null> => {
+    const bulbs = options.model.bulbs()
+    if (bulbs.length === 0) {
+      return Promise.resolve(null)
+    }
+    const states = options.model.states()
+    const kelvinById = new Map(
+      Arr.map(
+        bulbs,
+        (bulb) => [bulb.id, states.get(bulb.id)?.temperature ?? NEUTRAL_TEMPERATURE] as const,
+      ),
+    )
+    for (const bulb of bulbs) {
+      options.model.patchState(bulb.id, {
+        temperature: kelvinById.get(bulb.id) ?? NEUTRAL_TEMPERATURE,
+        mode: "temperature",
+      })
+    }
+
+    return runBatch(bulbs, (service, bulb) =>
+      service.setTemperature(bulb.id, kelvinById.get(bulb.id) ?? NEUTRAL_TEMPERATURE),
+    ).then((result) => {
+      if (!result.ok) {
+        options.onError(result.message)
+        for (const bulb of bulbs) {
+          void options.model.readOne(bulb.id)
+        }
+        return result.message
+      }
+
+      const failures = failuresOf(result.entries)
+      for (const entry of result.entries) {
+        if (!entry.ok || !states.has(entry.bulb.id)) {
+          void options.model.readOne(entry.bulb.id)
+        }
+      }
+      if (failures.length === 0) {
+        return null
+      }
+
+      const names = nameList(Arr.map(failures, (entry) => entry.bulb.name))
+      const message = `${names} failed · ${result.entries.length - failures.length} of ${result.entries.length} changed`
+      options.onError(message)
+      return message
+    })
+  }
+
   const adjustAll = (
     control: "brightness" | "temperature",
     delta: number,
@@ -189,14 +238,11 @@ const useGroupControls = (options: UseGroupControlsOptions): GroupControlsModel 
   }
 
   const setColor = (hex: string): Promise<ColorOutcome> => {
-    const normalized = Str.toUpperCase(Str.trim(hex))
-    const withHash = Str.startsWith("#")(normalized) ? normalized : `#${normalized}`
-    const decoded = Schema.decodeResult(ColorHexSchema)(withHash)
-    if (Result.isFailure(decoded)) {
+    const color = normalizeColor(hex)
+    if (color === null) {
       return Promise.resolve({ error: "Enter a color as #RRGGBB.", partial: false })
     }
 
-    const color = decoded.success
     const bulbs = options.model.bulbs()
     const states = options.model.states()
     for (const bulb of bulbs) {
@@ -229,7 +275,7 @@ const useGroupControls = (options: UseGroupControlsOptions): GroupControlsModel 
     })
   }
 
-  return { togglePower, adjustBrightness, adjustTemperature, setColor }
+  return { togglePower, setWhite, adjustBrightness, adjustTemperature, setColor }
 }
 
 export { useGroupControls, type GroupControlsModel }

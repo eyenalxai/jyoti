@@ -1,13 +1,34 @@
 import type { BulbsModel } from "@/components/bulb/use-bulbs"
+import type { LightQuality } from "@/lib/bulbs/aggregate"
 
-import { aggregateState } from "@/lib/bulbs/aggregate"
+import { aggregateState, lightQualityOf } from "@/lib/bulbs/aggregate"
+import { NEUTRAL_TEMPERATURE } from "@/lib/bulbs/schema"
+import { kelvinToSrgb } from "@/lib/color"
 
 const initialColor = (model: BulbsModel): string => {
-  if (!model.allSelected()) {
-    return model.selectedState()?.color ?? "#FFFFFF"
+  const aggregate = model.allSelected()
+    ? aggregateState(model.bulbs(), model.states(), model.stateErrors())
+    : null
+  const quality: LightQuality =
+    aggregate === null ? lightQualityOf(model.selectedState()?.mode) : aggregate.quality
+
+  if (quality === "color") {
+    const current =
+      aggregate === null
+        ? model.selectedState()?.color
+        : aggregate.color?.kind === "equal"
+          ? aggregate.color.hex
+          : undefined
+    if (current !== undefined && current !== null && current !== "#000000") {
+      return current
+    }
   }
-  const aggregate = aggregateState(model.bulbs(), model.states(), model.stateErrors())
-  return aggregate.color?.kind === "equal" ? aggregate.color.hex : "#FFFFFF"
+
+  const kelvin =
+    aggregate === null
+      ? (model.selectedState()?.temperature ?? NEUTRAL_TEMPERATURE)
+      : (aggregate.temperature?.low ?? NEUTRAL_TEMPERATURE)
+  return kelvinToSrgb(kelvin).hex
 }
 
 export { initialColor }

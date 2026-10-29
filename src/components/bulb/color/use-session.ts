@@ -1,3 +1,5 @@
+import type { Accessor } from "solid-js"
+
 import { createSignal } from "solid-js"
 
 import type { ColorOutcome } from "@/components/bulb/color/outcome"
@@ -13,7 +15,16 @@ interface UseColorSessionOptions {
   readonly notify: (notice: Notice) => void
 }
 
-const useColorSession = (options: UseColorSessionOptions) => {
+interface ColorSessionModel {
+  readonly capture: () => void
+  readonly commit: (hex: string) => Promise<ColorOutcome>
+  readonly preview: (hex: string) => Promise<boolean>
+  readonly revert: () => void
+  readonly reset: () => void
+  readonly dirty: Accessor<boolean>
+}
+
+const useColorSession = (options: UseColorSessionOptions): ColorSessionModel => {
   const [snapshot, setSnapshot] = createSignal<ColorSnapshot>(new Map())
   const [dirty, setDirty] = createSignal(false)
   let queue: Promise<unknown> = Promise.resolve()
@@ -66,4 +77,4 @@ const useColorSession = (options: UseColorSessionOptions) => {
   return { capture, commit, preview, revert, reset, dirty }
 }
 
-export { useColorSession }
+export { useColorSession, type ColorSessionModel }
