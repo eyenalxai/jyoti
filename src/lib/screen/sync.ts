@@ -12,7 +12,6 @@ import type { SyncRun, SyncStatus } from "@/lib/screen/sync/status"
 import { Bulbs } from "@/lib/bulbs/service"
 import { ScreenCapture } from "@/lib/screen/capture"
 import { ScreenSyncError } from "@/lib/screen/error"
-import { resetSmoothing } from "@/lib/screen/reducer"
 import { captureFailure } from "@/lib/screen/sync/failure"
 import { findMonitor } from "@/lib/screen/sync/monitor"
 import { switchMonitor } from "@/lib/screen/sync/monitor/switch"
@@ -89,7 +88,6 @@ class ScreenSyncEngine extends Context.Service<ScreenSyncEngine, ScreenSyncShape
         if ((yield* Ref.get(current.handle.phase)) === "syncing") {
           return yield* Effect.void
         }
-        yield* Ref.update(current.handle.reducer, resetSmoothing)
         yield* Ref.set(current.handle.phase, "syncing")
         yield* publishLive(deps, current.handle, { phase: "syncing" })
         return yield* Effect.void

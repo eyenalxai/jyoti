@@ -52,7 +52,6 @@ const useCapturePreview = (options: UseCapturePreviewOptions): CapturePreviewMod
   const [frame, setFrame] = createSignal<PreviewFrame | null>(null)
   let reducerState = createReducerState()
   let lastPublished: DerivedColor | null = null
-  let lastTick = 0
   let timer: Timer | null = null
 
   const reportFailure = (failure: ScreenCaptureError): Effect.Effect<void> =>
@@ -87,11 +86,8 @@ const useCapturePreview = (options: UseCapturePreviewOptions): CapturePreviewMod
           return
         }
         const next = latest.value
-        const now = performance.now()
-        const elapsed = Math.max(0, now - lastTick)
-        lastTick = now
         const prepared = prepareFrame(next)
-        const reduction = reducePrepared(prepared, reducerState, elapsed)
+        const reduction = reducePrepared(prepared, reducerState)
         reducerState = reduction.state
         const published = shouldPublish(reduction.derived, lastPublished)
         if (published) {
@@ -130,7 +126,6 @@ const useCapturePreview = (options: UseCapturePreviewOptions): CapturePreviewMod
         yield* capture.start({ monitor: monitor.name, grid: DEFAULT_GRID })
         reducerState = createReducerState()
         lastPublished = null
-        lastTick = performance.now()
         setDerived(null)
         setFrame(null)
         setRunning(true)

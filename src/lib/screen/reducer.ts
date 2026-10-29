@@ -10,14 +10,12 @@ import { cluster } from "@/lib/screen/kmeans"
 import { deltaEOk, labFromOklch, oklchFromLab } from "@/lib/screen/lab"
 
 const CHROMA_QUANTILE = 0.75
-const SCENE_TAU_MS = 900
 const CLUSTER_DROP = 0.03
 const SCORE_CHROMA_SCALE = 0.15
 const DEADBAND = 0.02
 
 interface ReducerState {
   readonly centroids: readonly Lab[] | null
-  readonly sceneBrightness: number | null
 }
 
 interface DerivedColor {
@@ -35,16 +33,7 @@ interface Reduction {
 
 const createReducerState = (): ReducerState => ({
   centroids: null,
-  sceneBrightness: null,
 })
-
-const resetSmoothing = (state: ReducerState): ReducerState => ({
-  ...state,
-  sceneBrightness: null,
-})
-
-const smoothing = (tauMs: number, elapsedMs: number): number =>
-  1 - Math.exp(-Math.max(0, elapsedMs) / tauMs)
 
 const pickWinner = (
   counts: Int32Array,
@@ -118,17 +107,7 @@ const chooseTarget = (
   }
 }
 
-const reducePrepared = (
-  prepared: PreparedFrame,
-  state: ReducerState,
-  elapsedMs: number,
-): Reduction => {
-  const sceneAlpha = state.sceneBrightness === null ? 1 : smoothing(SCENE_TAU_MS, elapsedMs)
-  const sceneBrightness =
-    state.sceneBrightness === null
-      ? prepared.meanDrive
-      : state.sceneBrightness + (prepared.meanDrive - state.sceneBrightness) * sceneAlpha
-
+const reducePrepared = (prepared: PreparedFrame, state: ReducerState): Reduction => {
   const clustering = cluster(prepared.lab, prepared.pixelCount, state.centroids)
   const target = chooseTarget(prepared, clustering.assignments, clustering.centroids.length)
   const srgb = oklchToSrgb(oklchFromLab(target))
@@ -139,18 +118,17 @@ const reducePrepared = (
       hex: srgb.hex,
       rgb: srgb.rgb,
       lab,
-      sceneBrightness,
+      sceneBrightness: prepared.meanDrive,
     },
     state: {
       centroids: clustering.centroids,
-      sceneBrightness,
     },
     p90Chroma: prepared.p90Chroma,
   }
 }
 
-const reduceFrame = (frame: ScreenFrame, state: ReducerState, elapsedMs: number): Reduction =>
-  reducePrepared(prepareFrame(frame), state, elapsedMs)
+const reduceFrame = (frame: ScreenFrame, state: ReducerState): Reduction =>
+  reducePrepared(prepareFrame(frame), state)
 
 const shouldPublish = (next: DerivedColor, last: Pick<DerivedColor, "lab"> | null): boolean => {
   if (last === null) {
@@ -159,5 +137,5 @@ const shouldPublish = (next: DerivedColor, last: Pick<DerivedColor, "lab"> | nul
   return deltaEOk(next.lab, last.lab) > DEADBAND
 }
 
-export { createReducerState, reduceFrame, reducePrepared, resetSmoothing, shouldPublish }
+export { createReducerState, reduceFrame, reducePrepared, shouldPublish }
 export type { DerivedColor, Reduction, ReducerState }
