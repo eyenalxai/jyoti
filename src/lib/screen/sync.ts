@@ -170,7 +170,7 @@ class ScreenSyncEngine extends Context.Service<ScreenSyncEngine, ScreenSyncShape
         direction: SyncGainDirection,
       ) {
         const current = yield* Ref.get(runState)
-        if (current.status !== "running") {
+        if (current.status === "stopping") {
           return yield* Effect.void
         }
         const next = yield* Ref.updateAndGet(gain, (value) => nextSyncGain(value, direction))

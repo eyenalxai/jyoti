@@ -6,7 +6,6 @@ interface FooterInput {
   readonly hasBulbs: boolean
   readonly canSelectAll: boolean
   readonly error: boolean
-  readonly syncActive: boolean
 }
 
 const footerHints = (input: FooterInput): readonly Hint[] => {
@@ -30,24 +29,11 @@ const footerHints = (input: FooterInput): readonly Hint[] => {
   if (input.error) {
     hints.push({ keys: "r", label: "retry" })
   }
-  if (!input.syncActive) {
-    hints.push({ keys: "w", label: "white" }, { keys: "c", label: "colour" })
-  }
-  if (!input.syncActive) {
-    hints.push(
-      { keys: "a", label: "add" },
-      { keys: "e", label: "edit" },
-      { keys: "d", label: "remove" },
-    )
-  }
   hints.push(
-    { keys: "r", label: "refresh" },
-    { keys: "s", label: input.syncActive ? "stop" : "sync" },
+    { keys: "s", label: "sync" },
+    { keys: "?", label: "keys" },
+    { keys: "q", label: "quit" },
   )
-  if (input.syncActive) {
-    hints.push({ keys: "x", label: "pause" }, { keys: "+/-", label: "gain" })
-  }
-  hints.push({ keys: "?", label: "keys" }, { keys: "q", label: "quit" })
   return hints
 }
 

@@ -1,5 +1,12 @@
 import { palette } from "@/lib/theme"
 
+type HelpContext = "dashboard" | "sync" | "color" | "monitors" | "capture" | "remove" | "form"
+
+interface HelpProps {
+  readonly context: HelpContext
+  readonly syncActive: boolean
+}
+
 const KeyRow = (props: { readonly keys: string; readonly label: string }) => (
   <box flexDirection="row" gap={1} height={1} flexShrink={0}>
     <box width={12} flexShrink={0}>
@@ -17,27 +24,99 @@ const Section = (props: { readonly label: string }) => (
   </text>
 )
 
-const Help = () => (
+const DashboardHelp = (props: { readonly syncActive: boolean }) => (
   <box flexDirection="column" gap={0}>
-    <Section label="bulbs" />
-    <KeyRow keys="↑ ↓  j k" label="Select a bulb" />
+    <Section label="navigation" />
+    <KeyRow keys="↑ ↓  j k" label="Select a bulb, or move focus" />
+    <KeyRow keys="tab" label="Switch the bulb list and controls" />
     <KeyRow keys="A" label="All bulbs" />
-    <KeyRow keys="a  e  d" label="Add, edit, remove" />
+
+    {props.syncActive ? null : (
+      <>
+        <Section label="bulbs" />
+        <KeyRow keys="a  e  d" label="Add, edit, remove" />
+      </>
+    )}
 
     <Section label="light" />
     <KeyRow keys="space" label="Power" />
-    <KeyRow keys="← →  h l" label="Value, or switch the mode" />
-    <KeyRow keys="w  c" label="White, or colour and pick" />
-    <KeyRow keys="enter" label="Pick a colour, or apply" />
+    {props.syncActive ? null : (
+      <>
+        <KeyRow keys="← →  h l" label="Value, or switch the mode" />
+        <KeyRow keys="w  c" label="White, or colour and pick" />
+        <KeyRow keys="enter" label="Pick a colour, or apply" />
+      </>
+    )}
 
     <Section label="screen sync" />
-    <KeyRow keys="s  x" label="Start or stop · pause" />
-    <KeyRow keys="+ -  =" label="Sync brightness gain" />
-    <KeyRow keys="m  v" label="Monitor · capture preview" />
+    <KeyRow keys="s" label="Open the Sync panel" />
+    {props.syncActive ? (
+      <KeyRow keys="—" label="Sync owns colour, brightness and temperature" />
+    ) : null}
 
     <Section label="app" />
-    <KeyRow keys="r  ?  q" label="Refresh, keys, quit" />
+    <KeyRow keys="r  v  ?  q" label="Refresh, preview, keys, quit" />
   </box>
 )
 
+const SyncHelp = () => (
+  <box flexDirection="column" gap={0}>
+    <Section label="sync panel" />
+    <KeyRow keys="↑ ↓" label="Move between rows" />
+    <KeyRow keys="← →" label="Adjust the brightness gain" />
+    <KeyRow keys="enter" label="Start, stop, pause or choose the monitor" />
+    <KeyRow keys="esc" label="Close the panel" />
+    <KeyRow keys="?" label="This help" />
+  </box>
+)
+
+const ColorHelp = () => (
+  <box flexDirection="column" gap={0}>
+    <Section label="colour picker" />
+    <KeyRow keys="↑ ↓" label="Move between fields" />
+    <KeyRow keys="← →" label="Adjust the focused slider" />
+    <KeyRow keys="tab" label="Hue/saturation or RGB" />
+    <KeyRow keys="enter" label="Keep the colour and close" />
+    <KeyRow keys="esc" label="Revert to the opening colour" />
+    <KeyRow keys="?" label="This help" />
+  </box>
+)
+
+const MonitorsHelp = () => (
+  <box flexDirection="column" gap={0}>
+    <Section label="monitor picker" />
+    <KeyRow keys="↑ ↓" label="Move between monitors" />
+    <KeyRow keys="enter" label="Choose the monitor" />
+    <KeyRow keys="esc" label="Cancel" />
+    <KeyRow keys="?" label="This help" />
+  </box>
+)
+
+const CaptureHelp = () => (
+  <box flexDirection="column" gap={0}>
+    <Section label="capture preview" />
+    <KeyRow keys="↑ ↓" label="Move between monitors" />
+    <KeyRow keys="enter" label="Start or stop the capture" />
+    <KeyRow keys="esc" label="Close the preview" />
+    <KeyRow keys="?" label="This help" />
+  </box>
+)
+
+const Help = (props: HelpProps) => {
+  if (props.context === "sync") {
+    return <SyncHelp />
+  }
+  if (props.context === "color") {
+    return <ColorHelp />
+  }
+  if (props.context === "monitors") {
+    return <MonitorsHelp />
+  }
+  if (props.context === "capture") {
+    return <CaptureHelp />
+  }
+  return <DashboardHelp syncActive={props.syncActive} />
+}
+
 export { Help }
+export type { HelpContext }

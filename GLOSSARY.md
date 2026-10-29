@@ -114,7 +114,11 @@ A sync run that keeps capture, sessions and state but publishes nothing. The bul
 
 ## Sync strip
 
-The two-line panel above the footer while a sync run exists. Its first line carries the state, captured monitor, derived colour, sync brightness, frame age and reachable/total bulbs; its second line carries the run's keys.
+The panel above the footer while a sync run exists. It carries the state, captured monitor, derived colour, sync brightness, frame age and reachable/total bulbs.
+
+## Sync panel
+
+The modal opened with `s`. It owns start/stop, pause, the captured monitor and the sync brightness gain. It is the only place the sync controls live; `?` lists the keys active in the current context.
 
 ## Captured monitor
 
@@ -134,7 +138,7 @@ The bulb brightness derived from scene brightness through the 8–100% envelope 
 
 ## Sync brightness gain
 
-The multiplier applied to the rounded envelope result, from `0.5` to `2.0` in `0.1` steps. It is `1.0` on a first run and is remembered across launches in the preferences file. `+` and `-` adjust it during a run. The gained brightness is clamped at `100%`; the 8% floor applies to the result, so a gain above `1.0` raises the floor and a gain below `1.0` does not lower it. The derived colour is never changed by the gain. The flash guard watches the gained brightness.
+The multiplier applied to the rounded envelope result, from `0.5` to `2.0` in `0.1` steps. It is `1.0` on a first run and is remembered across launches in the preferences file. It is adjusted in the Sync panel. The gained brightness is clamped at `100%`; the 8% floor applies to the result, so a gain above `1.0` raises the floor and a gain below `1.0` does not lower it. The derived colour is never changed by the gain. The flash guard watches the gained brightness.
 
 ## Flash guard
 

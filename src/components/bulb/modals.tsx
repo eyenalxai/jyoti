@@ -1,6 +1,8 @@
 import { useTerminalDimensions } from "@opentui/solid"
 import { Show, createMemo } from "solid-js"
 
+import type { HelpContext } from "@/components/bulb/help"
+import type { SyncRow } from "@/components/screen/sync-rows"
 import type { CapturePreviewModel } from "@/components/screen/use-preview"
 import type { ScreenSyncModel } from "@/components/screen/use-sync"
 import type { Bulb, BulbDraft } from "@/lib/bulbs/schema"
@@ -10,9 +12,19 @@ import { Help } from "@/components/bulb/help"
 import { Remove } from "@/components/bulb/remove"
 import { Monitors } from "@/components/screen/monitors"
 import { Preview } from "@/components/screen/preview"
+import { SyncPanel } from "@/components/screen/sync-panel"
 import { Modal } from "@/components/ui/modal"
 
-type Screen = "dashboard" | "add" | "edit" | "remove" | "color" | "help" | "capture" | "monitors"
+type Screen =
+  | "dashboard"
+  | "add"
+  | "edit"
+  | "remove"
+  | "color"
+  | "help"
+  | "capture"
+  | "monitors"
+  | "sync"
 
 interface ModalsProps {
   readonly screen: Screen
@@ -20,6 +32,8 @@ interface ModalsProps {
   readonly busy: boolean
   readonly preview: CapturePreviewModel
   readonly syncModel: ScreenSyncModel
+  readonly syncRow: SyncRow
+  readonly helpContext: HelpContext
   readonly onSubmitAdd: (draft: BulbDraft) => void
   readonly onSubmitEdit: (draft: BulbDraft) => void
   readonly onConfirmRemove: () => void
@@ -71,8 +85,17 @@ const Modals = (props: ModalsProps) => {
       <Show when={props.screen === "help"}>
         <Modal title="Keys" hint="esc close" width={58} height={20}>
           <scrollbox flexGrow={1} minHeight={0} focused>
-            <Help />
+            <Help
+              context={props.helpContext}
+              syncActive={props.syncModel.status().phase !== "idle"}
+            />
           </scrollbox>
+        </Modal>
+      </Show>
+
+      <Show when={props.screen === "sync"}>
+        <Modal title="Screen sync" hint="esc close" width={64} height={14}>
+          <SyncPanel model={props.syncModel} selected={props.syncRow} />
         </Modal>
       </Show>
 

@@ -31,6 +31,8 @@ interface SyncStatus {
   readonly rejection: string | null
 }
 
+const isSyncRunning = (phase: SyncPhase): boolean => phase === "syncing" || phase === "paused"
+
 const idleSyncStatus: SyncStatus = {
   phase: "idle",
   capture: "ok",
@@ -54,5 +56,5 @@ interface SyncRun {
   readonly bulbCount: number
 }
 
-export { idleSyncStatus }
+export { idleSyncStatus, isSyncRunning }
 export type { BulbSyncPhase, CaptureHealth, SyncPhase, SyncRun, SyncStatus, SyncedBulb }

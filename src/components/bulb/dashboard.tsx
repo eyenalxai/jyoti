@@ -86,7 +86,6 @@ const Dashboard = (props: DashboardProps) => {
       hasBulbs: props.model.bulbs().length > 0,
       canSelectAll: props.model.canSelectAll(),
       error: props.model.selectedError() !== undefined,
-      syncActive: syncActive(),
     }),
   )
 
