@@ -30,6 +30,14 @@ fn on_quit(app: &mut App, tx: &mut Tx) {
 
 type SceneFn = fn(&mut App);
 
+/// Inter carries the interface, Fraunces the display voice, and IBM Plex Mono
+/// the addresses and hex values. All three ship with their OFL licence.
+const FONTS: &[&[u8]] = &[
+    include_bytes!("../assets/fonts/InterVariable.ttf"),
+    include_bytes!("../assets/fonts/Fraunces.ttf"),
+    include_bytes!("../assets/fonts/IBMPlexMono-Regular.ttf"),
+];
+
 const SCENES: &[(&str, SceneFn)] = &[
     ("dashboard", |app| app.screen = Screen::Dashboard),
     ("empty", |app| {
@@ -113,6 +121,8 @@ fn main() {
         setup: Some(setup),
         poll: Some(poll),
         scenes: SCENES,
+        fonts: FONTS,
+        families: ("Inter", "IBM Plex Mono"),
         ..AppSpec::new("jyoti", (500.0, 680.0), App::new, ui::view)
     })
     .on_quit(on_quit)

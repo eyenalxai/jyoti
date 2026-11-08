@@ -1,15 +1,20 @@
-use rune::{Cx, El, TextStyle, col, row, text};
+use rune::{Color, El, col, row, text};
 use rune_kit::Kit;
 use rune_kit::shell::{Page, Toolbar};
 
 use crate::app::App;
 use crate::app::state::Screen;
-use crate::ui::widget::BULB;
+use crate::ui::theme;
+use crate::ui::widget::{FLAME, dot, sync_status_tone};
 
 const CONTENT_MAX_WIDTH: f32 = 484.0;
+const TAB_HEIGHT: f32 = 40.0;
 
-pub fn view(app: &App, cx: &mut Cx<App>, k: &Kit, main: El) -> El {
-    let toolbar = Toolbar::new().center(brand(k));
+pub fn view(app: &App, cx: &mut rune::Cx<App>, k: &Kit, main: El) -> El {
+    let mut toolbar = Toolbar::new().center(brand(k));
+    if let Some(status) = sync_status(app, k) {
+        toolbar = toolbar.trailing(status);
+    }
     let content = match &app.screen {
         Screen::Dashboard | Screen::Sync | Screen::Settings => col()
             .w_full()
@@ -36,14 +41,30 @@ pub fn view(app: &App, cx: &mut Cx<App>, k: &Kit, main: El) -> El {
 
 fn brand(k: &Kit) -> El {
     row()
-        .gap(6.0)
+        .gap(7.0)
         .center_y()
-        .child(rune::icon(&BULB, 16.0).color(k.c.text_muted))
+        .child(rune::icon(&FLAME, 16.0).color(k.c.bg_accent).a11y_hidden())
         .child(
             text("jyoti".to_owned())
-                .font(TextStyle::new(16.0, 600.0).lh(19.0))
+                .font(theme::wordmark())
                 .color(k.c.text_base),
         )
+}
+
+fn sync_status(app: &App, k: &Kit) -> Option<El> {
+    if app.sync.status == crate::screen::sync::SyncStatus::Idle {
+        return None;
+    }
+    let tone = sync_status_tone(k, &app.sync.status);
+    Some(
+        row().gap(6.0).center_y().pr(4.0).child(dot(tone)).child(
+            text(format!("Sync {}", app.sync.status.label().to_lowercase()))
+                .font(k.ty.small)
+                .color(k.c.text_muted)
+                .max_w(170.0)
+                .truncate(),
+        ),
+    )
 }
 
 fn nav(app: &App, k: &Kit) -> El {
@@ -56,50 +77,59 @@ fn nav(app: &App, k: &Kit) -> El {
     let labels = ["Control", "Sync", "Settings"];
     let mut tabs = row()
         .w_full()
-        .h(40.0)
-        .gap(2.0)
+        .h(TAB_HEIGHT)
         .role("tablist")
         .label("Sections")
         .focus_group();
     for (index, label) in labels.into_iter().enumerate() {
         let on = selected == Some(index);
-        let mut tab = row()
+        let mut tab = col()
             .key(format!("tab-{index}"))
             .grow(1.0)
-            .h(40.0)
-            .center()
-            .radius(k.radius.lg)
+            .h(TAB_HEIGHT)
+            .justify_end()
+            .radius(k.radius.sm)
             .role("tab")
             .label(label)
             .position_in_set(index + 1, labels.len())
             .focusable(true)
             .focus_selected(on)
-            .focus_ring(2.0, 1.0, k.c.border_focus)
-            .press(k.c.pressed)
+            .focus_ring(2.0, -1.0, k.c.border_focus)
+            .hover(k.c.hover)
             .on_press(move |app: &mut App| match index {
                 0 => app.open_overview(),
                 1 => app.open_sync(),
                 _ => app.open_settings(),
             });
-        if on {
-            tab = tab
-                .fill(k.c.bg_accent.alpha(0.14))
-                .border(1.0, k.c.bg_accent.alpha(0.3))
-                .child(
-                    text(label.to_owned())
-                        .font(k.ty.ui_medium)
-                        .color(k.c.text_accent)
-                        .a11y_hidden(),
-                );
-        } else {
-            tab = tab.hover(k.c.hover).child(
+        let ink = if on { k.c.text_base } else { k.c.text_muted };
+        tab = tab.child(
+            row().w_full().h(TAB_HEIGHT - 2.0).center().child(
                 text(label.to_owned())
                     .font(k.ty.ui_medium)
-                    .color(k.c.text_muted)
+                    .color(ink)
+                    .group_color(k.c.text_base)
                     .a11y_hidden(),
-            );
-        }
+            ),
+        );
+        tab = tab.child(
+            col()
+                .w_full()
+                .h(2.0)
+                .radius(1.0)
+                .fill(if on {
+                    Color {
+                        a: 1.0,
+                        ..k.c.bg_accent
+                    }
+                } else {
+                    Color {
+                        a: 0.0,
+                        ..k.c.bg_accent
+                    }
+                })
+                .a11y_hidden(),
+        );
         tabs = tabs.child(tab);
     }
-    row().w_full().px(16.0).pt(10.0).pb(8.0).child(tabs)
+    col().w_full().px(16.0).pt(3.0).pb(2.0).child(tabs)
 }

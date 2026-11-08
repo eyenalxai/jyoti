@@ -1,32 +1,38 @@
 use std::time::Duration;
 
-use rune::{Color, El, ScrollSpec, TextStyle, Tx, col, row, text};
+use rune::{Color, El, ScrollSpec, Tx, col, row, text};
 use rune_kit::{Button, ButtonVariant, ControlSize, IconButton, IconButtonVariant, Kit, TextInput};
 
 use crate::app::App;
 use crate::screen::color::{Hsb, hsb_to_rgb};
+use crate::ui::theme;
 use crate::ui::widget::{
-    BACK, BULB, SliderSpec, gradient_slider, notice, panel, panel_body, panel_footer, panel_header,
-    rgb_color, subpage_header, swatch,
+    ALERT, BACK, SliderSpec, gradient_slider, hairline, notice, rgb_color, subpage_header, surface,
 };
+
+const SLIDER_WIDTH: f32 = 400.0;
 
 pub fn view(app: &App, k: &Kit) -> El {
     let preview = app.color.preview;
+    let ink = theme::ink_on(rgb_color(preview));
     let back = IconButton::new(&BACK)
         .variant(IconButtonVariant::GhostMuted)
         .control_size(ControlSize::ExtraLarge)
         .help("Back")
         .on_press(|app: &mut App| app.back())
-        .build(k);
+        .build(k)
+        .size(40.0, 40.0)
+        .radius(k.radius.md);
     let done = Button::new("Keep colour")
         .variant(ButtonVariant::Contrast)
         .control_size(ControlSize::Large)
         .on_press(|app: &mut App| app.commit_color())
-        .build(k);
+        .build(k)
+        .h(40.0);
     let hex = TextInput::new(&app.color.hex)
         .label("Hex colour")
         .placeholder("#FF8A00")
-        .width(Some(180.0))
+        .width(None)
         .on_edit(|app: &mut App| &mut app.color.hex)
         .on_submit(|app: &mut App, tx: &mut Tx| {
             app.update_color_from_hex();
@@ -37,47 +43,57 @@ pub fn view(app: &App, k: &Kit) -> El {
         .variant(ButtonVariant::Outline)
         .control_size(ControlSize::Large)
         .on_press(|app: &mut App| app.update_color_from_hex())
-        .build(k);
+        .build(k)
+        .h(40.0);
 
-    let mut preview_body = col().w_full().gap(12.0).child(
+    let chip = col()
+        .w_full()
+        .h(190.0)
+        .justify_end()
+        .gap(2.0)
+        .padding(16.0)
+        .radius(k.radius.md)
+        .clip_soft(k.radius.md)
+        .fill(rgb_color(preview))
+        .linear_gradient(
+            std::f32::consts::PI,
+            [
+                (0.0, Color::WHITE.alpha(0.2)),
+                (0.55, Color::WHITE.alpha(0.0)),
+                (1.0, theme::ink().alpha(0.1)),
+            ],
+        )
+        .border(1.0, theme::ink().alpha(0.08))
+        .child(
+            text(preview.hex())
+                .font(theme::code(30.0, 500.0))
+                .color(ink),
+        )
+        .child(
+            text(format!(
+                "Live preview · applying to {} {}",
+                app.color.targets.len(),
+                if app.color.targets.len() == 1 {
+                    "bulb"
+                } else {
+                    "bulbs"
+                }
+            ))
+            .font(k.ty.small)
+            .color(ink.alpha(0.72)),
+        );
+
+    let mut tune = col().w_full().gap(9.0).child(
         row()
             .w_full()
-            .gap(14.0)
+            .gap(8.0)
             .center_y()
-            .child(swatch(k, rgb_color(preview), 76.0))
-            .child(
-                col()
-                    .grow(1.0)
-                    .min_w(0.0)
-                    .gap(2.0)
-                    .child(
-                        text(preview.hex())
-                            .font(TextStyle::new(24.0, 600.0).lh(28.0))
-                            .color(k.c.text_base),
-                    )
-                    .child(
-                        text(format!(
-                            "Live preview · applying to {} {}",
-                            app.color.targets.len(),
-                            if app.color.targets.len() == 1 {
-                                "bulb"
-                            } else {
-                                "bulbs"
-                            }
-                        ))
-                        .font(k.ty.small)
-                        .color(k.c.text_muted),
-                    ),
-            ),
+            .child(row().grow(1.0).min_w(0.0).child(hex))
+            .child(apply),
     );
     if let Some(error) = &app.color.error {
-        preview_body = preview_body.child(notice(k, &BULB, error, k.c.danger));
+        tune = tune.child(notice(k, &ALERT, error, k.c.danger));
     }
-    let preview_panel = panel(
-        k,
-        panel_body(preview_body.child(row().w_full().gap(8.0).center_y().child(hex).child(apply))),
-    );
-
     let hsb = Hsb {
         hue: app.color.hue,
         saturation: app.color.saturation,
@@ -121,93 +137,94 @@ pub fn view(app: &App, k: &Kit) -> El {
             })),
         ),
     ];
+    let tune = tune
+        .child(hairline(k))
+        .child(tune_block(
+            k,
+            Tune {
+                label: "Hue",
+                key: "hue",
+                step: 1.0 / 360.0,
+            },
+            format!("{:.0}°", app.color.hue),
+            app.color.hue / 360.0,
+            hue_stops,
+            |app: &mut App, fraction| {
+                app.color.hue = fraction * 360.0;
+                app.update_color_from_hsb();
+            },
+        ))
+        .child(tune_block(
+            k,
+            Tune {
+                label: "Saturation",
+                key: "saturation",
+                step: 1.0 / 100.0,
+            },
+            format!("{:.0}%", app.color.saturation),
+            app.color.saturation / 100.0,
+            saturation_stops,
+            |app: &mut App, fraction| {
+                app.color.saturation = fraction * 100.0;
+                app.update_color_from_hsb();
+            },
+        ))
+        .child(tune_block(
+            k,
+            Tune {
+                label: "Brightness",
+                key: "value",
+                step: 1.0 / 100.0,
+            },
+            format!("{:.0}%", app.color.value),
+            app.color.value / 100.0,
+            brightness_stops,
+            |app: &mut App, fraction| {
+                app.color.value = fraction * 100.0;
+                app.update_color_from_hsb();
+            },
+        ));
 
-    let tune = panel(
+    let body = surface(
         k,
         col()
             .w_full()
-            .child(panel_header(
-                k,
-                "Tune",
-                Some("Hue, saturation and brightness."),
-                Vec::new(),
-            ))
-            .child(panel_body(
-                col()
-                    .w_full()
-                    .gap(14.0)
-                    .child(tune_block(
-                        k,
-                        TuneSpec {
-                            label: "Hue",
-                            key: "hue",
-                            step: 1.0 / 360.0,
-                        },
-                        format!("{:.0}°", app.color.hue),
-                        app.color.hue / 360.0,
-                        hue_stops,
-                        |app: &mut App, fraction| {
-                            app.color.hue = fraction * 360.0;
-                            app.update_color_from_hsb();
-                        },
-                    ))
-                    .child(tune_block(
-                        k,
-                        TuneSpec {
-                            label: "Saturation",
-                            key: "saturation",
-                            step: 1.0 / 100.0,
-                        },
-                        format!("{:.0}%", app.color.saturation),
-                        app.color.saturation / 100.0,
-                        saturation_stops,
-                        |app: &mut App, fraction| {
-                            app.color.saturation = fraction * 100.0;
-                            app.update_color_from_hsb();
-                        },
-                    ))
-                    .child(tune_block(
-                        k,
-                        TuneSpec {
-                            label: "Brightness",
-                            key: "value",
-                            step: 1.0 / 100.0,
-                        },
-                        format!("{:.0}%", app.color.value),
-                        app.color.value / 100.0,
-                        brightness_stops,
-                        |app: &mut App, fraction| {
-                            app.color.value = fraction * 100.0;
-                            app.update_color_from_hsb();
-                        },
-                    )),
-            ))
-            .child(panel_footer(k, vec![done])),
+            .padding(14.0)
+            .gap(12.0)
+            .child(chip)
+            .child(tune),
     );
 
-    let scroll = col()
+    let viewport = col()
         .key("colour")
         .w_full()
-        .padding(16.0)
+        .padding(14.0)
         .gap(12.0)
         .child(subpage_header(
             k,
             "Colour",
-            "Preview live. Back restores the previous light.",
+            "Live preview. Back restores the previous light.",
             back,
         ))
-        .child(preview_panel)
-        .child(tune)
+        .child(body)
         .scroll(ScrollSpec {
             stick_bottom: false,
-        })
-        .grow(1.0)
-        .min_h(0.0);
+        });
+    let scroll = k.scroll_bar(viewport).grow(1.0).min_h(0.0);
+    let footer = col()
+        .w_full()
+        .child(hairline(k))
+        .child(row().w_full().px(14.0).py(10.0).justify_end().child(done));
 
-    col().w_full().h_full().min_h(0.0).child(scroll)
+    col()
+        .w_full()
+        .h_full()
+        .min_h(0.0)
+        .child(scroll)
+        .child(footer)
 }
 
-struct TuneSpec<'a> {
+struct Tune<'a> {
     label: &'a str,
     key: &'a str,
     step: f32,
@@ -215,7 +232,7 @@ struct TuneSpec<'a> {
 
 fn tune_block(
     k: &Kit,
-    spec: TuneSpec<'_>,
+    tune: Tune<'_>,
     display: String,
     value: f32,
     stops: Vec<(f32, Color)>,
@@ -223,29 +240,34 @@ fn tune_block(
 ) -> El {
     col()
         .w_full()
-        .gap(5.0)
+        .gap(1.0)
         .child(
             row()
                 .w_full()
                 .justify_between()
                 .gap(8.0)
+                .center_y()
                 .child(
-                    text(spec.label.to_owned())
-                        .font(k.ty.small_medium)
-                        .color(k.c.text_muted),
+                    text(tune.label.to_owned())
+                        .font(k.ty.ui_medium)
+                        .color(k.c.text_base),
                 )
-                .child(text(display).font(k.ty.mono).color(k.c.text_base)),
+                .child(
+                    text(display)
+                        .font(theme::number(13.0, 560.0))
+                        .color(k.c.text_muted),
+                ),
         )
-        .child(gradient_slider(
+        .child(row().w_full().justify_center().child(gradient_slider(
             k,
             value,
             SliderSpec {
-                key: spec.key,
-                label: spec.label,
-                step: spec.step,
-                width: 400.0,
+                key: tune.key,
+                label: tune.label,
+                step: tune.step,
+                width: SLIDER_WIDTH,
             },
             stops,
             on_change,
-        ))
+        )))
 }

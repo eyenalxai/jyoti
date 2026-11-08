@@ -1,7 +1,7 @@
 # 6. The window is compact and single-pane
 
 Date: 2026-11-08
-Status: Accepted
+Status: Accepted (visual treatment superseded by 8)
 
 ## Context
 
@@ -11,7 +11,7 @@ or the table, and screen sync was reachable from the sidebar, a card and the
 toolbar. A small bulb set does not provide enough information for that density,
 so the result repeated controls instead of becoming easier to use.
 
-ReUI's compact application patterns favour one surface per job: a picker in the
+ReUI’s compact application patterns favour one surface per job: a picker in the
 header, a short action menu, tabs for sections, and settings arranged as short
 rows. The window is a daily utility, not a dashboard that fills a desk display.
 
