@@ -13,7 +13,7 @@ in the config file and used as the keyring account name.
 
 ## Keyring
 
-The operating system's secure credential store, reached through the `keyring`
+The operating system’s secure credential store, reached through the `keyring`
 crate: Secret Service on Linux, Keychain on macOS and Credential Manager on
 Windows. It holds one token per bulb under the `jyoti` service. The keyring is
 the only place a token is stored.
@@ -21,7 +21,7 @@ the only place a token is stored.
 ## Config file
 
 `$XDG_CONFIG_HOME/jyoti/bulbs.json`, falling back to
-`~/.config/jyoti/bulbs.json`. It holds the bulb list's metadata and a format
+`~/.config/jyoti/bulbs.json`. It holds the bulb list’s metadata and a format
 version. It never holds a token.
 
 ## Preferences file
@@ -43,7 +43,7 @@ echoes it so the bulb can associate the reply with the request.
 
 ## miIO
 
-Xiaomi's UDP protocol on port 54321. A request sends a 32-byte hello, receives
+Xiaomi’s UDP protocol on port 54321. A request sends a 32-byte hello, receives
 the device ID and stamp, then sends an AES-encrypted JSON command. `bulbs.py` is
 the reference implementation.
 
@@ -55,7 +55,7 @@ The bulb selector lists it first. It is the default selection when two or more
 bulbs exist. Its state is the aggregate of the bulbs:
 power is on, off or mixed; quality is White or Colour when every reachable bulb
 agrees and mixed when they do not. When the bulbs disagree on the mode the mode
-switch shows mixed and no mode's settings are drawn; choosing White or Colour
+switch shows mixed and no mode’s settings are drawn; choosing White or Colour
 applies that mode to every bulb. Power uses a quorum: if every reachable bulb is
 on, one toggle turns them all off; otherwise it turns them all on. Brightness
 and warmth apply one absolute value to every selected bulb; the control screen
@@ -73,8 +73,8 @@ a command fails; it is not cached across runs.
 ## Unreachable
 
 A bulb that did not answer its hello or command before the timeout. The control
-screen keeps the bulb and its metadata, the selector shows its state, the light
-panel shows the failure inline, and Refresh retries.
+screen keeps the bulb and its metadata, the selector shows its state, the control
+deck shows the failure inline, and Refresh retries.
 
 ## Restored
 
@@ -113,23 +113,23 @@ value it can produce is an sRGB colour, so the swatch is exactly what is sent.
 The saturation boost applied to the derived screen colour before it is sent,
 from 0% natural to 100% full saturation. Hue and value stay put, so a light red
 becomes a vivid red without changing the colour family. It is adjusted on Sync
-and remembered in the preferences file. Manual colours use the picker's
+and remembered in the preferences file. Manual colours use the picker’s
 Saturation slider instead.
 
 ## Mode
 
-The light's active side: White uses colour temperature, Colour uses packed RGB.
+The light’s active side: White uses colour temperature, Colour uses packed RGB.
 The two are mutually exclusive on the bulb. The mode is read from
 `siid 2 / piid 6` and is unknown until the first state arrives.
 
 ## White
 
-The colour-temperature side of the light. Choosing White applies the bulb's
+The colour-temperature side of the light. Choosing White applies the bulb’s
 current temperature, or 4000 K when it has none.
 
 ## Colour
 
-The RGB side of the light. Choosing Colour applies the bulb's current colour, or
+The RGB side of the light. Choosing Colour applies the bulb’s current colour, or
 white when it has none.
 
 ## Mixed
@@ -150,21 +150,41 @@ bulb keeps the current choice.
 
 ## Control
 
-The main screen: a bulb selector and one light surface with a live preview,
-power, brightness, mode and warmth or colour. The overflow menu owns refresh,
-edit and remove.
+The main screen: a bulb selector, a light stage and a control deck. The overflow
+menu owns refresh, edit and remove.
+
+## Light stage
+
+The luminous field at the top of Control and Sync. It is filled with the colour
+the selected bulbs are showing (or the colour screen sync is publishing) and
+carries a cream nameplate with the state, the light name and a readout. The
+stage is a readout, not a control.
+
+## Nameplate
+
+The cream plate on a light stage. Ink text on it stays legible whatever colour
+fills the stage. On Control it carries the power state; on Sync, the run state.
+Both carry the scope, the light name, the colour or temperature detail and the
+brightness.
+
+## Control deck
+
+The panel under the light stage on Control: power, brightness, mode and warmth
+or colour in hairline-separated rows. During a sync run the rows sync owns are
+dimmed and power stays available.
 
 ## Bulb selector
 
 The dropdown at the top of Control. It lists All bulbs and every configured
 bulb, with the selected choice shown in the trigger. Selecting a choice changes
-the light surface; there is no second bulb list.
+the light stage and control deck; there is no second bulb list.
 
 ## Tabs
 
 The three section buttons under the window title: Control, Sync and Settings.
-They are the only navigation. A form, the colour picker and the remove
-confirmation replace the tabs and carry a Back control.
+They are the only navigation. The active section is marked by a brass rule under
+its label. A form, the colour picker and the remove confirmation replace the tabs
+and carry a Back control.
 
 ## Toast
 
@@ -189,10 +209,12 @@ A sync run that keeps capture and state but publishes nothing. The bulbs stay on
 the last output colour and sync brightness. Resume catches up with the current
 scene instead of replaying it.
 
-## Sync strip
+## Sync status
 
-The notice on the Sync screen while a run exists or has just stopped. It
-carries the state, output colour, sync brightness and a stale marker.
+The run state on the Sync screen: the stage carries the status word, the frame
+age and the output colour, the toolbar repeats the status on every screen, and
+the restore report carries the outcome after a stop. A stale frame or a flashing
+scene adds its own notice under the stage.
 
 ## Sync page
 
@@ -208,7 +230,7 @@ The monitor a sync run reads. The monitor list comes from the Wayland outputs.
 
 The single colour the reducer produces for a frame: the colour of the winning
 OKLab cluster — its mean lightness and hue, with the chroma raised toward the
-cluster's 75th percentile. It is the input to colour intensity.
+cluster’s 75th percentile. It is the input to colour intensity.
 
 ## Output colour
 

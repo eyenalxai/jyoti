@@ -1,6 +1,11 @@
-use rune::{El, ScrollSpec, TextStyle, Tx, col, row, text};
+mod stage;
+
+use std::time::Duration;
+
+use rune::{Color, El, ScrollSpec, Tx, col, row, text};
 use rune_kit::{
-    Button, ButtonVariant, ControlSize, IconButton, IconButtonVariant, Kit, Menu, MenuItem, Switch,
+    Button, ButtonVariant, ControlSize, IconButton, IconButtonVariant, Kit, Menu, MenuItem,
+    SegmentedControl, Switch,
 };
 
 use crate::app::App;
@@ -11,29 +16,32 @@ use crate::bulb::model::{
 };
 use crate::bulb::selection::Selection;
 use crate::screen::color::kelvin_to_rgb;
+use crate::ui::theme;
 use crate::ui::widget::{
-    BULB, EDIT, MORE, PLUS, REFRESH, SliderSpec, TRASH, dot, dropdown_trigger, error_text,
-    gradient_slider, notice, panel, panel_body, panel_header, rgb_color, segmented, slider, swatch,
-    value_text,
+    ALERT, BULB, EDIT, MORE, PAGE_PAD, PLUS, REFRESH, SLIDER_WIDTH, SliderSpec, TRASH, dim_when,
+    dot, dropdown_trigger, error_text, gradient_slider, hairline, notice, rgb_color, slider,
+    surface, swatch,
 };
+
+const STAGE_HEIGHT: f32 = 202.0;
 
 pub fn content(app: &App, k: &Kit, layers: &mut Vec<El>) -> El {
     if app.bulbs.is_empty() {
-        return empty_state(app, k);
+        return stage::empty_state(k);
     }
 
-    let scroll = col()
+    let viewport = col()
         .key("control")
         .w_full()
-        .padding(16.0)
-        .gap(12.0)
+        .padding(PAGE_PAD)
+        .gap(9.0)
         .child(picker_row(app, k, layers))
-        .child(light_panel(app, k))
+        .child(stage::light_stage(app, k))
+        .child(control_deck(app, k))
         .scroll(ScrollSpec {
             stick_bottom: false,
-        })
-        .grow(1.0)
-        .min_h(0.0);
+        });
+    let scroll = k.scroll_bar(viewport).grow(1.0).min_h(0.0);
 
     col().w_full().h_full().min_h(0.0).child(scroll)
 }
@@ -43,14 +51,14 @@ fn picker_row(app: &App, k: &Kit, layers: &mut Vec<El>) -> El {
     let aggregate = app.aggregate();
     let all = matches!(app.selection, Some(Selection::All));
     let current_tone = if all {
-        power_tone(k, aggregate_power_word(aggregate.power))
+        power_tone(k, aggregate.power)
     } else {
-        power_tone(k, state_power_word(&app.single_state()))
+        power_tone(k, single_power(&app.single_state()))
     };
     let current = selection_label(app);
     let trigger = dropdown_trigger(
         k,
-        348.0,
+        344.0,
         "Bulb",
         &current,
         app.bulb_picker_open,
@@ -65,8 +73,8 @@ fn picker_row(app: &App, k: &Kit, layers: &mut Vec<El>) -> El {
     if show_all {
         picker = picker.item(
             MenuItem::new("All bulbs")
-                .checked(app.selection == Some(Selection::All))
-                .lead(dot(power_tone(k, aggregate_power_word(aggregate.power))))
+                .checked(all)
+                .lead(dot(power_tone(k, aggregate.power)))
                 .description(format!(
                     "{} configured · {} reachable",
                     aggregate.total, aggregate.reachable
@@ -82,11 +90,7 @@ fn picker_row(app: &App, k: &Kit, layers: &mut Vec<El>) -> El {
         let tone = if app.errors.contains_key(&bulb.id) || app.sync.unreachable.contains(&bulb.id) {
             k.c.danger.icon
         } else {
-            match state.and_then(|state| state.power) {
-                Some(true) => k.c.success.icon,
-                Some(false) => k.c.text_faint,
-                None => k.c.warning.icon,
-            }
+            power_tone(k, state.map_or(AggregatePower::Unknown, single_power))
         };
         let power = if app.errors.contains_key(&bulb.id) {
             "Error"
@@ -112,22 +116,24 @@ fn picker_row(app: &App, k: &Kit, layers: &mut Vec<El>) -> El {
                 }),
         );
     }
-    let select = picker.build(k, layers);
+    let select = picker.build(k, layers).grow(1.0).min_w(0.0);
 
-    let add = IconButton::new(&PLUS)
-        .variant(IconButtonVariant::GhostMuted)
-        .control_size(ControlSize::ExtraLarge)
-        .help("Add bulb")
-        .on_press(|app: &mut App| app.open_add())
-        .build(k);
+    let add = icon_button(
+        k,
+        &PLUS,
+        "Add bulb",
+        IconButtonVariant::GhostMuted,
+        |app: &mut App| app.open_add(),
+    );
 
+    let trigger = icon_button(
+        k,
+        &MORE,
+        "Bulb actions",
+        IconButtonVariant::GhostMuted,
+        |app: &mut App| app.bulb_menu_open = !app.bulb_menu_open,
+    );
     let single = matches!(app.selection, Some(Selection::Bulb(_)));
-    let trigger = IconButton::new(&MORE)
-        .variant(IconButtonVariant::GhostMuted)
-        .control_size(ControlSize::ExtraLarge)
-        .help("Bulb actions")
-        .on_press(|app: &mut App| app.bulb_menu_open = !app.bulb_menu_open)
-        .build(k);
     let menu =
         Menu::new("bulb-actions")
             .trigger(trigger)
@@ -172,7 +178,24 @@ fn picker_row(app: &App, k: &Kit, layers: &mut Vec<El>) -> El {
         .child(menu)
 }
 
-fn light_panel(app: &App, k: &Kit) -> El {
+fn icon_button(
+    k: &Kit,
+    icon: &'static rune::Icon,
+    help: &str,
+    variant: IconButtonVariant,
+    on_press: impl Fn(&mut App) + 'static,
+) -> El {
+    IconButton::new(icon)
+        .variant(variant)
+        .control_size(ControlSize::ExtraLarge)
+        .help(help)
+        .on_press(on_press)
+        .build(k)
+        .size(40.0, 40.0)
+        .radius(k.radius.md)
+}
+
+fn control_deck(app: &App, k: &Kit) -> El {
     let all = matches!(app.selection, Some(Selection::All));
     let aggregate = app.aggregate();
     let state = app.single_state();
@@ -182,129 +205,85 @@ fn light_panel(app: &App, k: &Kit) -> El {
         light_quality_of(state.mode)
     };
     let white = quality == LightQuality::White;
-    let color = quality == LightQuality::Color;
+    let colour = quality == LightQuality::Color;
     let mixed = quality == LightQuality::Mixed;
     let unknown = quality == LightQuality::Unknown;
     let sync_owned = app.sync.status.is_busy();
     let power = if all {
         aggregate.power
-    } else if state.power == Some(true) {
-        AggregatePower::On
-    } else if state.power == Some(false) {
-        AggregatePower::Off
     } else {
-        AggregatePower::Unknown
+        single_power(&state)
     };
     let power_switch = Switch::new(power == AggregatePower::On)
         .control_size(ControlSize::Large)
         .label("Power")
+        .hide_label()
         .on_toggle(|app: &mut App| app.toggle_power())
-        .build(k);
+        .build(k)
+        .padding(6.0);
 
-    let temperature = if all {
-        aggregate.temperature.map_or(4_000, |span| span.high)
-    } else {
-        state.temperature.unwrap_or(4_000)
-    };
-    let preview = if white {
-        rgb_color(kelvin_to_rgb(temperature))
-    } else if color {
-        if all {
-            match aggregate.color {
-                Some(crate::bulb::aggregate::AggregateColor::Equal(color)) => rgb_color(color),
-                _ => k.c.layer_03,
-            }
-        } else {
-            state.color.map_or(k.c.layer_03, rgb_color)
-        }
-    } else {
-        k.c.layer_03
-    };
-    let title = if white {
-        white_name(temperature)
-    } else if color {
-        "Colour"
-    } else if mixed {
-        "Mixed light"
-    } else {
-        "Waiting for light"
-    };
-    let scope = if all {
-        format!("{} bulbs", aggregate.total)
-    } else {
-        app.selected_bulb()
-            .map_or_else(|| "No bulb".to_owned(), |bulb| bulb.address.clone())
-    };
-    let mut subtitle = if mixed {
-        format!("{scope} · choose a mode")
-    } else if unknown {
-        format!("{scope} · no state yet")
-    } else {
-        format!("{scope} · {}", aggregate_power_word(power))
-    };
-    if all && aggregate.failed > 0 {
-        subtitle.push_str(&format!(" · {} failed", aggregate.failed));
-    }
-    if sync_owned {
-        subtitle.push_str(" · screen sync");
-    }
-
-    let hero = row()
+    let mut deck = col()
         .w_full()
-        .gap(12.0)
-        .center_y()
-        .child(swatch(k, preview, 48.0))
         .child(
-            col()
-                .grow(1.0)
-                .min_w(0.0)
-                .gap(2.0)
+            row()
+                .w_full()
+                .px(16.0)
+                .py(9.0)
+                .center_y()
                 .child(
-                    text(title.to_owned())
-                        .font(TextStyle::new(18.0, 600.0).lh(23.0))
+                    text("Power".to_owned())
+                        .font(k.ty.ui_medium)
                         .color(k.c.text_base)
-                        .truncate(),
+                        .grow(1.0),
                 )
-                .child(
-                    text(subtitle)
-                        .font(k.ty.small)
-                        .color(k.c.text_muted)
-                        .truncate(),
-                ),
-        );
+                .child(power_switch),
+        )
+        .child(hairline(k));
 
-    let mut controls = col().w_full().gap(14.0).child(hero).child(brightness_block(
-        app, k, &aggregate, &state, all, sync_owned,
-    ));
-    let selected_mode = if white {
-        Some(0)
-    } else if color {
-        Some(1)
-    } else {
-        None
-    };
-    let mode = segmented(
-        k,
-        &["White", "Colour"],
-        selected_mode,
-        "Light mode",
-        400.0,
-        choose_mode,
-    );
-    controls = controls.child(if sync_owned { mode.inert() } else { mode });
-    if white {
-        controls = controls.child(temperature_block(
-            app, k, &aggregate, &state, all, sync_owned,
-        ));
-    }
-    if color {
-        controls = controls.child(colour_tile(k, &aggregate, &state, all, sync_owned));
-    }
     if sync_owned {
-        controls = controls.inert().layer_opacity(0.55);
+        deck = deck.child(col().w_full().padding(12.0).child(notice(
+            k,
+            &crate::ui::widget::SYNC,
+            "Screen sync is driving colour, brightness and warmth. Power stays available.",
+            k.c.info,
+        )));
+        deck = deck.child(hairline(k));
     }
 
-    let mut body = col().w_full().gap(10.0).child(controls);
+    deck = deck.child(brightness_block(k, &aggregate, &state, all, sync_owned));
+    deck = deck
+        .child(hairline(k))
+        .child(mode_block(k, white, colour, sync_owned));
+    if white {
+        deck = deck
+            .child(hairline(k))
+            .child(temperature_block(k, &aggregate, &state, all, sync_owned));
+    }
+    if colour {
+        deck = deck
+            .child(hairline(k))
+            .child(colour_block(k, &aggregate, &state, all, sync_owned));
+    }
+    if mixed {
+        deck = deck.child(hairline(k)).child(
+            col().w_full().padding(12.0).child(notice(
+                k,
+                &BULB,
+                "The selected bulbs disagree on the mode. Choose White or Colour to apply one mode to all of them.",
+                k.c.warning,
+            )),
+        );
+    }
+    if unknown && !mixed {
+        deck = deck
+            .child(hairline(k))
+            .child(col().w_full().padding(12.0).child(notice(
+                k,
+                &BULB,
+                "Waiting for the bulb to report its light state.",
+                k.c.info,
+            )));
+    }
     if let Some(error) = app
         .selection
         .as_ref()
@@ -313,40 +292,25 @@ fn light_panel(app: &App, k: &Kit) -> El {
             Selection::All => app.errors.values().next().cloned(),
         })
     {
-        body = body.child(error_text(k, &error));
-    }
-    if mixed || unknown {
-        body = body.child(notice(
-            k,
-            &BULB,
-            if mixed {
-                "The selected bulbs disagree on the mode. Choose White or Colour to apply one mode to all of them."
-            } else {
-                "Waiting for the bulb to report its light state."
-            },
-            if mixed { k.c.warning } else { k.c.info },
-        ));
-    }
-    if sync_owned {
-        body = body.child(notice(
-            k,
-            &crate::ui::widget::SYNC,
-            "Screen sync is driving colour, brightness and warmth. Only power stays available here.",
-            k.c.info,
-        ));
+        deck = deck.child(hairline(k)).child(
+            row()
+                .w_full()
+                .padding(12.0)
+                .gap(8.0)
+                .center_y()
+                .child(
+                    rune::icon(&ALERT, 15.0)
+                        .color(k.c.danger.icon)
+                        .a11y_hidden(),
+                )
+                .child(error_text(k, &error)),
+        );
     }
 
-    panel(
-        k,
-        col()
-            .w_full()
-            .child(panel_header(k, "Light", None, vec![power_switch]))
-            .child(panel_body(body)),
-    )
+    surface(k, deck)
 }
 
 fn brightness_block(
-    _app: &App,
     k: &Kit,
     aggregate: &AggregateState,
     state: &BulbState,
@@ -372,17 +336,15 @@ fn brightness_block(
         fraction_of_brightness(value),
         "Brightness",
         1.0 / 99.0,
-        400.0,
+        SLIDER_WIDTH,
         |app: &mut App, fraction| app.set_brightness(brightness_from_fraction(fraction)),
     );
-    let slider = if disabled {
-        slider.inert().layer_opacity(0.55)
-    } else {
-        slider
-    };
-    col()
+    let slider = dim_when(slider, disabled);
+    let block = col()
         .w_full()
-        .gap(5.0)
+        .gap(2.0)
+        .px(16.0)
+        .py(10.0)
         .child(
             row()
                 .w_full()
@@ -391,20 +353,55 @@ fn brightness_block(
                 .center_y()
                 .child(
                     text("Brightness".to_owned())
-                        .font(k.ty.small_medium)
-                        .color(k.c.text_muted),
+                        .font(k.ty.ui_medium)
+                        .color(k.c.text_base),
                 )
                 .child(
                     text(label)
-                        .font(TextStyle::new(26.0, 600.0).lh(30.0))
-                        .color(k.c.text_base),
+                        .font(theme::number(13.0, 560.0))
+                        .color(k.c.text_muted),
                 ),
         )
-        .child(slider)
+        .child(row().w_full().justify_center().child(slider));
+    dim_when(block, disabled)
+}
+
+fn mode_block(k: &Kit, white: bool, colour: bool, disabled: bool) -> El {
+    let selected = if white {
+        Some(0)
+    } else if colour {
+        Some(1)
+    } else {
+        None
+    };
+    let control = SegmentedControl::new(&["White", "Colour"], selected)
+        .label("Light mode")
+        .width(None)
+        .on_pick(|app: &mut App, index, tx: &mut Tx| {
+            if index == 0 {
+                app.set_mode_white();
+            } else {
+                app.set_mode_color();
+            }
+            tx.wake_after(Duration::ZERO);
+        })
+        .build(k);
+    let block = row()
+        .w_full()
+        .gap(14.0)
+        .px(16.0)
+        .py(10.0)
+        .center_y()
+        .child(
+            text("Mode".to_owned())
+                .font(k.ty.ui_medium)
+                .color(k.c.text_base),
+        )
+        .child(row().grow(1.0).min_w(0.0).child(control));
+    dim_when(block, disabled)
 }
 
 fn temperature_block(
-    _app: &App,
     k: &Kit,
     aggregate: &AggregateState,
     state: &BulbState,
@@ -444,19 +441,17 @@ fn temperature_block(
             key: "temperature",
             label: "Colour temperature",
             step: 100.0 / 3_800.0,
-            width: 400.0,
+            width: SLIDER_WIDTH,
         },
         stops,
         |app: &mut App, fraction| app.set_temperature(temperature_from_fraction(fraction)),
     );
-    let slider = if disabled {
-        slider.inert().layer_opacity(0.55)
-    } else {
-        slider
-    };
-    col()
+    let slider = dim_when(slider, disabled);
+    let block = col()
         .w_full()
-        .gap(5.0)
+        .gap(2.0)
+        .px(16.0)
+        .py(10.0)
         .child(
             row()
                 .w_full()
@@ -465,18 +460,22 @@ fn temperature_block(
                 .center_y()
                 .child(
                     text("Warmth".to_owned())
-                        .font(k.ty.small_medium)
-                        .color(k.c.text_muted),
+                        .font(k.ty.ui_medium)
+                        .color(k.c.text_base),
                 )
                 .child(
                     row()
                         .gap(6.0)
                         .center_y()
-                        .child(swatch(k, rgb_color(kelvin_to_rgb(value)), 14.0))
-                        .child(value_text(k, label)),
+                        .child(swatch(k, rgb_color(kelvin_to_rgb(value)), 12.0))
+                        .child(
+                            text(label)
+                                .font(theme::number(13.0, 560.0))
+                                .color(k.c.text_muted),
+                        ),
                 ),
         )
-        .child(slider)
+        .child(row().w_full().justify_center().child(slider))
         .child(
             row()
                 .w_full()
@@ -491,10 +490,11 @@ fn temperature_block(
                         .font(k.ty.small)
                         .color(k.c.text_faint),
                 ),
-        )
+        );
+    dim_when(block, disabled)
 }
 
-fn colour_tile(
+fn colour_block(
     k: &Kit,
     aggregate: &AggregateState,
     state: &BulbState,
@@ -521,112 +521,29 @@ fn colour_tile(
         Rgb::hex,
     );
     let fill = color.map_or(k.c.layer_03, rgb_color);
-    let mut tile = row()
-        .w_full()
-        .h(58.0)
-        .padding(8.0)
-        .gap(8.0)
-        .center_y()
-        .radius(k.radius.md)
-        .fill(fill)
-        .border(1.0, k.c.border_base)
-        .role("button")
-        .label("Colour")
-        .a11y_value(label.clone());
-    if disabled {
-        tile = tile.inert();
+    let choose = Button::new("Choose colour")
+        .variant(ButtonVariant::Outline)
+        .control_size(ControlSize::Regular)
+        .icon(&EDIT)
+        .disabled(disabled)
+        .on_press(|app: &mut App| app.open_color())
+        .build(k)
+        .h(40.0);
+    let label_style = if color.is_some() {
+        theme::code(14.0, 500.0)
     } else {
-        tile = tile
-            .focusable(true)
-            .focus_ring(2.0, 1.0, k.c.border_focus)
-            .hover(k.c.hover)
-            .press(k.c.pressed)
-            .on_press(|app: &mut App| app.open_color());
-    }
-    let pill = |content: El| {
-        row()
-            .h(30.0)
-            .px(10.0)
-            .gap(6.0)
-            .center_y()
-            .radius(15.0)
-            .fill(k.c.bg_base.alpha(0.92))
-            .border(1.0, k.c.border_base)
-            .child(content)
+        k.ty.ui_medium
     };
-    tile = tile
-        .child(pill(
-            text(label)
-                .font(k.ty.mono)
-                .color(k.c.text_base)
-                .a11y_hidden(),
-        ))
-        .child(row().grow(1.0));
-    if !disabled {
-        tile = tile.child(pill(
-            row()
-                .gap(5.0)
-                .center_y()
-                .child(
-                    text("Choose".to_owned())
-                        .font(k.ty.small_medium)
-                        .color(k.c.text_base)
-                        .a11y_hidden(),
-                )
-                .child(rune::icon(&EDIT, 15.0).color(k.c.text_muted).a11y_hidden()),
-        ));
-    }
-    tile
-}
-
-fn white_name(kelvin: u16) -> &'static str {
-    match kelvin {
-        0..=3_300 => "Warm white",
-        3_301..=4_500 => "Soft white",
-        4_501..=5_500 => "Neutral white",
-        _ => "Cool white",
-    }
-}
-
-fn empty_state(_app: &App, k: &Kit) -> El {
-    let add = Button::new("Add a bulb")
-        .variant(ButtonVariant::Contrast)
-        .control_size(ControlSize::Large)
-        .on_press(|app: &mut App| app.open_add())
-        .build(k);
-    let body = col()
+    let block = row()
         .w_full()
-        .padding(18.0)
-        .gap(9.0)
-        .child(rune::icon(&BULB, 28.0).color(k.c.text_faint))
-        .child(
-            text("No bulbs yet".to_owned())
-                .font(TextStyle::new(18.0, 600.0).lh(22.0))
-                .color(k.c.text_base),
-        )
-        .child(
-            text("Add a Xiaomi bulb with its IP address and token. Everything stays on this machine."
-                .to_owned())
-            .font(k.ty.small)
-            .color(k.c.text_muted)
-            .wrap(),
-        )
-        .child(add);
-    col()
-        .key("empty")
-        .w_full()
-        .h_full()
-        .center()
-        .padding(16.0)
-        .child(col().w_full().max_w(360.0).child(panel(k, body)))
-}
-
-fn choose_mode(app: &mut App, index: usize) {
-    if index == 0 {
-        app.set_mode_white();
-    } else {
-        app.set_mode_color();
-    }
+        .gap(10.0)
+        .px(16.0)
+        .py(10.0)
+        .center_y()
+        .child(swatch(k, fill, 30.0))
+        .child(text(label).font(label_style).color(k.c.text_base).grow(1.0))
+        .child(choose);
+    dim_when(block, disabled)
 }
 
 fn selection_label(app: &App) -> String {
@@ -641,28 +558,18 @@ fn selection_label(app: &App) -> String {
     }
 }
 
-fn aggregate_power_word(power: AggregatePower) -> &'static str {
-    match power {
-        AggregatePower::On => "On",
-        AggregatePower::Off => "Off",
-        AggregatePower::Mixed => "Mixed",
-        AggregatePower::Unknown => "Unknown",
-    }
-}
-
-fn state_power_word(state: &BulbState) -> &'static str {
+fn single_power(state: &BulbState) -> AggregatePower {
     match state.power {
-        Some(true) => "On",
-        Some(false) => "Off",
-        None => "Unknown",
+        Some(true) => AggregatePower::On,
+        Some(false) => AggregatePower::Off,
+        None => AggregatePower::Unknown,
     }
 }
 
-fn power_tone(k: &Kit, power: &str) -> rune::Color {
+fn power_tone(k: &Kit, power: AggregatePower) -> Color {
     match power {
-        "On" => k.c.success.icon,
-        "Mixed" => k.c.warning.icon,
-        "Off" => k.c.text_faint,
-        _ => k.c.text_faint,
+        AggregatePower::On => k.c.success.icon,
+        AggregatePower::Mixed => k.c.warning.icon,
+        AggregatePower::Off | AggregatePower::Unknown => k.c.text_faint,
     }
 }
