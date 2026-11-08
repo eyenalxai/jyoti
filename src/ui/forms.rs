@@ -23,12 +23,13 @@ pub fn form_view(app: &App, k: &Kit) -> El {
     };
     let back = IconButton::new(&BACK)
         .variant(IconButtonVariant::GhostMuted)
-        .control_size(ControlSize::Regular)
+        .control_size(ControlSize::ExtraLarge)
         .help("Back")
         .on_press(|app: &mut App| app.back())
         .build(k);
     let save = Button::new(if editing { "Save" } else { "Add bulb" })
         .variant(ButtonVariant::Contrast)
+        .control_size(ControlSize::Large)
         .on_press_tx(|app: &mut App, tx| {
             app.save_form();
             tx.wake_after(Duration::ZERO);
@@ -66,7 +67,7 @@ pub fn form_view(app: &App, k: &Kit) -> El {
         .on_edit(|app: &mut App| &mut app.form.token)
         .build(k);
     let reveal = Switch::new(app.form.reveal)
-        .control_size(ControlSize::Small)
+        .control_size(ControlSize::Large)
         .label("Show token")
         .on_toggle(|app: &mut App| app.form.reveal = !app.form.reveal)
         .build(k);
@@ -159,12 +160,13 @@ pub fn remove_view(app: &App, k: &Kit) -> El {
     let address = bulb.map_or_else(|| "Unknown address".to_owned(), |bulb| bulb.address.clone());
     let back = IconButton::new(&BACK)
         .variant(IconButtonVariant::GhostMuted)
-        .control_size(ControlSize::Regular)
+        .control_size(ControlSize::ExtraLarge)
         .help("Back")
         .on_press(|app: &mut App| app.back())
         .build(k);
     let remove = Button::new("Remove bulb")
         .variant(ButtonVariant::Danger)
+        .control_size(ControlSize::Large)
         .on_press_tx(|app: &mut App, tx| {
             app.confirm_remove();
             tx.wake_after(Duration::ZERO);

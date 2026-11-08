@@ -17,7 +17,7 @@ rows. The window is a daily utility, not a dashboard that fills a desk display.
 
 ## Decision
 
-The app opens in a 500 × 640 window with a 480 × 600 minimum and a
+The app opens in a 500 × 680 window with a 480 × 600 minimum and a
 520 × 760 maximum. The page is capped at 484 points and centered when the window
 grows. One `Page` frame holds the window title, one three-tab bar and the active
 screen:
@@ -37,6 +37,10 @@ remove, refresh, colour and screen sync each have one entry point. Forms, the
 colour picker and remove confirmation replace the tabs and carry a Back control.
 The colour picker is a live preview with hue, saturation and brightness
 gradients, not a channel form.
+
+The readable scale starts at 13 points for captions and 14 for control text.
+Tabs are 40 points high, field triggers 36, primary buttons and sliders 28. The
+window opens 40 points taller so a form footer stays in view.
 
 The app has no global keyboard shortcuts. Native control focus and text entry
 remain because they are the behavior of the controls themselves.

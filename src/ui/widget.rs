@@ -2,7 +2,7 @@ use std::rc::Rc;
 use std::time::{Duration, Instant};
 
 use rune::{Align, Color, Drag, El, Icon, Phase, Spring, TextStyle, Tx, col, el, row, text};
-use rune_kit::{Divider, Kit, SegmentedControl, StateColors};
+use rune_kit::{Divider, Kit, StateColors};
 
 use crate::app::App;
 use crate::screen::sync::SyncStatus;
@@ -159,10 +159,10 @@ pub fn dropdown_trigger(
     };
     let mut trigger = row()
         .w(width)
-        .h(28.0)
-        .pl(8.0)
-        .pr(6.0)
-        .gap(6.0)
+        .h(36.0)
+        .pl(10.0)
+        .pr(8.0)
+        .gap(8.0)
         .center_y()
         .role("button")
         .label(label.to_owned())
@@ -188,7 +188,7 @@ pub fn dropdown_trigger(
                 .grow(1.0)
                 .min_w(0.0),
         )
-        .child(rune::icon(chevron, 16.0).color(k.c.icon_muted))
+        .child(rune::icon(chevron, 18.0).color(k.c.icon_muted))
 }
 
 pub fn subpage_header(k: &Kit, title: &str, description: &str, back: El) -> El {
@@ -199,7 +199,7 @@ pub fn subpage_header(k: &Kit, title: &str, description: &str, back: El) -> El {
             .gap(1.0)
             .child(
                 text(title.to_owned())
-                    .font(TextStyle::new(17.0, 600.0).lh(21.0))
+                    .font(TextStyle::new(18.0, 600.0).lh(23.0))
                     .color(k.c.text_base)
                     .truncate(),
             )
@@ -257,18 +257,18 @@ pub fn rgb_color(rgb: crate::bulb::model::Rgb) -> Color {
 }
 
 pub fn dot(color: Color) -> El {
-    el().size(7.0, 7.0).radius(3.5).fill(color)
+    el().size(8.0, 8.0).radius(4.0).fill(color)
 }
 
 pub fn badge(k: &Kit, label: &str, tone: Color) -> El {
     row()
         .role("status")
         .label(label.to_owned())
-        .gap(5.0)
-        .px(8.0)
-        .h(20.0)
+        .gap(6.0)
+        .px(9.0)
+        .h(24.0)
         .center_y()
-        .radius(10.0)
+        .radius(12.0)
         .fill(tone.alpha(0.12))
         .child(dot(tone).a11y_hidden())
         .child(
@@ -367,9 +367,9 @@ fn slider_inner(
         width,
         track,
     } = config;
-    let (w, h, knob) = (width, 22.0, 16.0);
+    let (w, h, knob) = (width, 28.0, 18.0);
     let track_is_fill = matches!(track, SliderTrack::Fill);
-    let bar = if track_is_fill { 3.0 } else { 7.0 };
+    let bar = if track_is_fill { 4.0 } else { 8.0 };
     let travel = w - knob;
     let value = value.clamp(0.0, 1.0);
     let on_change = Rc::new(on_change);
@@ -469,14 +469,56 @@ pub fn segmented(
     width: f32,
     on_pick: fn(&mut App, usize),
 ) -> El {
-    SegmentedControl::new(labels, selected)
-        .label(label)
-        .width(Some(width))
-        .on_pick(move |app: &mut App, index, tx: &mut Tx| {
-            on_pick(app, index);
-            tx.wake_after(std::time::Duration::ZERO);
-        })
-        .build(k)
+    let mut root = row()
+        .w(width)
+        .h(36.0)
+        .padding(3.0)
+        .gap(2.0)
+        .role("radiogroup")
+        .label(label.to_owned())
+        .focus_group()
+        .radius(10.0)
+        .fill(k.c.layer_02)
+        .border(1.0, k.c.border_base);
+    for (index, option) in labels.iter().enumerate() {
+        let on = selected == Some(index);
+        let mut choice = row()
+            .key(format!("choice-{index}"))
+            .grow(1.0)
+            .h(30.0)
+            .center()
+            .radius(7.0)
+            .role("radio")
+            .label((*option).to_owned())
+            .position_in_set(index + 1, labels.len())
+            .focusable(true)
+            .focus_selected(on)
+            .focus_ring(2.0, 1.0, k.c.border_focus)
+            .on_press_tx(move |app: &mut App, tx: &mut Tx| {
+                on_pick(app, index);
+                tx.wake_after(Duration::ZERO);
+            });
+        if on {
+            choice = choice
+                .fill(k.c.bg_accent.alpha(0.16))
+                .border(1.0, k.c.bg_accent.alpha(0.3))
+                .child(
+                    text((*option).to_owned())
+                        .font(k.ty.ui_medium)
+                        .color(k.c.text_accent)
+                        .a11y_hidden(),
+                );
+        } else {
+            choice = choice.hover(k.c.hover).press(k.c.pressed).child(
+                text((*option).to_owned())
+                    .font(k.ty.ui_medium)
+                    .color(k.c.text_muted)
+                    .a11y_hidden(),
+            );
+        }
+        root = root.child(choice);
+    }
+    root
 }
 
 pub fn frame_age(at: Option<Instant>) -> String {
