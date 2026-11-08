@@ -42,8 +42,6 @@ issue by the magic word used:
 
 - **Branch**: `feat/JYOT-42-short-slug`. The issue ID in the branch name links
   the PR automatically.
-- **Title**: `JYOT-42 <type>(<scope>): <summary>`. The ID may also trail as
-  `(<JYOT-42>)`, but not both.
 - **Body**: `Closes JYOT-42` for a PR that completes the issue. Use
   `Refs JYOT-42` or `Part of JYOT-42` when the issue stays open.
 - **One issue per PR.** When a PR really spans issues, name each one after
