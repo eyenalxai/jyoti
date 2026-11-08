@@ -1,4 +1,5 @@
 mod actions;
+mod selection;
 pub(crate) mod state;
 mod sync;
 
@@ -6,7 +7,8 @@ use std::collections::HashMap;
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::time::{Duration, Instant};
 
-use rune::{Key, KeyEvent, Tx, Waker};
+use rune::{Tx, Waker};
+use rune_kit::TableState;
 use rune_kit::shell::PaneState;
 
 use crate::app::state::{
@@ -42,6 +44,7 @@ pub struct App {
     pub screen_handle: Option<ScreenHandle>,
     pub waker: Option<Waker>,
     pub sidebar: PaneState,
+    pub table: TableState,
     pub started: bool,
     pub startup_error: Option<String>,
     pub demo: bool,
@@ -81,6 +84,10 @@ impl App {
             gain: if demo { 1.0 } else { preferences.sync_gain },
             ..SyncState::default()
         };
+        let mut table = TableState::new().key("bulbs");
+        if let Some(Selection::Bulb(id)) = &selection {
+            table.select(id.clone());
+        }
 
         Self {
             config,
@@ -103,7 +110,8 @@ impl App {
             worker_sender,
             screen_handle: None,
             waker: None,
-            sidebar: PaneState::new(276.0).range(200.0, 420.0),
+            sidebar: PaneState::new(252.0).range(210.0, 320.0),
+            table,
             started: false,
             startup_error,
             demo,
@@ -211,56 +219,6 @@ impl App {
         changed
     }
 
-    pub fn on_key(&mut self, event: &KeyEvent, tx: &mut Tx) -> bool {
-        if event.is_command('n') {
-            self.open_add();
-            return true;
-        }
-        if event.is_command('r') {
-            self.refresh_all(tx);
-            return true;
-        }
-        if event.is_command(',') {
-            self.open_settings();
-            return true;
-        }
-        if event.is_command('s') {
-            self.open_sync();
-            return true;
-        }
-        if event.is_command('e') {
-            self.edit_selected();
-            return true;
-        }
-        if event.is_command('q') {
-            tx.quit();
-            return true;
-        }
-        if event.key == Key::Escape {
-            self.back();
-            return true;
-        }
-        match &event.key {
-            Key::Text(text) if text == " " => {
-                self.toggle_power();
-                true
-            }
-            Key::Text(text) if text.eq_ignore_ascii_case("w") => {
-                self.set_mode_white();
-                true
-            }
-            Key::Text(text) if text.eq_ignore_ascii_case("c") => {
-                self.set_mode_color();
-                true
-            }
-            Key::Text(text) if text == "?" => {
-                self.screen = Screen::Help;
-                true
-            }
-            _ => false,
-        }
-    }
-
     pub fn quit(&mut self, _tx: &mut Tx) {
         self.shutdown();
     }
@@ -287,18 +245,6 @@ impl App {
     pub fn selected_state(&self) -> Option<&BulbState> {
         self.selected_bulb()
             .and_then(|bulb| self.states.get(&bulb.id))
-    }
-
-    pub fn selection_label(&self) -> String {
-        match &self.selection {
-            Some(Selection::All) => "All bulbs".to_owned(),
-            Some(Selection::Bulb(id)) => self
-                .bulbs
-                .iter()
-                .find(|bulb| &bulb.id == id)
-                .map_or_else(|| "jyoti".to_owned(), |bulb| bulb.name.clone()),
-            None => "jyoti".to_owned(),
-        }
     }
 }
 

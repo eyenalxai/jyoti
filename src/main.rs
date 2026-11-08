@@ -8,7 +8,7 @@ mod ui;
 
 use std::time::Instant;
 
-use rune::{AppSpec, KeyEvent, Tx, Waker};
+use rune::{AppSpec, Tx, Waker};
 
 use crate::app::App;
 use crate::app::state::{Screen, ToastKind};
@@ -22,10 +22,6 @@ fn setup(app: &mut App, waker: Waker) {
 
 fn poll(app: &mut App, dt: f64, tx: &mut Tx) -> bool {
     app.poll(dt, tx)
-}
-
-fn on_key(app: &mut App, event: &KeyEvent, tx: &mut Tx) -> bool {
-    app.on_key(event, tx)
 }
 
 fn on_quit(app: &mut App, tx: &mut Tx) {
@@ -95,14 +91,12 @@ const SCENES: &[(&str, SceneFn)] = &[
 fn main() {
     rune::set_app_id("dev.jyoti.Jyoti");
     rune::App::new(AppSpec {
-        min_size: Some((820.0, 600.0)),
+        min_size: Some((1080.0, 720.0)),
         setup: Some(setup),
         poll: Some(poll),
-        on_key: Some(on_key),
         scenes: SCENES,
         ..AppSpec::new("jyoti", (1120.0, 760.0), App::new, ui::view)
     })
     .on_quit(on_quit)
-    .standard_menus()
     .run();
 }

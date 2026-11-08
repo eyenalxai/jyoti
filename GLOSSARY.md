@@ -51,8 +51,8 @@ the reference implementation.
 
 A selection that stands for every configured bulb at once. It is not a bulb: it
 has no ID, address, token or stored state, so edit and remove do not act on it.
-The row appears first in the bulb rail while two or more bulbs exist, and it is
-the default selection on first load. Its state is the aggregate of the bulbs:
+The row sits first in the sidebar. It is the default selection when two or more
+bulbs exist. Its state is the aggregate of the bulbs:
 power is on, off or mixed; quality is White or Colour when every reachable bulb
 agrees and mixed when they do not. When the bulbs disagree on the mode the mode
 switch shows mixed and no mode's settings are drawn; choosing White or Colour
@@ -72,9 +72,9 @@ a command fails; it is not cached across runs.
 
 ## Unreachable
 
-A bulb that did not answer its hello or command before the timeout. The rail
-keeps the bulb and its metadata, the row shows a warning dot, the detail page
-shows the failure inline, and `Ctrl+R` retries.
+A bulb that did not answer its hello or command before the timeout. The sidebar
+keeps the bulb and its metadata, the row shows a warning dot, the dashboard
+shows the failure inline, and Refresh retries.
 
 ## Restored
 
@@ -94,13 +94,13 @@ The boolean `siid 2 / piid 1` property: a bulb is either on or off.
 ## Brightness
 
 The `siid 2 / piid 2` property from 1 to 100, shown as a percentage. The
-slider is continuous; the keyboard nudges in one-point steps.
+slider is continuous and is the only brightness control.
 
 ## Colour temperature
 
 The `siid 2 / piid 3` property in kelvin, from 2700 K to 6500 K, shown as
-Warmth. The slider is continuous; the keyboard nudges in 100 K steps. It is
-one of the two light modes.
+Warmth. The slider is continuous and is the only warmth control. It is one of
+the two light modes.
 
 ## Packed colour
 
@@ -143,18 +143,19 @@ bulb keeps the current choice.
 
 ## Dashboard
 
-The main page: the bulb rail on the left, the selected bulb's power, light mode,
-brightness, warmth or colour, and its status on the right.
+The main page: a KPI row, the configured-bulb table, and the selected bulb's
+power, light mode, brightness, warmth or colour beside its connection facts.
 
-## Bulb rail
+## Sidebar
 
-The sidebar list of All bulbs and every configured bulb. A row shows the name,
-address, power and a status dot. Double-clicking a row opens Edit.
+The list of All bulbs and every configured bulb. A row shows the name, address,
+power and a status dot. Selecting a row opens it on the dashboard; the table
+also opens Edit on a double-click.
 
 ## Toolbar
 
-The strip above the dashboard. It shows the selected bulb's name and the add,
-refresh, sync and settings actions.
+The app header. It shows the current page and, on Overview, Refresh and Add
+bulb. The sidebar owns navigation, screen sync, settings and help.
 
 ## Toast
 
@@ -186,7 +187,8 @@ carries the state, derived colour, sync brightness and a stale marker.
 
 ## Sync page
 
-The page opened with `Ctrl+S`. It owns start/stop, pause, the captured monitor,
+The page opened from the sidebar or the Screen sync card. It owns start/stop,
+pause, the captured monitor,
 the gain and the restore report. It is the only place the sync controls live.
 
 ## Captured monitor
@@ -254,7 +256,7 @@ named.
 
 ## Revert
 
-Leaving the colour page with Cancel or `Esc` restores the colour and mode each
+Leaving the colour page with Cancel restores the colour and mode each
 target had when the page opened. Done keeps the current colour.
 
 ## miIO session

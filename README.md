@@ -16,9 +16,11 @@ non-secret metadata is written to disk.
 - Sends power, brightness, warmth and colour changes to the selected bulb, or to
   every bulb when **All bulbs** is selected, over UDP.
 - Selects **All bulbs** on first load when two or more bulbs exist.
-- Keeps the whole app usable with the pointer, with shortcuts for the common
-  actions and a transient toast when a bulb does not answer.
+- Keeps every action on a visible pointer control. A transient toast reports a
+  bulb that does not answer.
 - Follows the desktop's light or dark appearance.
+- Uses a dense ReUI-derived shell: grouped sidebar, KPI tiles, flat panels and
+  a compact bulb table, with every action on a pointer control.
 - Starts empty. It does not read the reference script's `tokens.env`.
 
 ## Requirements
@@ -58,24 +60,7 @@ cargo run -- --demo --scene dashboard --snap dashboard.png
 ```
 
 `--scene` accepts `dashboard`, `empty`, `form`, `edit`, `color`, `remove`,
-`sync`, `sync-live`, `settings` and `help`. `--list-scenes` prints them.
-
-## Keys
-
-| Keys | Action |
-| --- | --- |
-| `Ctrl+N` | Add a bulb |
-| `Ctrl+E` | Edit the selected bulb |
-| `Ctrl+R` | Refresh every bulb |
-| `Space` | Toggle power |
-| `W` | Switch to white light |
-| `C` | Switch to colour light |
-| `Ctrl+S` | Open screen sync |
-| `Ctrl+,` | Open settings |
-| `Esc` | Go back or close the current page |
-| `Ctrl+Q` | Quit |
-
-On macOS the primary modifier is `Cmd`. Every action also has a pointer path.
+`sync`, `sync-live`, `settings`, `help` and `toast`. `--list-scenes` prints them.
 
 ## Storage and security
 
@@ -127,9 +112,10 @@ without changing the sync reducer or the UI.
 ```
 src/
   main.rs              process entry point and Rune AppSpec
-  app.rs               app state, poll, keys and lifecycle
+  app.rs               app state, poll and lifecycle
   app/
     state.rs           screen, form, colour, toast and sync state
+    selection.rs       sidebar and table selection, colour-page exit
     actions.rs         bulb CRUD, controls, forms and toasts
     sync.rs            sync run, scene application and restore
   bulb/
@@ -158,11 +144,11 @@ src/
     sync.rs            sync status and restore report
   ui/
     shell.rs           sidebar, toolbar and split view
-    dashboard.rs       bulb rail detail, power and light controls
+    dashboard.rs       KPI row, bulb table, power and light controls
     forms.rs           add, edit and remove pages
     color.rs           hue/saturation and RGB colour picker
     sync.rs            screen sync page
-    settings.rs        preferences and shortcuts
+    settings.rs        preferences, storage and about
     help.rs            help page
     toast.rs           transient notifications
     widget.rs          icons and shared controls

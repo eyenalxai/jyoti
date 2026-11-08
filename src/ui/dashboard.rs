@@ -1,19 +1,24 @@
-use rune::{El, ScrollSpec, col, icon, row, text};
-use rune_kit::{Button, ButtonVariant, ControlSize, IconButton, IconButtonVariant, Kit, Switch};
+use rune::{Align, El, ScrollSpec, TextStyle, col, row, text};
+use rune_kit::{
+    Button, ButtonVariant, Cell, ControlSize, Divider, IconButton, IconButtonVariant, Kit, Switch,
+    Table, TableColumn, TableStyle,
+};
 
 use crate::app::App;
-use crate::bulb::aggregate::{AggregateColor, AggregatePower, LightQuality, light_quality_of};
+use crate::bulb::aggregate::{
+    AggregateColor, AggregatePower, AggregateState, LightQuality, light_quality_of,
+};
 use crate::bulb::model::{
-    BRIGHTNESS_MAX, BRIGHTNESS_MIN, BulbState, Rgb, TEMPERATURE_MAX, TEMPERATURE_MIN,
+    BRIGHTNESS_MAX, BRIGHTNESS_MIN, BulbState, ColorMode, Rgb, TEMPERATURE_MAX, TEMPERATURE_MIN,
     brightness_from_fraction, fraction_of_brightness, fraction_of_temperature,
     temperature_from_fraction,
 };
 use crate::bulb::selection::Selection;
 use crate::screen::color::kelvin_to_rgb;
-use crate::screen::sync::SyncStatus;
 use crate::ui::widget::{
-    BULB, EDIT, SYNC, TRASH, badge, dot, error_text, rgb_color, section, segmented, slider, swatch,
-    sync_status_tone, value_text,
+    BULB, EDIT, SYNC, TRASH, badge, dot, error_text, fact_row, frame_age, notice, panel,
+    panel_body, panel_footer, panel_header, rgb_color, segmented, setting_row, slider, stat,
+    swatch, sync_status_tone, value_text,
 };
 
 pub fn content(app: &App, k: &Kit) -> El {
@@ -21,107 +26,108 @@ pub fn content(app: &App, k: &Kit) -> El {
         return empty_state(app, k);
     }
 
-    let mut body = col().key("dashboard").w_full().padding(24.0).gap(16.0);
-    body = body.child(hero(app, k));
-    if !matches!(app.sync.status, SyncStatus::Idle) {
-        body = body.child(sync_strip(app, k));
-    }
-    body = body.child(controls(app, k));
-    body = body.child(status_card(app, k));
-    let body = body
-        .max_w(1100.0)
+    let aggregate = app.aggregate();
+    let scroll = col()
+        .key("dashboard")
+        .w_full()
+        .padding(18.0)
+        .gap(14.0)
+        .child(dashboard_stats(app, k, &aggregate))
+        .child(bulbs_panel(app, k))
+        .child(
+            row()
+                .w_full()
+                .gap(14.0)
+                .items_start()
+                .child(
+                    col()
+                        .grow(2.0)
+                        .min_w(0.0)
+                        .child(light_panel(app, k, &aggregate)),
+                )
+                .child(
+                    col()
+                        .grow(1.0)
+                        .min_w(300.0)
+                        .gap(14.0)
+                        .child(device_panel(app, k))
+                        .child(sync_panel(app, k)),
+                ),
+        )
         .scroll(ScrollSpec {
             stick_bottom: false,
         })
         .grow(1.0)
         .min_h(0.0);
-    row().w_full().h_full().justify_center().child(body)
+
+    col().w_full().h_full().min_h(0.0).child(scroll)
 }
 
-fn hero(app: &App, k: &Kit) -> El {
-    let name = app.selection_label();
-    let (subtitle, power, can_edit) = match &app.selection {
-        Some(Selection::All) => {
-            let aggregate = app.aggregate();
-            (
-                format!(
-                    "{} bulbs · {} reachable",
-                    aggregate.total, aggregate.reachable
-                ),
-                aggregate.power == AggregatePower::On,
-                false,
-            )
-        }
-        Some(Selection::Bulb(id)) => {
-            let bulb = app.bulbs.iter().find(|bulb| &bulb.id == id);
-            let state = app.states.get(id);
-            let subtitle = match bulb {
-                Some(bulb) => format!(
-                    "{} · {}",
-                    bulb.address,
-                    state_word(state).unwrap_or_else(|| "connecting".to_owned())
-                ),
-                None => "No bulb selected".to_owned(),
-            };
-            (
-                subtitle,
-                state.and_then(|state| state.power) == Some(true),
-                true,
-            )
-        }
-        None => ("No bulb selected".to_owned(), false, false),
+fn dashboard_stats(app: &App, k: &Kit, aggregate: &AggregateState) -> El {
+    let all = matches!(app.selection, Some(Selection::All));
+    let state = app.single_state();
+    let power = if all {
+        aggregate_power_word(aggregate.power)
+    } else {
+        state_power_word(&state)
     };
-
-    let edit = IconButton::new(&EDIT)
-        .variant(IconButtonVariant::GhostMuted)
-        .help("Edit bulb")
-        .disabled(!can_edit)
-        .on_press(|app: &mut App| app.edit_selected())
-        .build(k)
-        .key("hero-edit");
-    let remove = {
-        let id = match &app.selection {
-            Some(Selection::Bulb(id)) => Some(id.clone()),
-            _ => None,
-        };
-        IconButton::new(&TRASH)
-            .variant(IconButtonVariant::GhostMuted)
-            .help("Remove bulb")
-            .disabled(id.is_none())
-            .on_press(move |app: &mut App| {
-                if let Some(id) = &id {
-                    app.open_remove(id);
-                }
-            })
-            .build(k)
-            .key("hero-remove")
+    let brightness = if all {
+        span_word(aggregate.brightness.map(|span| (span.low, span.high)), "%")
+    } else {
+        state
+            .brightness
+            .map_or_else(|| "Unknown".to_owned(), |value| format!("{value}%"))
+    };
+    let sync = app.sync.status.label();
+    let sync_meta = if app.sync.last_scene_at.is_some() {
+        frame_age(app.sync.last_scene_at)
+    } else {
+        "No frame yet".to_owned()
+    };
+    let power_tone = match power {
+        "On" => k.c.success.icon,
+        "Off" => k.c.text_faint,
+        "Mixed" => k.c.warning.icon,
+        _ => k.c.text_faint,
     };
 
     row()
         .w_full()
         .gap(12.0)
-        .center_y()
-        .child(
-            col()
-                .grow(1.0)
-                .gap(3.0)
-                .child(text(name).font(k.ty.body_medium).color(k.c.text_base))
-                .child(text(subtitle).font(k.ty.small).color(k.c.text_muted)),
-        )
-        .child(
-            Switch::new(power)
-                .control_size(ControlSize::Regular)
-                .label("Power")
-                .on_toggle(|app: &mut App| app.toggle_power())
-                .build(k),
-        )
-        .child(edit)
-        .child(remove)
+        .items_stretch()
+        .child(stat(
+            k,
+            "Bulbs",
+            format!("{}", aggregate.total),
+            format!(
+                "{} reachable · {} failed",
+                aggregate.reachable, aggregate.failed
+            ),
+            k.c.info.icon,
+        ))
+        .child(stat(k, "Power", power, "Selected bulbs", power_tone))
+        .child(stat(
+            k,
+            "Brightness",
+            brightness,
+            if all {
+                "Aggregate span"
+            } else {
+                "Current level"
+            },
+            k.c.warning.icon,
+        ))
+        .child(stat(
+            k,
+            "Screen sync",
+            sync,
+            sync_meta,
+            sync_status_tone(k, &app.sync.status),
+        ))
 }
 
-fn controls(app: &App, k: &Kit) -> El {
+fn light_panel(app: &App, k: &Kit, aggregate: &AggregateState) -> El {
     let state = app.single_state();
-    let aggregate = app.aggregate();
     let all = matches!(app.selection, Some(Selection::All));
     let quality = if all {
         aggregate.quality
@@ -133,29 +139,17 @@ fn controls(app: &App, k: &Kit) -> El {
     let mixed = quality == LightQuality::Mixed;
     let unknown = quality == LightQuality::Unknown;
     let sync_owned = app.sync.status.is_busy();
+    let power = if all {
+        aggregate.power == AggregatePower::On
+    } else {
+        state.power == Some(true)
+    };
 
-    let mut body = col().w_full().gap(16.0);
-    if sync_owned {
-        body = body.child(
-            row()
-                .w_full()
-                .padding(10.0)
-                .gap(10.0)
-                .center_y()
-                .radius(k.radius.md)
-                .fill(k.c.warning.bg)
-                .child(icon(&SYNC, 16.0).color(k.c.warning.icon))
-                .child(
-                    text(
-                        "Screen sync owns colour, brightness and temperature while it runs."
-                            .to_owned(),
-                    )
-                    .font(k.ty.small)
-                    .color(k.c.warning.fg)
-                    .wrap(),
-                ),
-        );
-    }
+    let power_switch = Switch::new(power)
+        .control_size(ControlSize::Small)
+        .label("Power")
+        .on_toggle(|app: &mut App| app.toggle_power())
+        .build(k);
 
     let selected_mode = if white {
         Some(0)
@@ -169,49 +163,83 @@ fn controls(app: &App, k: &Kit) -> El {
         &["White", "Colour"],
         selected_mode,
         "Light mode",
-        300.0,
+        228.0,
         choose_mode,
     );
-    let mut light = col().gap(16.0).child(mode);
-    if mixed {
-        light = light.child(
-            text("The selected bulbs disagree on the mode. Choose White or Colour to apply one to every bulb.".to_owned())
-                .font(k.ty.small)
-                .color(k.c.text_muted)
-                .wrap(),
-        );
-    } else if unknown {
-        light = light.child(
-            text("Waiting for the bulb's light state.".to_owned())
-                .font(k.ty.small)
-                .color(k.c.text_muted),
-        );
-    } else {
-        light = light.child(brightness_row(app, k, &aggregate, &state, all, sync_owned));
-        if white {
-            light = light.child(temperature_row(app, k, &aggregate, &state, all, sync_owned));
-        }
-        if color {
-            light = light.child(colour_row(app, k, &aggregate, &state, all, sync_owned));
-        }
-    }
-    body = body.child(section(k, "Light", light));
+    let mode = if sync_owned { mode.inert() } else { mode };
 
-    body
-}
+    let mut controls = col().w_full().gap(0.0);
+    controls = controls.child(setting_row(
+        k,
+        "Mode",
+        "White uses warmth. Colour uses packed RGB.",
+        mode,
+    ));
 
-fn choose_mode(app: &mut App, index: usize) {
-    if index == 0 {
-        app.set_mode_white();
-    } else {
-        app.set_mode_color();
+    controls = controls.child(Divider::horizontal().build(k));
+    controls = controls.child(brightness_row(app, k, aggregate, &state, all, sync_owned));
+
+    if white {
+        controls = controls.child(Divider::horizontal().build(k));
+        controls = controls.child(temperature_row(app, k, aggregate, &state, all, sync_owned));
     }
+    if color {
+        controls = controls.child(Divider::horizontal().build(k));
+        controls = controls.child(colour_row(app, k, aggregate, &state, all, sync_owned));
+    }
+    if mixed || unknown {
+        controls = controls.child(Divider::horizontal().build(k)).child(notice(
+            k,
+            &BULB,
+            if mixed {
+                "The selected bulbs disagree on the mode. Choose White or Colour to apply one mode to all of them."
+            } else {
+                "Waiting for the bulb to report its light state."
+            },
+            if mixed { k.c.warning } else { k.c.info },
+        ));
+    }
+
+    let mut body = col().w_full().child(panel_body(controls));
+    if sync_owned {
+        body = body.child(col().w_full().px(14.0).pb(14.0).child(notice(
+            k,
+            &SYNC,
+            "Screen sync owns colour, brightness and temperature while it runs.",
+            k.c.warning,
+        )));
+    }
+    if sync_owned {
+        body = body.child(panel_footer(
+            k,
+            vec![
+                Button::new("Stop and restore")
+                    .variant(ButtonVariant::Danger)
+                    .control_size(ControlSize::Small)
+                    .on_press(|app: &mut App| app.stop_sync())
+                    .build(k),
+            ],
+        ));
+    }
+
+    let mut header_actions = Vec::new();
+    if all && aggregate.power == AggregatePower::Mixed {
+        header_actions.push(badge(k, "Mixed power", k.c.warning.icon));
+    }
+    header_actions.push(power_switch);
+    let header = panel_header(
+        k,
+        "Light control",
+        Some("Adjust the selected bulb or every bulb at once."),
+        header_actions,
+    );
+    panel(k, col().w_full().child(header).child(body))
 }
 
 fn brightness_row(
     _app: &App,
     k: &Kit,
-    aggregate: &crate::bulb::aggregate::AggregateState,
+    aggregate: &AggregateState,
     state: &BulbState,
     all: bool,
     disabled: bool,
@@ -229,39 +257,50 @@ fn brightness_row(
     } else {
         format!("{value}%")
     };
-    row()
+    let slider = slider(
+        k,
+        "brightness",
+        fraction_of_brightness(value),
+        "Brightness",
+        1.0 / 99.0,
+        320.0,
+        |app: &mut App, fraction| app.set_brightness(brightness_from_fraction(fraction)),
+    );
+    col()
         .w_full()
-        .gap(12.0)
-        .center_y()
+        .gap(4.0)
+        .py(10.0)
         .child(
-            text("Brightness".to_owned())
-                .font(k.ty.small)
-                .color(k.c.text_muted)
-                .w(86.0),
+            row()
+                .w_full()
+                .justify_between()
+                .gap(12.0)
+                .center_y()
+                .child(
+                    text("Brightness".to_owned())
+                        .font(k.ty.ui_medium)
+                        .color(k.c.text_base),
+                )
+                .child(value_text(k, label)),
         )
-        .child({
-            let control = slider(
-                k,
-                "brightness",
-                fraction_of_brightness(value),
-                "Brightness",
-                1.0 / 99.0,
-                |app: &mut App, fraction| app.set_brightness(brightness_from_fraction(fraction)),
-            );
-            if disabled { control.inert() } else { control }
+        .child(
+            text(format!(
+                "{BRIGHTNESS_MIN}–{BRIGHTNESS_MAX}% across the selected bulbs."
+            ))
+            .font(k.ty.small)
+            .color(k.c.text_muted),
+        )
+        .child(if disabled {
+            slider.inert().layer_opacity(0.55)
+        } else {
+            slider
         })
-        .child(text(label).font(k.ty.mono).color(k.c.text_base).w(62.0))
-        .child(
-            text(format!("{}–{}%", BRIGHTNESS_MIN, BRIGHTNESS_MAX))
-                .font(k.ty.small)
-                .color(k.c.text_faint),
-        )
 }
 
 fn temperature_row(
     _app: &App,
     k: &Kit,
-    aggregate: &crate::bulb::aggregate::AggregateState,
+    aggregate: &AggregateState,
     state: &BulbState,
     all: bool,
     disabled: bool,
@@ -279,40 +318,56 @@ fn temperature_row(
     } else {
         format!("{value} K")
     };
-    row()
+    let slider = slider(
+        k,
+        "temperature",
+        fraction_of_temperature(value),
+        "Colour temperature",
+        100.0 / 3_800.0,
+        320.0,
+        |app: &mut App, fraction| app.set_temperature(temperature_from_fraction(fraction)),
+    );
+    col()
         .w_full()
-        .gap(12.0)
-        .center_y()
+        .gap(4.0)
+        .py(10.0)
         .child(
-            text("Warmth".to_owned())
-                .font(k.ty.small)
-                .color(k.c.text_muted)
-                .w(86.0),
+            row()
+                .w_full()
+                .justify_between()
+                .gap(12.0)
+                .center_y()
+                .child(
+                    text("Warmth".to_owned())
+                        .font(k.ty.ui_medium)
+                        .color(k.c.text_base),
+                )
+                .child(
+                    row()
+                        .gap(8.0)
+                        .center_y()
+                        .child(swatch(k, rgb_color(kelvin_to_rgb(value)), 18.0))
+                        .child(value_text(k, label)),
+                ),
         )
-        .child({
-            let control = slider(
-                k,
-                "temperature",
-                fraction_of_temperature(value),
-                "Colour temperature",
-                100.0 / 3_800.0,
-                |app: &mut App, fraction| app.set_temperature(temperature_from_fraction(fraction)),
-            );
-            if disabled { control.inert() } else { control }
+        .child(
+            text(format!(
+                "{TEMPERATURE_MIN}–{TEMPERATURE_MAX} K for the White side."
+            ))
+            .font(k.ty.small)
+            .color(k.c.text_muted),
+        )
+        .child(if disabled {
+            slider.inert().layer_opacity(0.55)
+        } else {
+            slider
         })
-        .child(text(label).font(k.ty.mono).color(k.c.text_base).w(86.0))
-        .child(
-            text(format!("{TEMPERATURE_MIN}–{TEMPERATURE_MAX} K"))
-                .font(k.ty.small)
-                .color(k.c.text_faint),
-        )
-        .child(swatch(k, rgb_color(kelvin_to_rgb(value)), 22.0))
 }
 
 fn colour_row(
     _app: &App,
     k: &Kit,
-    aggregate: &crate::bulb::aggregate::AggregateState,
+    aggregate: &AggregateState,
     state: &BulbState,
     all: bool,
     disabled: bool,
@@ -326,54 +381,78 @@ fn colour_row(
         state.color
     };
     let label = color.map_or_else(|| "Mixed".to_owned(), Rgb::hex);
-    let mut control =
-        row()
-            .gap(10.0)
-            .center_y()
-            .child(swatch(k, color.map_or(k.c.layer_03, rgb_color), 28.0));
-    control = control.child(text(label).font(k.ty.mono).color(k.c.text_base));
+    let mut control = row()
+        .gap(10.0)
+        .center_y()
+        .child(swatch(k, color.map_or(k.c.layer_03, rgb_color), 26.0))
+        .child(text(label).font(k.ty.mono).color(k.c.text_base));
     if disabled {
-        control.child(badge(k, "Sync owns this", k.c.warning.icon))
+        control = control.child(badge(k, "Sync owns this", k.c.warning.icon));
     } else {
-        control.child(
+        control = control.child(
             Button::new("Choose colour")
                 .variant(ButtonVariant::Outline)
+                .control_size(ControlSize::Small)
                 .on_press(|app: &mut App| app.open_color())
                 .build(k),
-        )
+        );
     }
+    setting_row(
+        k,
+        "Colour",
+        "Packed sRGB. The picker previews live, then keeps or restores it.",
+        control,
+    )
 }
 
-fn status_card(app: &App, k: &Kit) -> El {
-    let aggregate = app.aggregate();
+fn device_panel(app: &App, k: &Kit) -> El {
     let all = matches!(app.selection, Some(Selection::All));
+    let aggregate = app.aggregate();
     let state = app.single_state();
-    let mut body = col().gap(8.0);
+    let selected = app.selected_bulb();
+    let title = if all {
+        "Selection"
+    } else {
+        selected.map_or("Selection", |bulb| bulb.name.as_str())
+    };
+    let subtitle = if all {
+        "All configured bulbs"
+    } else {
+        "One bulb"
+    };
+    let power = if all {
+        aggregate_power_word(aggregate.power)
+    } else {
+        state_power_word(&state)
+    };
+    let tone = match power {
+        "On" => k.c.success.icon,
+        "Off" => k.c.text_faint,
+        "Mixed" => k.c.warning.icon,
+        _ => k.c.text_faint,
+    };
 
+    let mut facts = col().w_full().gap(0.0);
     if all {
-        body = body
-            .child(status_row(k, "Bulbs", format!("{}", aggregate.total)))
-            .child(status_row(
-                k,
-                "Reachable",
-                format!("{}", aggregate.reachable),
-            ))
-            .child(status_row(k, "Failed", format!("{}", aggregate.failed)))
-            .child(status_row(k, "Mode", quality_word(aggregate.quality)))
-            .child(status_row(
+        facts = facts
+            .child(fact_row(k, "Bulbs", format!("{}", aggregate.total)))
+            .child(fact_row(k, "Reachable", format!("{}", aggregate.reachable)))
+            .child(fact_row(k, "Failed", format!("{}", aggregate.failed)))
+            .child(fact_row(k, "Power", power))
+            .child(fact_row(
                 k,
                 "Brightness",
                 span_word(aggregate.brightness.map(|span| (span.low, span.high)), "%"),
             ))
-            .child(status_row(
+            .child(fact_row(
                 k,
-                "Temperature",
+                "Warmth",
                 span_word(
                     aggregate.temperature.map(|span| (span.low, span.high)),
                     " K",
                 ),
             ))
-            .child(status_row(
+            .child(fact_row(
                 k,
                 "Colour",
                 match aggregate.color {
@@ -382,111 +461,236 @@ fn status_card(app: &App, k: &Kit) -> El {
                     None => "Unknown".to_owned(),
                 },
             ));
-    } else {
-        if let Some(bulb) = app.selected_bulb() {
-            body = body
-                .child(status_row(k, "Address", bulb.address.clone()))
-                .child(status_row(
-                    k,
-                    "Model",
-                    bulb.model.clone().unwrap_or_else(|| "Unknown".to_owned()),
-                ))
-                .child(status_row(
-                    k,
-                    "Power",
-                    state.power.map_or("Unknown", power_word).to_owned(),
-                ))
-                .child(status_row(
-                    k,
-                    "Mode",
-                    quality_word(light_quality_of(state.mode)),
-                ))
-                .child(status_row(
-                    k,
-                    "Brightness",
-                    state
-                        .brightness
-                        .map_or_else(|| "Unknown".to_owned(), |v| format!("{v}%")),
-                ))
-                .child(status_row(
-                    k,
-                    "Temperature",
-                    state
-                        .temperature
-                        .map_or_else(|| "Unknown".to_owned(), |v| format!("{v} K")),
-                ))
-                .child(status_row(
-                    k,
-                    "Colour",
-                    state.color.map_or_else(|| "Unknown".to_owned(), Rgb::hex),
-                ));
-        }
+    } else if let Some(bulb) = selected {
+        facts = facts
+            .child(fact_row(k, "Address", bulb.address.clone()))
+            .child(fact_row(
+                k,
+                "Model",
+                bulb.model.clone().unwrap_or_else(|| "Unknown".to_owned()),
+            ))
+            .child(fact_row(k, "Power", power))
+            .child(fact_row(
+                k,
+                "Mode",
+                quality_word(light_quality_of(state.mode)),
+            ))
+            .child(fact_row(
+                k,
+                "Brightness",
+                state
+                    .brightness
+                    .map_or_else(|| "Unknown".to_owned(), |value| format!("{value}%")),
+            ))
+            .child(fact_row(
+                k,
+                "Warmth",
+                state
+                    .temperature
+                    .map_or_else(|| "Unknown".to_owned(), |value| format!("{value} K")),
+            ))
+            .child(fact_row(
+                k,
+                "Colour",
+                state.color.map_or_else(|| "Unknown".to_owned(), Rgb::hex),
+            ));
     }
 
-    if let Some(error) = app
+    let error = app
         .selection
         .as_ref()
         .and_then(|selection| match selection {
             Selection::Bulb(id) => app.errors.get(id).cloned(),
             Selection::All => app.errors.values().next().cloned(),
-        })
-    {
+        });
+
+    let mut body = panel_body(facts);
+    if let Some(error) = error {
         body = body.child(error_text(k, &error));
     }
+    let edit = IconButton::new(&EDIT)
+        .variant(IconButtonVariant::GhostMuted)
+        .control_size(ControlSize::Small)
+        .help("Edit selected bulb")
+        .disabled(all)
+        .on_press(|app: &mut App| app.edit_selected())
+        .build(k);
+    let remove = IconButton::new(&TRASH)
+        .variant(IconButtonVariant::GhostMuted)
+        .control_size(ControlSize::Small)
+        .help("Remove selected bulb")
+        .disabled(all)
+        .on_press(|app: &mut App| {
+            if let Some(Selection::Bulb(id)) = app.selection.clone() {
+                app.open_remove(&id);
+            }
+        })
+        .build(k);
 
-    section(k, "Status", body)
+    let header = panel_header(k, title, Some(subtitle), vec![dot(tone), edit, remove]);
+    panel(k, col().w_full().child(header).child(body))
 }
 
-fn status_row(k: &Kit, label: &str, value: String) -> El {
-    row()
-        .w_full()
-        .justify_between()
-        .gap(16.0)
-        .child(
-            text(label.to_owned())
-                .font(k.ty.small)
-                .color(k.c.text_muted),
-        )
-        .child(value_text(k, value))
-}
-
-fn sync_strip(app: &App, k: &Kit) -> El {
+fn sync_panel(app: &App, k: &Kit) -> El {
     let tone = sync_status_tone(k, &app.sync.status);
-    let mut row = row()
+    let open = Button::new("Open")
+        .variant(ButtonVariant::Outline)
+        .control_size(ControlSize::Small)
+        .on_press(|app: &mut App| app.open_sync())
+        .build(k);
+    let monitor = app
+        .sync
+        .selected_monitor
+        .clone()
+        .unwrap_or_else(|| "No monitor".to_owned());
+    let derived = app
+        .sync
+        .derived
+        .map_or_else(|| "No frame yet".to_owned(), Rgb::hex);
+    let mut facts = col()
         .w_full()
-        .padding(12.0)
-        .gap(10.0)
-        .center_y()
-        .radius(k.radius.md)
-        .fill(k.c.layer_01)
-        .border(1.0, k.c.border_weak)
-        .child(dot(tone))
-        .child(
-            text("Screen sync".to_owned())
-                .font(k.ty.small_medium)
-                .color(k.c.text_base),
-        )
-        .child(
-            text(app.sync.status.label())
-                .font(k.ty.small)
-                .color(k.c.text_muted),
-        );
-    if let Some(color) = app.sync.derived {
-        row = row.child(swatch(k, rgb_color(color), 18.0)).child(
-            text(format!("{}%", app.sync.brightness))
-                .font(k.ty.mono)
-                .color(k.c.text_base),
-        );
+        .gap(0.0)
+        .child(fact_row(k, "Status", app.sync.status.label()))
+        .child(fact_row(k, "Monitor", monitor))
+        .child(fact_row(k, "Derived", derived))
+        .child(fact_row(
+            k,
+            "Brightness",
+            format!("{}% · {:.1}×", app.sync.brightness, app.sync.gain),
+        ))
+        .child(fact_row(k, "Frame age", frame_age(app.sync.last_scene_at)));
+    if let Some(error) = &app.sync.capture_error {
+        facts = facts.child(notice(k, &SYNC, error, k.c.danger));
     }
-    if app.sync.stale {
-        row = row.child(badge(k, "Stale", k.c.warning.icon));
-    }
-    row.child(
-        Button::new("Open")
-            .variant(ButtonVariant::Ghost)
-            .on_press(|app: &mut App| app.open_sync())
-            .build(k),
+    let header = panel_header(
+        k,
+        "Screen sync",
+        Some("Drive every bulb from one monitor."),
+        vec![dot(tone), open],
+    );
+    panel(k, col().w_full().child(header).child(panel_body(facts)))
+}
+
+fn bulbs_panel(app: &App, k: &Kit) -> El {
+    let header = panel_header(
+        k,
+        "Configured bulbs",
+        Some("Select a row to control it. Double-click to edit."),
+        Vec::new(),
+    );
+    let height = (28.0 + 34.0 * app.bulbs.len() as f32).clamp(110.0, 340.0);
+    let table = bulb_table(app, k);
+    panel(
+        k,
+        col()
+            .w_full()
+            .child(header)
+            .child(col().w_full().h(height).child(table.grow(1.0).min_h(0.0))),
     )
+}
+
+fn bulb_table(app: &App, k: &Kit) -> El {
+    let kit = k.clone();
+    let style = TableStyle {
+        row_height: 34.0,
+        header_height: 28.0,
+        cell_pad: 8.0,
+        font: k.ty.text_small,
+        mono: k.ty.mono,
+        header_font: k.ty.text_small_medium,
+        text: k.c.text_base,
+        muted: k.c.text_muted,
+        header_text: k.c.text_muted,
+        rule: k.c.border_weak,
+        selected: k.c.layer_04,
+        stripe: k.c.layer_02,
+    };
+    Table::new(
+        |app: &App| &app.table,
+        |app: &mut App| &mut app.table,
+        |app: &App| app.bulbs.len(),
+        |app: &App, index| {
+            app.bulbs
+                .get(index)
+                .map_or("", |bulb| bulb.id.as_str())
+                .into()
+        },
+    )
+    .column(TableColumn::new("name", "Name").flex(2.0).min(96.0))
+    .column(TableColumn::new("address", "Address").width(110.0))
+    .column(TableColumn::new("status", "State").width(92.0))
+    .column(TableColumn::new("mode", "Mode").width(68.0))
+    .column(
+        TableColumn::new("brightness", "Brightness")
+            .width(86.0)
+            .align(Align::End),
+    )
+    .column(
+        TableColumn::new("temperature", "Warmth")
+            .width(86.0)
+            .align(Align::End),
+    )
+    .column(TableColumn::new("colour", "Colour").width(90.0))
+    .cell(move |app: &App, index: usize, column: &str| {
+        let Some(bulb) = app.bulbs.get(index) else {
+            return Cell::text("");
+        };
+        let state = app.states.get(&bulb.id);
+        match column {
+            "name" => Cell::text(bulb.name.clone()),
+            "address" => Cell::text(bulb.address.clone()).mono().muted(),
+            "status" => {
+                let (label, tone) = if app.errors.contains_key(&bulb.id) {
+                    ("Error", kit.c.danger.icon)
+                } else if app.sync.unreachable.contains(&bulb.id) {
+                    ("Unreachable", kit.c.danger.icon)
+                } else {
+                    match state.and_then(|state| state.power) {
+                        Some(true) => ("On", kit.c.success.icon),
+                        Some(false) => ("Off", kit.c.text_faint),
+                        None => ("Connecting", kit.c.warning.icon),
+                    }
+                };
+                Cell::el(badge(&kit, label, tone))
+            }
+            "mode" => {
+                let mode = state.map_or(ColorMode::Unknown, |state| state.mode);
+                Cell::text(quality_word(light_quality_of(mode))).muted()
+            }
+            "brightness" => Cell::text(
+                state
+                    .and_then(|state| state.brightness)
+                    .map_or_else(|| "—".to_owned(), |value| format!("{value}%")),
+            )
+            .mono()
+            .muted(),
+            "temperature" => Cell::text(
+                state
+                    .and_then(|state| state.temperature)
+                    .map_or_else(|| "—".to_owned(), |value| format!("{value} K")),
+            )
+            .mono()
+            .muted(),
+            "colour" => state.and_then(|state| state.color).map_or_else(
+                || Cell::text("—").muted(),
+                |color| {
+                    Cell::el(
+                        row()
+                            .gap(6.0)
+                            .center_y()
+                            .child(swatch(&kit, rgb_color(color), 14.0))
+                            .child(text(color.hex()).font(kit.ty.mono).color(kit.c.text_muted)),
+                    )
+                },
+            ),
+            _ => Cell::text(""),
+        }
+    })
+    .style(style)
+    .name("Configured bulbs")
+    .on_select(|app: &mut App, id: &str, _tx| app.select_bulb(id))
+    .on_open(|app: &mut App, id: &str, _tx| app.open_edit(id))
+    .build(app, k)
 }
 
 fn empty_state(_app: &App, k: &Kit) -> El {
@@ -494,43 +698,76 @@ fn empty_state(_app: &App, k: &Kit) -> El {
         .variant(ButtonVariant::Contrast)
         .on_press(|app: &mut App| app.open_add())
         .build(k);
+    let help = Button::new("How it works")
+        .variant(ButtonVariant::Outline)
+        .on_press(|app: &mut App| app.open_help())
+        .build(k);
+    let body = row()
+        .w_full()
+        .padding(20.0)
+        .gap(28.0)
+        .items_start()
+        .child(
+            col()
+                .grow(1.0)
+                .gap(10.0)
+                .child(rune::icon(&BULB, 32.0).color(k.c.text_faint))
+                .child(
+                    text("No bulbs yet".to_owned())
+                        .font(TextStyle::new(20.0, 600.0).lh(24.0))
+                        .color(k.c.text_base),
+                )
+                .child(
+                    text("Add a Xiaomi bulb to control power, brightness, warmth and colour from one window."
+                        .to_owned())
+                        .font(k.ty.small)
+                        .color(k.c.text_muted)
+                        .wrap(),
+                )
+                .child(row().gap(8.0).child(add).child(help)),
+        )
+        .child(
+            col()
+                .w(280.0)
+                .gap(8.0)
+                .child(fact_row(k, "Storage", "XDG config"))
+                .child(fact_row(k, "Tokens", "OS keyring"))
+                .child(fact_row(k, "Protocol", "miIO over UDP"))
+                .child(fact_row(k, "Capture", "Wayland · libwayshot")),
+        );
+
     col()
         .key("empty")
         .w_full()
         .h_full()
         .center()
-        .gap(14.0)
-        .fill(k.c.page)
-        .child(icon(&BULB, 44.0).color(k.c.text_faint))
-        .child(
-            text("No bulbs yet".to_owned())
-                .font(k.ty.body_medium)
-                .color(k.c.text_base),
-        )
-        .child(
-            text(
-                "Add a Xiaomi bulb and its token. Jyoti keeps the token in the OS keyring."
-                    .to_owned(),
-            )
-            .font(k.ty.small)
-            .color(k.c.text_muted)
-            .wrap()
-            .max_w(360.0),
-        )
-        .child(add)
+        .padding(24.0)
+        .child(col().w_full().max_w(820.0).child(panel(k, body)))
 }
 
-fn state_word(state: Option<&BulbState>) -> Option<String> {
-    let state = state?;
-    Some(match state.power {
-        Some(true) => "on".to_owned(),
-        Some(false) => "off".to_owned(),
-        None => "state unknown".to_owned(),
-    })
+fn choose_mode(app: &mut App, index: usize) {
+    if index == 0 {
+        app.set_mode_white();
+    } else {
+        app.set_mode_color();
+    }
 }
 
-fn power_word(power: bool) -> &'static str {
-    if power { "On" } else { "Off" }
+fn aggregate_power_word(power: AggregatePower) -> &'static str {
+    match power {
+        AggregatePower::On => "On",
+        AggregatePower::Off => "Off",
+        AggregatePower::Mixed => "Mixed",
+        AggregatePower::Unknown => "Unknown",
+    }
+}
+
+fn state_power_word(state: &BulbState) -> &'static str {
+    match state.power {
+        Some(true) => "On",
+        Some(false) => "Off",
+        None => "Unknown",
+    }
 }
 
 fn quality_word(quality: LightQuality) -> String {

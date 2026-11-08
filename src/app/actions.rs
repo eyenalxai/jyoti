@@ -128,6 +128,7 @@ impl App {
                 self.sync.unreachable.clear();
                 self.sync.failures.clear();
                 self.selection = resolve_selection(&self.bulbs, self.selection.as_ref());
+                self.sync_table_selection();
                 let bulbs = self.bulbs.clone();
                 for bulb in bulbs {
                     self.spawn_worker(&bulb);
@@ -146,7 +147,7 @@ impl App {
         }
 
         if self.bulbs.is_empty() {
-            self.notify("No bulbs yet. Add one with Cmd/Ctrl+N.", ToastKind::Info);
+            self.notify("No bulbs yet. Add one from the sidebar.", ToastKind::Info);
             tx.wake_after(Duration::from_secs(4));
             return;
         }
@@ -321,6 +322,7 @@ impl App {
     }
 
     pub(crate) fn open_add(&mut self) {
+        self.leave_color();
         if self.startup_error.is_some() {
             self.notify(
                 "Fix or remove the unreadable config file before adding a bulb.",
@@ -336,6 +338,7 @@ impl App {
     }
 
     pub(crate) fn open_edit(&mut self, id: &str) {
+        self.leave_color();
         if !self.ensure_sync_stopped("edit a bulb") {
             return;
         }
@@ -444,6 +447,11 @@ impl App {
                 let before = self.bulbs.len();
                 self.bulbs = bulbs;
                 self.selection = Some(selection_after_add(before, &id, self.selection.as_ref()));
+                if let Some(Selection::Bulb(selected)) = &self.selection {
+                    self.table.select(selected.clone());
+                } else {
+                    self.table.clear_selection();
+                }
                 self.spawn_worker(&bulb);
                 self.screen = Screen::Dashboard;
                 self.notify(format!("Added {added_name}."), ToastKind::Success);
@@ -497,6 +505,7 @@ impl App {
     }
 
     pub(crate) fn open_remove(&mut self, id: &str) {
+        self.leave_color();
         if !self.ensure_sync_stopped("remove a bulb") {
             return;
         }
@@ -546,6 +555,7 @@ impl App {
         }
         self.selection =
             crate::bulb::selection::resolve_selection(&self.bulbs, self.selection.as_ref());
+        self.sync_table_selection();
         self.screen = Screen::Dashboard;
         self.notify(format!("Removed {}.", bulb.name), ToastKind::Success);
     }
@@ -680,10 +690,12 @@ impl App {
     }
 
     pub(crate) fn open_settings(&mut self) {
+        self.leave_color();
         self.screen = Screen::Settings;
     }
 
     pub(crate) fn open_sync(&mut self) {
+        self.leave_color();
         self.screen = Screen::Sync;
         let sent = self
             .screen_handle
@@ -750,6 +762,7 @@ impl App {
     }
 
     pub(crate) fn shutdown(&mut self) {
+        self.leave_color();
         if self.sync.status.is_active() {
             self.begin_restore();
             let deadline = Instant::now() + Duration::from_millis(2_200);
