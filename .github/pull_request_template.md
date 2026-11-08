@@ -8,4 +8,7 @@ Closes JYOT-
 
 ## Checks
 
-- [ ] `bun run check`
+- [ ] `cargo fmt --check`
+- [ ] `cargo clippy --all-targets --no-deps -- -D warnings`
+- [ ] `cargo test`
+- [ ] `cargo check`

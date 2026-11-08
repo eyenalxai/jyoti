@@ -1,0 +1,63 @@
+[workspace]
+members = ["."]
+resolver = "3"
+
+[package]
+name = "jyoti"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+repository = "https://github.com/eyenalxai/jyoti"
+description = "A native desktop control panel for Xiaomi light bulbs"
+
+[dependencies]
+rune = { git = "https://github.com/anomalyco/rune", rev = "a7f276c3630f85a06a0230295da4d2bd172d8d3b" }
+rune-kit = { git = "https://github.com/anomalyco/rune", rev = "a7f276c3630f85a06a0230295da4d2bd172d8d3b" }
+libwayshot = { version = "=0.10.0", default-features = false, features = ["egl", "screencast"] }
+r-egl-wayland = "0.7.1"
+wayland-client = "0.31"
+gl = "0.14"
+keyring = "4.2.0"
+palette = "0.7.7"
+aes = "0.9.4"
+cbc = { version = "0.2.1", features = ["alloc"] }
+md-5 = "0.11.0"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+directories = "6.0.0"
+tempfile = "3.27.0"
+uuid = { version = "1.29.1", features = ["v4", "serde"] }
+thiserror = "2.0.21"
+
+[profile.perf]
+inherits = "release"
+opt-level = 3
+codegen-units = 16
+lto = false
+debug = false
+incremental = false
+
+[workspace.lints.rust]
+unsafe_op_in_unsafe_fn = "deny"
+unused_must_use = "deny"
+
+[workspace.lints.clippy]
+dbg_macro = "deny"
+todo = "warn"
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+indexing_slicing = "deny"
+unwrap_or_default = "deny"
+get_unwrap = "deny"
+map_unwrap_or = "deny"
+unnecessary_unwrap = "deny"
+mem_forget = "deny"
+only_used_in_recursion = "deny"
+allow_attributes = "deny"
+clone_on_ref_ptr = "deny"
+mutex_atomic = "deny"
+rc_mutex = "deny"
+
+[lints]
+workspace = true

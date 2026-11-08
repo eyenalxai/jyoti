@@ -1,7 +1,5 @@
-node_modules/
-dist/
-native/build/
-*.tsbuildinfo
+/target/
+**/*.rs.bk
 
 .env
 .env.*
