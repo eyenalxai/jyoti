@@ -17,9 +17,8 @@ rows. The window is a daily utility, not a dashboard that fills a desk display.
 
 ## Decision
 
-The app opens in a 500 × 680 window with a 480 × 600 minimum and a
-520 × 760 maximum. The page is capped at 484 points and centered when the window
-grows. One `Page` frame holds the window title, one three-tab bar and the active
+The app opens in a 500 × 680 window with a 480 × 600 minimum and no maximum.
+The page is capped at 484 points and centered when the window grows. One `Page` frame holds the window title, one three-tab bar and the active
 screen:
 
 - **Control** owns the bulb selector, one light surface with a live preview,
