@@ -22,8 +22,8 @@ non-secret metadata is written to disk.
 - Uses a compact ReUI-derived window: one three-tab bar, readable type, larger
   controls, flat panels and one light-control surface, with every action on a
   pointer control.
-- Opens at 500 × 680, resizes between 480 × 600 and 520 × 760, and keeps its
-  484-point page centered.
+- Opens at 500 × 680 and can shrink to 480 × 600. The 484-point page stays
+  centered as the window grows.
 - Starts empty. It does not read the reference script's `tokens.env`.
 
 ## Requirements
