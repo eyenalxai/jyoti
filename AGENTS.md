@@ -84,7 +84,7 @@ keep `mod` lists one item per line, sorted.
   moves a live value calls `Tx::live_only()`.
 - Build only mounted rows: `virtual_rows`, with row content built inside its
   closure; `memo` for rows that rarely change. Virtualise a list when it can
-  outgrow the viewport; the configured-bulb table uses the kit table.
+  outgrow the viewport; the compact bulb and monitor selectors use the kit menu.
 - Bound every cache in entries and in bytes, counting decoded pixels, not
   encoded size. Screen-sync frames, thumbnails and colour reductions obey the
   same budget.

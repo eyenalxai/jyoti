@@ -45,7 +45,11 @@ pub fn rgb_to_oklch(rgb: Rgb) -> (f32, f32, f32) {
 pub fn oklch_to_rgb(l: f32, chroma: f32, hue: f32) -> Rgb {
     let (l, chroma, hue) = fit_to_gamut(l, chroma, hue);
     let srgb: Srgb = Srgb::from_color(Oklch::new(l, chroma, hue));
-    Rgb::new(encode(srgb.red), encode(srgb.green), encode(srgb.blue))
+    Rgb::new(
+        round_channel(srgb.red * 255.0),
+        round_channel(srgb.green * 255.0),
+        round_channel(srgb.blue * 255.0),
+    )
 }
 
 pub fn kelvin_to_rgb(kelvin: u16) -> Rgb {
@@ -102,7 +106,11 @@ pub fn hsb_to_rgb(hsb: Hsb) -> Rgb {
         (hsb.value / 100.0).clamp(0.0, 1.0),
     );
     let srgb: Srgb = Srgb::from_color(hsv);
-    Rgb::new(encode(srgb.red), encode(srgb.green), encode(srgb.blue))
+    Rgb::new(
+        round_channel(srgb.red * 255.0),
+        round_channel(srgb.green * 255.0),
+        round_channel(srgb.blue * 255.0),
+    )
 }
 
 fn fit_to_gamut(l: f32, chroma: f32, hue: f32) -> (f32, f32, f32) {
@@ -138,16 +146,24 @@ fn in_gamut(l: f32, chroma: f32, hue: f32) -> bool {
         && srgb.blue <= 1.0 + EPSILON
 }
 
-fn encode(value: f32) -> u8 {
-    let value = value.clamp(0.0, 1.0);
-    let encoded = if value <= 0.003_130_8 {
-        value * 12.92
-    } else {
-        1.055 * value.powf(1.0 / 2.4) - 0.055
-    };
-    (encoded * 255.0).round().clamp(0.0, 255.0) as u8
-}
-
 fn round_channel(value: f32) -> u8 {
     value.round().clamp(0.0, 255.0) as u8
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn hsb_round_trips_an_encoded_colour() {
+        let color = Rgb::new(255, 96, 96);
+        assert_eq!(hsb_to_rgb(rgb_to_hsb(color)), color);
+    }
+
+    #[test]
+    fn oklch_round_trips_an_encoded_colour() {
+        let color = Rgb::new(128, 128, 128);
+        let (l, chroma, hue) = rgb_to_oklch(color);
+        assert_eq!(oklch_to_rgb(l, chroma, hue), color);
+    }
 }

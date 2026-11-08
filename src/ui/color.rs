@@ -1,13 +1,15 @@
 use std::time::Duration;
 
 use rune::{El, ScrollSpec, TextStyle, Tx, col, row, text};
-use rune_kit::{Button, ButtonVariant, ControlSize, Divider, Kit, TextInput};
+use rune_kit::{
+    Button, ButtonVariant, ControlSize, Divider, IconButton, IconButtonVariant, Kit, TextInput,
+};
 
 use crate::app::App;
 use crate::app::state::ColorTab;
 use crate::ui::widget::{
-    BULB, badge, notice, panel, panel_body, panel_footer, panel_header, rgb_color, segmented,
-    setting_row, slider, swatch,
+    BACK, BULB, notice, panel, panel_body, panel_footer, panel_header, rgb_color, segmented,
+    slider, subpage_header, swatch,
 };
 
 fn choose_tab(app: &mut App, index: usize) {
@@ -20,13 +22,14 @@ fn choose_tab(app: &mut App, index: usize) {
 
 pub fn view(app: &App, k: &Kit) -> El {
     let preview = app.color.preview;
-    let cancel = Button::new("Cancel")
-        .variant(ButtonVariant::Ghost)
-        .on_press(|app: &mut App| app.cancel_color())
+    let back = IconButton::new(&BACK)
+        .variant(IconButtonVariant::GhostMuted)
+        .control_size(ControlSize::Regular)
+        .help("Back")
+        .on_press(|app: &mut App| app.back())
         .build(k);
     let done = Button::new("Keep colour")
         .variant(ButtonVariant::Contrast)
-        .control_size(ControlSize::Regular)
         .on_press(|app: &mut App| app.commit_color())
         .build(k);
 
@@ -56,141 +59,85 @@ pub fn view(app: &App, k: &Kit) -> El {
         &["Hue / saturation", "RGB"],
         selected_tab,
         "Colour picker mode",
-        320.0,
+        400.0,
         choose_tab,
     );
 
-    let preview_column = col()
-        .w(300.0)
-        .gap(10.0)
-        .child(swatch(k, rgb_color(preview), 140.0))
+    let mut details = col().w_full().gap(10.0);
+    if let Some(error) = &app.color.error {
+        details = details.child(notice(k, &BULB, error, k.c.danger));
+    }
+    details = details
         .child(
-            text(preview.hex())
-                .font(TextStyle::new(24.0, 600.0).lh(28.0))
-                .color(k.c.text_base),
+            row()
+                .w_full()
+                .gap(12.0)
+                .center_y()
+                .child(swatch(k, rgb_color(preview), 64.0))
+                .child(
+                    col()
+                        .grow(1.0)
+                        .min_w(0.0)
+                        .gap(2.0)
+                        .child(
+                            text(preview.hex())
+                                .font(TextStyle::new(20.0, 600.0).lh(24.0))
+                                .color(k.c.text_base),
+                        )
+                        .child(
+                            text(format!(
+                                "Applying to {} {}",
+                                app.color.targets.len(),
+                                if app.color.targets.len() == 1 {
+                                    "bulb"
+                                } else {
+                                    "bulbs"
+                                }
+                            ))
+                            .font(k.ty.small)
+                            .color(k.c.text_muted),
+                        ),
+                ),
         )
-        .child(
-            text(format!(
-                "Applying to {} {}",
-                app.color.targets.len(),
-                if app.color.targets.len() == 1 {
-                    "bulb"
-                } else {
-                    "bulbs"
-                }
-            ))
-            .font(k.ty.small)
-            .color(k.c.text_muted),
-        )
-        .child(row().gap(8.0).center_y().child(hex).child(apply));
-    let preview_column = if let Some(error) = &app.color.error {
-        preview_column.child(notice(k, &BULB, error, k.c.danger))
-    } else {
-        preview_column
-    };
-
-    let controls = match app.color.tab {
-        ColorTab::Hs => col()
-            .w_full()
-            .gap(0.0)
-            .child(setting_row(
-                k,
-                "Hue",
-                "0° to 360° around the colour wheel.",
-                slider_control(
+        .child(row().w_full().gap(8.0).center_y().child(hex).child(apply))
+        .child(Divider::horizontal().build(k))
+        .child(tab)
+        .child(Divider::horizontal().build(k))
+        .child(match app.color.tab {
+            ColorTab::Hs => col()
+                .w_full()
+                .gap(8.0)
+                .child(slider_block(
                     k,
-                    "hue",
-                    app.color.hue / 360.0,
                     "Hue",
-                    1.0 / 360.0,
                     format!("{:.0}°", app.color.hue),
+                    app.color.hue / 360.0,
+                    "hue",
+                    1.0 / 360.0,
                     |app: &mut App, fraction| {
                         app.color.hue = fraction * 360.0;
                         app.update_color_from_hsb();
                     },
-                ),
-            ))
-            .child(Divider::horizontal().build(k))
-            .child(setting_row(
-                k,
-                "Saturation",
-                "0% is grey; 100% is the pure hue.",
-                slider_control(
+                ))
+                .child(slider_block(
                     k,
-                    "saturation",
-                    app.color.saturation / 100.0,
                     "Saturation",
-                    1.0 / 100.0,
                     format!("{:.0}%", app.color.saturation),
+                    app.color.saturation / 100.0,
+                    "saturation",
+                    1.0 / 100.0,
                     |app: &mut App, fraction| {
                         app.color.saturation = fraction * 100.0;
                         app.update_color_from_hsb();
                     },
-                ),
-            )),
-        ColorTab::Rgb => col()
-            .w_full()
-            .gap(0.0)
-            .child(setting_row(
-                k,
-                "Red",
-                "The red channel, 0 to 255.",
-                channel_control(app, k, "red", Channel::Red),
-            ))
-            .child(Divider::horizontal().build(k))
-            .child(setting_row(
-                k,
-                "Green",
-                "The green channel, 0 to 255.",
-                channel_control(app, k, "green", Channel::Green),
-            ))
-            .child(Divider::horizontal().build(k))
-            .child(setting_row(
-                k,
-                "Blue",
-                "The blue channel, 0 to 255.",
-                channel_control(app, k, "blue", Channel::Blue),
-            )),
-    };
-
-    let right = col()
-        .grow(1.0)
-        .min_w(0.0)
-        .gap(0.0)
-        .child(setting_row(
-            k,
-            "Picker",
-            "Edit hue and saturation, or the RGB channels.",
-            tab,
-        ))
-        .child(Divider::horizontal().build(k))
-        .child(controls);
-
-    let body = col()
-        .w_full()
-        .child(panel_body(
-            row()
+                )),
+            ColorTab::Rgb => col()
                 .w_full()
-                .gap(16.0)
-                .items_start()
-                .child(preview_column)
-                .child(right),
-        ))
-        .child(
-            col()
-                .w_full()
-                .px(14.0)
-                .pb(14.0)
                 .gap(8.0)
-                .child(
-                    text("Changes preview on the bulbs as you adjust. Keep colour stores it; Cancel restores the previous colour and mode."
-                        .to_owned())
-                        .font(k.ty.small)
-                        .color(k.c.text_muted)
-                        .wrap(),
-                ),
-        )
-        .child(panel_footer(k, vec![cancel, done]));
+                .child(channel_block(app, k, Channel::Red))
+                .child(channel_block(app, k, Channel::Green))
+                .child(channel_block(app, k, Channel::Blue)),
+        });
 
     let panel = panel(
         k,
@@ -198,19 +145,26 @@ pub fn view(app: &App, k: &Kit) -> El {
             .w_full()
             .child(panel_header(
                 k,
-                "Colour picker",
-                Some("Preview live, then keep or restore the previous light."),
-                vec![badge(k, "Live preview", k.c.info.icon)],
+                "Picker",
+                Some("Preview live. Keep colour stores it; Back restores the previous light."),
+                Vec::new(),
             ))
-            .child(body),
+            .child(panel_body(details))
+            .child(panel_footer(k, vec![done])),
     );
 
     let scroll = col()
         .key("colour")
         .w_full()
-        .padding(18.0)
-        .gap(14.0)
-        .child(col().w_full().max_w(1040.0).child(panel))
+        .padding(16.0)
+        .gap(12.0)
+        .child(subpage_header(
+            k,
+            "Colour",
+            "Preview live before keeping it.",
+            back,
+        ))
+        .child(panel)
         .scroll(ScrollSpec {
             stick_bottom: false,
         })
@@ -220,25 +174,31 @@ pub fn view(app: &App, k: &Kit) -> El {
     col().w_full().h_full().min_h(0.0).child(scroll)
 }
 
-fn slider_control(
+fn slider_block(
     k: &Kit,
-    key: &str,
-    value: f32,
     label: &str,
-    step: f32,
     display: String,
+    value: f32,
+    key: &str,
+    step: f32,
     on_change: impl Fn(&mut App, f32) + 'static,
 ) -> El {
     col()
-        .w(320.0)
+        .w_full()
         .gap(4.0)
         .child(
             row()
                 .w_full()
-                .justify_end()
+                .justify_between()
+                .gap(8.0)
+                .child(
+                    text(label.to_owned())
+                        .font(k.ty.ui_medium)
+                        .color(k.c.text_base),
+                )
                 .child(text(display).font(k.ty.mono).color(k.c.text_base)),
         )
-        .child(slider(k, key, value, label, step, 320.0, on_change))
+        .child(slider(k, key, value, label, step, 400.0, on_change))
 }
 
 enum Channel {
@@ -247,28 +207,28 @@ enum Channel {
     Blue,
 }
 
-fn channel_control(app: &App, k: &Kit, key: &str, channel: Channel) -> El {
-    let (value, label) = match channel {
-        Channel::Red => (app.color.preview.red, "Red"),
-        Channel::Green => (app.color.preview.green, "Green"),
-        Channel::Blue => (app.color.preview.blue, "Blue"),
+fn channel_block(app: &App, k: &Kit, channel: Channel) -> El {
+    let (value, label, key) = match channel {
+        Channel::Red => (app.color.preview.red, "Red", "red"),
+        Channel::Green => (app.color.preview.green, "Green", "green"),
+        Channel::Blue => (app.color.preview.blue, "Blue", "blue"),
     };
-    let channel = match channel {
+    let index = match channel {
         Channel::Red => 0,
         Channel::Green => 1,
         Channel::Blue => 2,
     };
-    slider_control(
+    slider_block(
         k,
-        key,
-        f32::from(value) / 255.0,
         label,
-        1.0 / 255.0,
         format!("{value}"),
+        f32::from(value) / 255.0,
+        key,
+        1.0 / 255.0,
         move |app: &mut App, fraction| {
             let mut color = app.color.preview;
             let next = (fraction * 255.0).round() as u8;
-            match channel {
+            match index {
                 0 => color.red = next,
                 1 => color.green = next,
                 _ => color.blue = next,

@@ -47,6 +47,13 @@ const SCENES: &[(&str, SceneFn)] = &[
         }
     }),
     ("color", |app| app.open_color()),
+    ("color-control", |app| {
+        app.screen = Screen::Dashboard;
+        for state in app.states.values_mut() {
+            state.mode = crate::bulb::model::ColorMode::Color;
+            state.color = Some(Rgb::new(255, 96, 96));
+        }
+    }),
     ("remove", |app| {
         if let Some(id) = app.bulbs.first().map(|bulb| bulb.id.clone()) {
             app.open_remove(&id);
@@ -80,6 +87,14 @@ const SCENES: &[(&str, SceneFn)] = &[
         });
         app.sync.last_scene_at = Some(Instant::now());
     }),
+    ("picker", |app| {
+        app.screen = Screen::Dashboard;
+        app.bulb_picker_open = true;
+    }),
+    ("menu", |app| {
+        app.screen = Screen::Dashboard;
+        app.bulb_menu_open = true;
+    }),
     ("toast", |app| {
         app.screen = Screen::Dashboard;
         app.notify("The bulb at 192.168.1.42 did not answer.", ToastKind::Error);
@@ -91,11 +106,11 @@ const SCENES: &[(&str, SceneFn)] = &[
 fn main() {
     rune::set_app_id("dev.jyoti.Jyoti");
     rune::App::new(AppSpec {
-        min_size: Some((1080.0, 720.0)),
+        min_size: Some((480.0, 600.0)),
         setup: Some(setup),
         poll: Some(poll),
         scenes: SCENES,
-        ..AppSpec::new("jyoti", (1120.0, 760.0), App::new, ui::view)
+        ..AppSpec::new("jyoti", (500.0, 640.0), App::new, ui::view)
     })
     .on_quit(on_quit)
     .run();

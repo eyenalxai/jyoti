@@ -51,15 +51,15 @@ the reference implementation.
 
 A selection that stands for every configured bulb at once. It is not a bulb: it
 has no ID, address, token or stored state, so edit and remove do not act on it.
-The row sits first in the sidebar. It is the default selection when two or more
+The bulb selector lists it first. It is the default selection when two or more
 bulbs exist. Its state is the aggregate of the bulbs:
 power is on, off or mixed; quality is White or Colour when every reachable bulb
 agrees and mixed when they do not. When the bulbs disagree on the mode the mode
 switch shows mixed and no mode's settings are drawn; choosing White or Colour
 applies that mode to every bulb. Power uses a quorum: if every reachable bulb is
 on, one toggle turns them all off; otherwise it turns them all on. Brightness
-and warmth apply one absolute value to every selected bulb; the dashboard shows
-the aggregate span and starts each slider at its high end. Colour applies one
+and warmth apply one absolute value to every selected bulb; the control screen
+shows the aggregate span and starts each slider at its high end. Colour applies one
 packed colour to every bulb. Each bulb is addressed independently,
 so a slow bulb does not delay the others; a failure names the bulbs that failed
 while the successes stay applied.
@@ -72,9 +72,9 @@ a command fails; it is not cached across runs.
 
 ## Unreachable
 
-A bulb that did not answer its hello or command before the timeout. The sidebar
-keeps the bulb and its metadata, the row shows a warning dot, the dashboard
-shows the failure inline, and Refresh retries.
+A bulb that did not answer its hello or command before the timeout. The control
+screen keeps the bulb and its metadata, the selector shows its state, the
+summary shows the failure inline, and Refresh retries.
 
 ## Restored
 
@@ -109,6 +109,13 @@ edits hue and saturation or the RGB channels and accepts a six-digit hex value.
 Every value it can produce is an sRGB colour, so the swatch is exactly what is
 sent.
 
+## Colour intensity
+
+The saturation of the current packed colour, from 0% grey to 100% full hue. The
+Control slider preserves each selected bulb's hue and value while changing its
+saturation, so a light red can become a vivid red without changing the colour
+family. The picker exposes the same value as Saturation.
+
 ## Mode
 
 The light's active side: White uses colour temperature, Colour uses packed RGB.
@@ -132,8 +139,8 @@ The aggregate state when the selected bulbs disagree on power, mode or colour.
 ## Aggregate
 
 The computed state of every selected bulb: total, reachable, failed, power,
-quality, brightness span, temperature span and colour. The dashboard draws it
-when All bulbs is selected.
+quality, brightness span, temperature span and colour. The control screen draws
+it when All bulbs is selected.
 
 ## Default selection
 
@@ -141,21 +148,23 @@ All bulbs on first load when two or more bulbs exist. Choosing a bulb overrides
 it until the next launch; adding the second bulb switches to All, adding a later
 bulb keeps the current choice.
 
-## Dashboard
+## Control
 
-The main page: a KPI row, the configured-bulb table, and the selected bulb's
-power, light mode, brightness, warmth or colour beside its connection facts.
+The main screen: a bulb selector, a compact power and state summary, and one
+light surface for mode, brightness, warmth or colour. The overflow menu owns
+refresh, edit and remove.
 
-## Sidebar
+## Bulb selector
 
-The list of All bulbs and every configured bulb. A row shows the name, address,
-power and a status dot. Selecting a row opens it on the dashboard; the table
-also opens Edit on a double-click.
+The dropdown at the top of Control. It lists All bulbs and every configured
+bulb, with the selected choice shown in the trigger. Selecting a choice changes
+the light surface; there is no second bulb list.
 
-## Toolbar
+## Tabs
 
-The app header. It shows the current page and, on Overview, Refresh and Add
-bulb. The sidebar owns navigation, screen sync, settings and help.
+The four section buttons under the window title: Control, Sync, Settings and
+Help. They are the only navigation. A form, the colour picker and the remove
+confirmation replace the tabs and carry a Back control.
 
 ## Toast
 
@@ -182,14 +191,14 @@ scene instead of replaying it.
 
 ## Sync strip
 
-The banner above the dashboard while a sync run exists or has just stopped. It
+The notice on the Sync screen while a run exists or has just stopped. It
 carries the state, derived colour, sync brightness and a stale marker.
 
 ## Sync page
 
-The page opened from the sidebar or the Screen sync card. It owns start/stop,
-pause, the captured monitor,
-the gain and the restore report. It is the only place the sync controls live.
+The screen opened from the Sync tab. It owns start/stop, pause, the captured
+monitor, the gain and the restore report. It is the only place the sync controls
+live.
 
 ## Captured monitor
 
@@ -213,7 +222,7 @@ and the gain.
 
 ## Sync brightness gain
 
-The multiplier applied to the rounded envelope result, from `0.5` to `2.0` in
+The multiplier applied to the rounded envelope result, from `0.5` to `4.0` in
 `0.1` steps. It is `1.0` on a first run and is remembered across launches in the
 preferences file. It is adjusted on the Sync page. The gained brightness is
 clamped at `100%`; the 8% floor applies to the result, so a gain above `1.0`
@@ -256,7 +265,7 @@ named.
 
 ## Revert
 
-Leaving the colour page with Cancel restores the colour and mode each
+Leaving the colour page with Back restores the colour and mode each
 target had when the page opened. Done keeps the current colour.
 
 ## miIO session

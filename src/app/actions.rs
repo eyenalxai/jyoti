@@ -3,7 +3,7 @@ use std::time::{Duration, Instant};
 use rune::{TextEdit, Tx};
 
 use crate::app::App;
-use crate::app::state::{ColorState, ColorTab, FormMode, FormState, Screen, Toast, ToastKind};
+use crate::app::state::{FormMode, FormState, Screen, Toast, ToastKind};
 use crate::bulb::aggregate::AggregatePower;
 use crate::bulb::model::{
     Bulb, BulbField, BulbState, ColorMode, NEUTRAL_TEMPERATURE, Rgb, new_id, trim_model,
@@ -12,9 +12,7 @@ use crate::bulb::model::{
 use crate::bulb::selection::{Selection, resolve_selection, selection_after_add};
 use crate::bulb::worker::{Command, WorkerEvent};
 use crate::screen::capture::ScreenCommand;
-use crate::screen::color::{Hsb, hsb_to_rgb, rgb_to_hsb};
 use crate::screen::gain::normalize_sync_gain;
-use crate::screen::sync::{RestoreControl, restore_control};
 
 impl App {
     fn ensure_sync_stopped(&mut self, action: &str) -> bool {
@@ -128,7 +126,6 @@ impl App {
                 self.sync.unreachable.clear();
                 self.sync.failures.clear();
                 self.selection = resolve_selection(&self.bulbs, self.selection.as_ref());
-                self.sync_table_selection();
                 let bulbs = self.bulbs.clone();
                 for bulb in bulbs {
                     self.spawn_worker(&bulb);
@@ -147,7 +144,10 @@ impl App {
         }
 
         if self.bulbs.is_empty() {
-            self.notify("No bulbs yet. Add one from the sidebar.", ToastKind::Info);
+            self.notify(
+                "No bulbs yet. Add one from the control screen.",
+                ToastKind::Info,
+            );
             tx.wake_after(Duration::from_secs(4));
             return;
         }
@@ -271,7 +271,7 @@ impl App {
         self.mark_pending();
     }
 
-    fn mark_pending(&mut self) {
+    pub(crate) fn mark_pending(&mut self) {
         self.dashboard.due_at = Some(Instant::now() + Duration::from_millis(160));
     }
 
@@ -447,11 +447,6 @@ impl App {
                 let before = self.bulbs.len();
                 self.bulbs = bulbs;
                 self.selection = Some(selection_after_add(before, &id, self.selection.as_ref()));
-                if let Some(Selection::Bulb(selected)) = &self.selection {
-                    self.table.select(selected.clone());
-                } else {
-                    self.table.clear_selection();
-                }
                 self.spawn_worker(&bulb);
                 self.screen = Screen::Dashboard;
                 self.notify(format!("Added {added_name}."), ToastKind::Success);
@@ -555,138 +550,8 @@ impl App {
         }
         self.selection =
             crate::bulb::selection::resolve_selection(&self.bulbs, self.selection.as_ref());
-        self.sync_table_selection();
         self.screen = Screen::Dashboard;
         self.notify(format!("Removed {}.", bulb.name), ToastKind::Success);
-    }
-
-    pub(crate) fn open_color(&mut self) {
-        if self.sync.status.is_busy() {
-            self.notify(
-                "Screen sync owns colour and temperature while it runs.",
-                ToastKind::Info,
-            );
-            return;
-        }
-        let targets = self.selected_ids();
-        if targets.is_empty() {
-            return;
-        }
-        let first = targets
-            .iter()
-            .find_map(|id| self.states.get(id).and_then(|state| state.color))
-            .unwrap_or(Rgb::WHITE);
-        let hsb = rgb_to_hsb(first);
-        let revert = targets
-            .iter()
-            .map(|id| {
-                let fallback = BulbState::default();
-                (id.clone(), self.states.get(id).cloned().unwrap_or(fallback))
-            })
-            .collect();
-        self.color = ColorState {
-            targets,
-            tab: if first == Rgb::BLACK {
-                ColorTab::Rgb
-            } else {
-                ColorTab::Hs
-            },
-            hue: hsb.hue,
-            saturation: hsb.saturation,
-            value: hsb.value,
-            hex: TextEdit::new(first.hex()),
-            preview: first,
-            error: None,
-            revert,
-        };
-        self.screen = Screen::Color;
-    }
-
-    pub(crate) fn update_color_from_hsb(&mut self) {
-        let hsb = Hsb {
-            hue: self.color.hue,
-            saturation: self.color.saturation,
-            value: self.color.value,
-        };
-        let color = hsb_to_rgb(hsb);
-        self.color.preview = color;
-        self.color.hex = TextEdit::new(color.hex());
-        self.color.error = None;
-        self.apply_color_targets(color);
-    }
-
-    pub(crate) fn update_color_from_rgb(&mut self, color: Rgb) {
-        let hsb = rgb_to_hsb(color);
-        self.color.hue = hsb.hue;
-        self.color.saturation = hsb.saturation;
-        self.color.value = hsb.value;
-        self.color.preview = color;
-        self.color.hex = TextEdit::new(color.hex());
-        self.color.error = None;
-        self.apply_color_targets(color);
-    }
-
-    pub(crate) fn update_color_from_hex(&mut self) {
-        let value = self.color.hex.text.clone();
-        let Some(color) = Rgb::parse_hex(&value) else {
-            self.color.error = Some("Use a six-digit hex colour, for example #FF8A00.".to_owned());
-            return;
-        };
-        let hsb = rgb_to_hsb(color);
-        self.color.hue = hsb.hue;
-        self.color.saturation = hsb.saturation;
-        self.color.value = hsb.value;
-        self.color.preview = color;
-        self.color.error = None;
-        self.apply_color_targets(color);
-    }
-
-    fn apply_color_targets(&mut self, color: Rgb) {
-        let targets = self.color.targets.clone();
-        for id in targets {
-            if let Some(state) = self.states.get_mut(&id) {
-                state.mode = ColorMode::Color;
-                state.color = Some(color);
-            }
-            self.dashboard.pending_color.insert(id, color);
-        }
-        self.mark_pending();
-    }
-
-    pub(crate) fn cancel_color(&mut self) {
-        let targets = self.color.targets.clone();
-        let revert = self.color.revert.clone();
-        for id in &targets {
-            self.dashboard.pending_color.remove(id);
-            self.dashboard.pending_temperature.remove(id);
-            self.dashboard.pending_brightness.remove(id);
-        }
-        for id in targets {
-            let Some(previous) = revert.get(&id).cloned() else {
-                continue;
-            };
-            self.states.insert(id.clone(), previous.clone());
-            match restore_control(&previous) {
-                Some(RestoreControl::Color(color)) => {
-                    self.send(&id, Command::SetColor(color));
-                }
-                Some(RestoreControl::Temperature(temperature)) => {
-                    self.send(&id, Command::SetTemperature(temperature));
-                }
-                None => {}
-            }
-        }
-        self.screen = Screen::Dashboard;
-    }
-
-    pub(crate) fn commit_color(&mut self) {
-        if Rgb::parse_hex(&self.color.hex.text).is_some() {
-            self.update_color_from_hex();
-        }
-        if self.color.error.is_some() {
-            return;
-        }
-        self.screen = Screen::Dashboard;
     }
 
     pub(crate) fn open_settings(&mut self) {
@@ -707,6 +572,7 @@ impl App {
     }
 
     pub(crate) fn back(&mut self) {
+        self.close_overlays();
         if self.screen == Screen::Color {
             self.cancel_color();
         } else {

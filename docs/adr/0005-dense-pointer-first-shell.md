@@ -1,7 +1,7 @@
 # 5. The shell is dense and pointer-first
 
 Date: 2026-11-08
-Status: Accepted
+Status: Superseded by 6
 
 ## Context
 

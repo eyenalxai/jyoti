@@ -10,8 +10,8 @@ non-secret metadata is written to disk.
 
 ## What it does
 
-- Lists any number of bulbs, with live power, brightness, colour temperature and
-  RGB colour.
+- Lists any number of bulbs, with live power, brightness, colour temperature,
+  RGB colour and colour intensity.
 - Adds, edits and removes bulbs without touching a config file by hand.
 - Sends power, brightness, warmth and colour changes to the selected bulb, or to
   every bulb when **All bulbs** is selected, over UDP.
@@ -19,8 +19,9 @@ non-secret metadata is written to disk.
 - Keeps every action on a visible pointer control. A transient toast reports a
   bulb that does not answer.
 - Follows the desktop's light or dark appearance.
-- Uses a dense ReUI-derived shell: grouped sidebar, KPI tiles, flat panels and
-  a compact bulb table, with every action on a pointer control.
+- Uses a compact ReUI-derived window: one four-tab bar, a bulb selector, flat
+  panels and one light-control surface, with every action on a pointer control.
+- Opens at 500 × 640 and can shrink to 480 × 600.
 - Starts empty. It does not read the reference script's `tokens.env`.
 
 ## Requirements
@@ -49,9 +50,9 @@ is unavailable.
 cargo run --release
 ```
 
-The first screen is empty. Choose **Add bulb**, enter the bulb's name, IP
-address and 32-character token, and save. The token is written to the keyring;
-the config file receives the name and address.
+The first screen is empty. Choose **Add bulb** on Control, enter the bulb's
+name, IP address and 32-character token, and save. The token is written to the
+keyring; the config file receives the name and address.
 
 For a quick UI check without touching the configured bulbs:
 
@@ -59,8 +60,9 @@ For a quick UI check without touching the configured bulbs:
 cargo run -- --demo --scene dashboard --snap dashboard.png
 ```
 
-`--scene` accepts `dashboard`, `empty`, `form`, `edit`, `color`, `remove`,
-`sync`, `sync-live`, `settings`, `help` and `toast`. `--list-scenes` prints them.
+`--scene` accepts `dashboard`, `empty`, `form`, `edit`, `color`, `color-control`,
+`remove`, `sync`, `sync-live`, `settings`, `help`, `toast`, `picker` and `menu`.
+`--list-scenes` prints them.
 
 ## Storage and security
 
@@ -91,7 +93,7 @@ the CPU reducer.
   with its chroma raised toward the cluster's 75th percentile. It is sent as it
   is, white, grey and black included.
 - Sync brightness follows the frame's mean drive through an 8–100% envelope and
-  the gain. The gain scales only the brightness, from 50% to 200% in 0.1 steps,
+  the gain. The gain scales only the brightness, from 50% to 400% in 0.1 steps,
   and is remembered in `prefs.json`.
 - The flash guard holds brightness for two seconds when the target reverses by
   more than 25 points. Colour keeps updating.
@@ -115,7 +117,8 @@ src/
   app.rs               app state, poll and lifecycle
   app/
     state.rs           screen, form, colour, toast and sync state
-    selection.rs       sidebar and table selection, colour-page exit
+    selection.rs       bulb selection, overlay state, colour-page exit
+    color.rs           colour preview, intensity and the picker screen
     actions.rs         bulb CRUD, controls, forms and toasts
     sync.rs            sync run, scene application and restore
   bulb/
@@ -143,13 +146,13 @@ src/
     monitor.rs         monitor and scene records
     sync.rs            sync status and restore report
   ui/
-    shell.rs           sidebar, toolbar and split view
-    dashboard.rs       KPI row, bulb table, power and light controls
-    forms.rs           add, edit and remove pages
+    shell.rs           compact app frame and section tabs
+    dashboard.rs       bulb selector and one light-control surface
+    forms.rs           add, edit and remove screens
     color.rs           hue/saturation and RGB colour picker
-    sync.rs            screen sync page
-    settings.rs        preferences, storage and about
-    help.rs            help page
+    sync.rs            screen sync screen
+    settings.rs        appearance, storage and about
+    help.rs            accordion help screen
     toast.rs           transient notifications
     widget.rs          icons and shared controls
 docs/

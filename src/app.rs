@@ -1,4 +1,5 @@
 mod actions;
+mod color;
 mod selection;
 pub(crate) mod state;
 mod sync;
@@ -8,8 +9,6 @@ use std::sync::mpsc::{self, Receiver, Sender};
 use std::time::{Duration, Instant};
 
 use rune::{Tx, Waker};
-use rune_kit::TableState;
-use rune_kit::shell::PaneState;
 
 use crate::app::state::{
     ColorState, Dashboard, FormState, Screen, SyncState, Toast, ToastKind, toast_duration,
@@ -43,8 +42,10 @@ pub struct App {
     pub worker_sender: Sender<WorkerEvent>,
     pub screen_handle: Option<ScreenHandle>,
     pub waker: Option<Waker>,
-    pub sidebar: PaneState,
-    pub table: TableState,
+    pub bulb_picker_open: bool,
+    pub bulb_menu_open: bool,
+    pub monitor_picker_open: bool,
+    pub help_open: Option<usize>,
     pub started: bool,
     pub startup_error: Option<String>,
     pub demo: bool,
@@ -84,11 +85,6 @@ impl App {
             gain: if demo { 1.0 } else { preferences.sync_gain },
             ..SyncState::default()
         };
-        let mut table = TableState::new().key("bulbs");
-        if let Some(Selection::Bulb(id)) = &selection {
-            table.select(id.clone());
-        }
-
         Self {
             config,
             store,
@@ -110,8 +106,10 @@ impl App {
             worker_sender,
             screen_handle: None,
             waker: None,
-            sidebar: PaneState::new(252.0).range(210.0, 320.0),
-            table,
+            bulb_picker_open: false,
+            bulb_menu_open: false,
+            monitor_picker_open: false,
+            help_open: Some(0),
             started: false,
             startup_error,
             demo,
