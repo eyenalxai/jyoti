@@ -1,0 +1,241 @@
+use std::fs;
+use std::io::Write;
+use std::path::{Path, PathBuf};
+
+use serde::{Deserialize, Serialize};
+use tempfile::NamedTempFile;
+use uuid::Uuid;
+
+use crate::bulb::model::{Bulb, BulbFile};
+use crate::error::StoreError;
+use crate::screen::gain::{SYNC_GAIN_DEFAULT, normalize_sync_gain};
+
+#[derive(Clone, Debug)]
+pub struct BulbStore {
+    path: PathBuf,
+}
+
+impl BulbStore {
+    pub fn new(path: PathBuf) -> Self {
+        Self { path }
+    }
+
+    pub fn load(&self) -> Result<Vec<Bulb>, StoreError> {
+        let text = read_text(&self.path)?;
+        let Some(text) = text else {
+            return Ok(Vec::new());
+        };
+
+        let file: BulbFile = serde_json::from_str(&text).map_err(|source| StoreError::Decode {
+            path: self.path.clone(),
+            source,
+        })?;
+
+        if file.version != BulbFile::VERSION {
+            return Err(StoreError::Invalid {
+                path: self.path.clone(),
+                message: format!(
+                    "{} uses bulb file version {}, but this app reads version {}.",
+                    self.path.display(),
+                    file.version,
+                    BulbFile::VERSION
+                ),
+            });
+        }
+
+        let mut ids = std::collections::HashSet::new();
+        for bulb in &file.bulbs {
+            if Uuid::parse_str(&bulb.id).is_err() {
+                return Err(StoreError::Invalid {
+                    path: self.path.clone(),
+                    message: format!(
+                        "{} contains a bulb with an invalid ID. Fix or remove it, then refresh.",
+                        self.path.display()
+                    ),
+                });
+            }
+            if bulb.name.trim().is_empty() || bulb.address.trim().is_empty() {
+                return Err(StoreError::Invalid {
+                    path: self.path.clone(),
+                    message: format!(
+                        "{} contains a bulb with no name or address. Fix or remove it, then refresh.",
+                        self.path.display()
+                    ),
+                });
+            }
+            if !ids.insert(bulb.id.clone()) {
+                return Err(StoreError::DuplicateId {
+                    path: self.path.clone(),
+                });
+            }
+        }
+
+        Ok(file.bulbs)
+    }
+
+    pub fn save(&self, bulbs: &[Bulb]) -> Result<(), StoreError> {
+        let file = BulbFile {
+            version: BulbFile::VERSION,
+            bulbs: bulbs.to_vec(),
+        };
+        let text = serde_json::to_string_pretty(&file).map_err(|source| StoreError::Decode {
+            path: self.path.clone(),
+            source,
+        })?;
+        write_text(&self.path, &format!("{text}\n"))
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Preferences {
+    pub sync_gain: f32,
+}
+
+impl Default for Preferences {
+    fn default() -> Self {
+        Self {
+            sync_gain: SYNC_GAIN_DEFAULT,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct PreferencesStore {
+    path: PathBuf,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct PreferencesFile {
+    version: u8,
+    #[serde(rename = "syncGain")]
+    sync_gain: f32,
+}
+
+impl PreferencesStore {
+    pub fn new(path: PathBuf) -> Self {
+        Self { path }
+    }
+
+    pub fn load(&self) -> Preferences {
+        let Ok(Some(text)) = read_text(&self.path) else {
+            return Preferences::default();
+        };
+        let Ok(file) = serde_json::from_str::<PreferencesFile>(&text) else {
+            return Preferences::default();
+        };
+        if file.version != 1 {
+            return Preferences::default();
+        }
+        Preferences {
+            sync_gain: normalize_sync_gain(file.sync_gain),
+        }
+    }
+
+    pub fn save(&self, preferences: Preferences) -> Result<(), StoreError> {
+        let file = PreferencesFile {
+            version: 1,
+            sync_gain: normalize_sync_gain(preferences.sync_gain),
+        };
+        let text = serde_json::to_string_pretty(&file).map_err(|source| StoreError::Decode {
+            path: self.path.clone(),
+            source,
+        })?;
+        write_text(&self.path, &format!("{text}\n"))
+    }
+}
+
+fn read_text(path: &Path) -> Result<Option<String>, StoreError> {
+    match fs::read_to_string(path) {
+        Ok(text) => Ok(Some(text)),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(source) => Err(StoreError::Read {
+            path: path.to_path_buf(),
+            source,
+        }),
+    }
+}
+
+fn write_text(path: &Path, text: &str) -> Result<(), StoreError> {
+    let parent = path.parent().unwrap_or_else(|| Path::new("."));
+    fs::create_dir_all(parent).map_err(|source| StoreError::Write {
+        path: path.to_path_buf(),
+        source,
+    })?;
+
+    let mut temporary = NamedTempFile::new_in(parent).map_err(|source| StoreError::Write {
+        path: path.to_path_buf(),
+        source,
+    })?;
+    temporary
+        .write_all(text.as_bytes())
+        .map_err(|source| StoreError::Write {
+            path: path.to_path_buf(),
+            source,
+        })?;
+    temporary.flush().map_err(|source| StoreError::Write {
+        path: path.to_path_buf(),
+        source,
+    })?;
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(temporary.path(), fs::Permissions::from_mode(0o600)).map_err(
+            |source| StoreError::Write {
+                path: path.to_path_buf(),
+                source,
+            },
+        )?;
+    }
+
+    temporary.persist(path).map_err(|error| StoreError::Write {
+        path: path.to_path_buf(),
+        source: error.error,
+    })?;
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::bulb::model::Bulb;
+
+    #[test]
+    fn bulbs_round_trip_through_the_atomic_store() -> Result<(), Box<dyn std::error::Error>> {
+        let directory = tempfile::tempdir()?;
+        let path = directory.path().join("bulbs.json");
+        let store = BulbStore::new(path.clone());
+        let bulb = Bulb {
+            id: "00000000-0000-4000-8000-000000000001".to_owned(),
+            name: "Desk lamp".to_owned(),
+            address: "192.168.1.42".to_owned(),
+            model: Some("yeelink.light.color3".to_owned()),
+        };
+
+        store.save(std::slice::from_ref(&bulb))?;
+        let loaded = store.load()?;
+        assert_eq!(loaded, vec![bulb]);
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let metadata = std::fs::metadata(&path)?;
+            assert_eq!(metadata.permissions().mode() & 0o777, 0o600);
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn preferences_round_trip_and_a_broken_file_falls_back()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let directory = tempfile::tempdir()?;
+        let path = directory.path().join("prefs.json");
+        let store = PreferencesStore::new(path.clone());
+        store.save(Preferences { sync_gain: 1.5 })?;
+        assert_eq!(store.load().sync_gain, 1.5);
+
+        std::fs::write(&path, "{ broken")?;
+        assert_eq!(store.load(), Preferences::default());
+        Ok(())
+    }
+}
