@@ -1,49 +1,13 @@
 use rune::TextEdit;
 
 use crate::app::App;
-use crate::app::state::{ColorState, ColorTab, Screen, ToastKind};
+use crate::app::state::{ColorState, Screen, ToastKind};
 use crate::bulb::model::{ColorMode, Rgb};
 use crate::bulb::worker::Command;
 use crate::screen::color::{Hsb, hsb_to_rgb, rgb_to_hsb};
 use crate::screen::sync::{RestoreControl, restore_control};
 
 impl App {
-    pub(crate) fn colour_intensity(&self) -> Option<f32> {
-        let mut total = 0.0;
-        let mut count = 0u32;
-        for id in self.selected_ids() {
-            if let Some(color) = self.states.get(&id).and_then(|state| state.color) {
-                total += rgb_to_hsb(color).saturation;
-                count += 1;
-            }
-        }
-        (count > 0).then(|| total / count as f32)
-    }
-
-    pub(crate) fn set_colour_intensity(&mut self, saturation: f32) {
-        if self.sync.status.is_busy() {
-            return;
-        }
-        let saturation = saturation.clamp(0.0, 100.0);
-        let ids = self.selected_ids();
-        for id in ids {
-            let color = self
-                .states
-                .get(&id)
-                .and_then(|state| state.color)
-                .unwrap_or(Rgb::WHITE);
-            let mut hsb = rgb_to_hsb(color);
-            hsb.saturation = saturation;
-            let next = hsb_to_rgb(hsb);
-            if let Some(state) = self.states.get_mut(&id) {
-                state.mode = ColorMode::Color;
-                state.color = Some(next);
-            }
-            self.dashboard.pending_color.insert(id, next);
-        }
-        self.mark_pending();
-    }
-
     pub(crate) fn open_color(&mut self) {
         self.close_overlays();
         if self.sync.status.is_busy() {
@@ -73,11 +37,6 @@ impl App {
             .collect();
         self.color = ColorState {
             targets,
-            tab: if first == Rgb::BLACK {
-                ColorTab::Rgb
-            } else {
-                ColorTab::Hs
-            },
             hue: hsb.hue,
             saturation: hsb.saturation,
             value: hsb.value,
@@ -96,17 +55,6 @@ impl App {
             value: self.color.value,
         };
         let color = hsb_to_rgb(hsb);
-        self.color.preview = color;
-        self.color.hex = TextEdit::new(color.hex());
-        self.color.error = None;
-        self.apply_color_targets(color);
-    }
-
-    pub(crate) fn update_color_from_rgb(&mut self, color: Rgb) {
-        let hsb = rgb_to_hsb(color);
-        self.color.hue = hsb.hue;
-        self.color.saturation = hsb.saturation;
-        self.color.value = hsb.value;
         self.color.preview = color;
         self.color.hex = TextEdit::new(color.hex());
         self.color.error = None;
@@ -167,9 +115,7 @@ impl App {
     }
 
     pub(crate) fn commit_color(&mut self) {
-        if Rgb::parse_hex(&self.color.hex.text).is_some() {
-            self.update_color_from_hex();
-        }
+        self.update_color_from_hex();
         if self.color.error.is_some() {
             return;
         }

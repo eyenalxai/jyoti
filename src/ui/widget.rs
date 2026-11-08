@@ -145,6 +145,7 @@ pub fn setting_block(k: &Kit, title: &str, description: &str, control: El) -> El
 
 pub fn dropdown_trigger(
     k: &Kit,
+    width: f32,
     label: &str,
     value: &str,
     open: bool,
@@ -157,7 +158,7 @@ pub fn dropdown_trigger(
         k.glyph.chevron_down
     };
     let mut trigger = row()
-        .w(360.0)
+        .w(width)
         .h(28.0)
         .pl(8.0)
         .pr(6.0)
@@ -298,7 +299,77 @@ pub fn slider(
     width: f32,
     on_change: impl Fn(&mut App, f32) + 'static,
 ) -> El {
-    let (w, h, knob, bar) = (width, 22.0, 16.0, 3.0);
+    slider_inner(
+        k,
+        value,
+        SliderConfig {
+            key,
+            label,
+            step,
+            width,
+            track: SliderTrack::Fill,
+        },
+        on_change,
+    )
+}
+
+pub struct SliderSpec<'a> {
+    pub key: &'a str,
+    pub label: &'a str,
+    pub step: f32,
+    pub width: f32,
+}
+
+pub fn gradient_slider(
+    k: &Kit,
+    value: f32,
+    spec: SliderSpec<'_>,
+    stops: Vec<(f32, Color)>,
+    on_change: impl Fn(&mut App, f32) + 'static,
+) -> El {
+    slider_inner(
+        k,
+        value,
+        SliderConfig {
+            key: spec.key,
+            label: spec.label,
+            step: spec.step,
+            width: spec.width,
+            track: SliderTrack::Gradient(stops),
+        },
+        on_change,
+    )
+}
+
+enum SliderTrack {
+    Fill,
+    Gradient(Vec<(f32, Color)>),
+}
+
+struct SliderConfig<'a> {
+    key: &'a str,
+    label: &'a str,
+    step: f32,
+    width: f32,
+    track: SliderTrack,
+}
+
+fn slider_inner(
+    k: &Kit,
+    value: f32,
+    config: SliderConfig<'_>,
+    on_change: impl Fn(&mut App, f32) + 'static,
+) -> El {
+    let SliderConfig {
+        key,
+        label,
+        step,
+        width,
+        track,
+    } = config;
+    let (w, h, knob) = (width, 22.0, 16.0);
+    let track_is_fill = matches!(track, SliderTrack::Fill);
+    let bar = if track_is_fill { 3.0 } else { 7.0 };
     let travel = w - knob;
     let value = value.clamp(0.0, 1.0);
     let on_change = Rc::new(on_change);
@@ -306,7 +377,8 @@ pub fn slider(
     let change = Rc::clone(&on_change);
     let start = value;
 
-    el().key(key)
+    let mut root = el()
+        .key(key)
         .role("slider")
         .label(label.to_owned())
         .range_value(f64::from(value), 0.0, 1.0)
@@ -348,33 +420,45 @@ pub fn slider(
                     change(app, drag.data);
                 }
             }
-        })
-        .child(
-            el().key("track")
-                .size(w, bar)
-                .absolute(0.0, (h - bar) / 2.0)
-                .radius(bar / 2.0)
-                .fill(k.c.layer_03)
-                .a11y_hidden(),
-        )
-        .child(
+        });
+    let track = match track {
+        SliderTrack::Fill => el()
+            .key("track")
+            .size(w, bar)
+            .absolute(0.0, (h - bar) / 2.0)
+            .radius(bar / 2.0)
+            .fill(k.c.layer_03)
+            .a11y_hidden(),
+        SliderTrack::Gradient(stops) => el()
+            .key("track")
+            .size(w, bar)
+            .absolute(0.0, (h - bar) / 2.0)
+            .radius(bar / 2.0)
+            .linear_gradient(std::f32::consts::FRAC_PI_2, stops)
+            .border(0.5, k.c.border_base)
+            .a11y_hidden(),
+    };
+    root = root.child(track);
+    if track_is_fill {
+        root = root.child(
             el().key("fill")
                 .size(knob / 2.0 + value * travel, bar)
                 .absolute(0.0, (h - bar) / 2.0)
                 .radius(bar / 2.0)
                 .fill(k.c.bg_accent)
                 .a11y_hidden(),
-        )
-        .child(
-            el().key("knob")
-                .size(knob, knob)
-                .absolute(value * travel, (h - knob) / 2.0)
-                .radius(knob / 2.0)
-                .fill(k.c.knob)
-                .shadow(1.0, 3.0, k.c.black.alpha(0.18))
-                .shadow(0.0, 0.5, k.c.depth_bottom)
-                .a11y_hidden(),
-        )
+        );
+    }
+    root.child(
+        el().key("knob")
+            .size(knob, knob)
+            .absolute(value * travel, (h - knob) / 2.0)
+            .radius(knob / 2.0)
+            .fill(k.c.knob)
+            .shadow(1.0, 3.0, k.c.black.alpha(0.18))
+            .shadow(0.0, 0.5, k.c.depth_bottom)
+            .a11y_hidden(),
+    )
 }
 
 pub fn segmented(

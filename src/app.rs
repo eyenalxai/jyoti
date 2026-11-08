@@ -20,6 +20,7 @@ use crate::bulb::store::{BulbStore, PreferencesStore};
 use crate::bulb::worker::{Command, WorkerEvent};
 use crate::config::AppConfig;
 use crate::screen::capture::{ScreenCommand, ScreenHandle};
+use crate::screen::sync::SyncStatus;
 
 pub struct App {
     pub config: AppConfig,
@@ -42,10 +43,10 @@ pub struct App {
     pub worker_sender: Sender<WorkerEvent>,
     pub screen_handle: Option<ScreenHandle>,
     pub waker: Option<Waker>,
+    pub preferences_due: Option<Instant>,
     pub bulb_picker_open: bool,
     pub bulb_menu_open: bool,
     pub monitor_picker_open: bool,
-    pub help_open: Option<usize>,
     pub started: bool,
     pub startup_error: Option<String>,
     pub demo: bool,
@@ -83,6 +84,11 @@ impl App {
         };
         let sync = SyncState {
             gain: if demo { 1.0 } else { preferences.sync_gain },
+            colour_intensity: if demo {
+                35.0
+            } else {
+                preferences.colour_intensity
+            },
             ..SyncState::default()
         };
         Self {
@@ -106,10 +112,10 @@ impl App {
             worker_sender,
             screen_handle: None,
             waker: None,
+            preferences_due: None,
             bulb_picker_open: false,
             bulb_menu_open: false,
             monitor_picker_open: false,
-            help_open: Some(0),
             started: false,
             startup_error,
             demo,
@@ -184,8 +190,18 @@ impl App {
             tx.wake_after(next.saturating_duration_since(now));
         }
 
+        if let Some(due) = self.preferences_due {
+            if now >= due {
+                self.save_preferences();
+                self.preferences_due = None;
+            } else {
+                tx.wake_after(due - now);
+            }
+        }
+
         if self.sync.status.is_running() {
-            if let Some(last) = self.sync.last_scene_at
+            if self.sync.status == SyncStatus::Running
+                && let Some(last) = self.sync.last_scene_at
                 && last.elapsed() > Duration::from_secs(5)
                 && !self.sync.stale
             {

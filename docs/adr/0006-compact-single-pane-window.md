@@ -17,21 +17,26 @@ rows. The window is a daily utility, not a dashboard that fills a desk display.
 
 ## Decision
 
-The app opens in a 500 × 640 window with a 480 × 600 minimum. One `Page` frame
-holds the window title, one four-tab bar and the active screen:
+The app opens in a 500 × 640 window with a 480 × 600 minimum and a
+520 × 760 maximum. The page is capped at 484 points and centered when the window
+grows. One `Page` frame holds the window title, one three-tab bar and the active
+screen:
 
-- **Control** owns the bulb selector, light controls, power switch, and an
-  overflow menu for refresh, edit and remove.
-- **Sync** owns capture status, monitor selection, start/pause/stop, gain and the
-  restore report.
+- **Control** owns the bulb selector, one light surface with a live preview,
+  brightness, mode and warmth or colour, and an overflow menu for refresh, edit
+  and remove.
+- **Sync** owns capture status, monitor selection, start/pause/stop, brightness
+  gain, colour intensity and the restore report.
 - **Settings** owns appearance, storage and about.
-- **Help** is one accordion.
 
 The bulb selector is a dropdown menu with one row per bulb; there is no sidebar
-and no bulb table.
+and no bulb table. The active section uses a tinted accent pill so it reads
+against the page rather than blending into it.
 A missing bulb set shows one compact empty panel with one Add action. Add, edit,
 remove, refresh, colour and screen sync each have one entry point. Forms, the
 colour picker and remove confirmation replace the tabs and carry a Back control.
+The colour picker is a live preview with hue, saturation and brightness
+gradients, not a channel form.
 
 The app has no global keyboard shortcuts. Native control focus and text entry
 remain because they are the behavior of the controls themselves.
@@ -44,9 +49,10 @@ overflow menu hides secondary bulb actions, which is acceptable for a small set
 of frequent actions. The compact layout leaves no room for a KPI row or a second
 selection surface without bringing back duplication.
 
-ReUI remains a source of composition rules, not a runtime dependency. Panels,
-selects, tabs and menus are rune-kit components; no React or shadcn package
-enters the crate.
+ReUI remains a source of composition rules, not a runtime dependency. Panels
+and menus use rune-kit components; the compact tab bar and gradient sliders are
+app-specific wrappers over Rune primitives, not a second component system. No
+React or shadcn package enters the crate.
 
 ## Alternatives rejected
 

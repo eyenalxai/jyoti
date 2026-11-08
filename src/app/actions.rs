@@ -13,6 +13,7 @@ use crate::bulb::selection::{Selection, resolve_selection, selection_after_add};
 use crate::bulb::worker::{Command, WorkerEvent};
 use crate::screen::capture::ScreenCommand;
 use crate::screen::gain::normalize_sync_gain;
+use crate::screen::intensity::{intensify, normalize_sync_intensity};
 
 impl App {
     fn ensure_sync_stopped(&mut self, action: &str) -> bool {
@@ -609,15 +610,32 @@ impl App {
             .preferences_store
             .save(crate::bulb::store::Preferences {
                 sync_gain: self.sync.gain,
+                colour_intensity: self.sync.colour_intensity,
             })
         {
             self.notify(error.to_string(), ToastKind::Error);
         }
     }
 
+    fn schedule_preferences(&mut self) {
+        if self.demo {
+            return;
+        }
+        self.preferences_due = Some(Instant::now() + Duration::from_millis(400));
+    }
+
     pub(crate) fn set_sync_gain(&mut self, gain: f32) {
         self.sync.gain = normalize_sync_gain(gain);
-        self.save_preferences();
+        self.schedule_preferences();
+    }
+
+    pub(crate) fn set_sync_intensity(&mut self, intensity: f32) {
+        self.sync.colour_intensity = normalize_sync_intensity(intensity);
+        if let Some(scene) = self.sync.last_scene {
+            self.sync.derived = Some(intensify(scene.color, self.sync.colour_intensity));
+        }
+        self.sync.last_publish = None;
+        self.schedule_preferences();
     }
 
     pub(crate) fn probe_unreachable(&mut self) {
@@ -644,6 +662,7 @@ impl App {
             let _ = sender.send(Command::Stop);
         }
         self.screen_handle.take();
+        self.preferences_due = None;
         self.save_preferences();
     }
 

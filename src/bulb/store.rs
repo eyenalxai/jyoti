@@ -9,6 +9,7 @@ use uuid::Uuid;
 use crate::bulb::model::{Bulb, BulbFile};
 use crate::error::StoreError;
 use crate::screen::gain::{SYNC_GAIN_DEFAULT, normalize_sync_gain};
+use crate::screen::intensity::{SYNC_INTENSITY_DEFAULT, normalize_sync_intensity};
 
 #[derive(Clone, Debug)]
 pub struct BulbStore {
@@ -89,12 +90,14 @@ impl BulbStore {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Preferences {
     pub sync_gain: f32,
+    pub colour_intensity: f32,
 }
 
 impl Default for Preferences {
     fn default() -> Self {
         Self {
             sync_gain: SYNC_GAIN_DEFAULT,
+            colour_intensity: SYNC_INTENSITY_DEFAULT,
         }
     }
 }
@@ -109,6 +112,8 @@ struct PreferencesFile {
     version: u8,
     #[serde(rename = "syncGain")]
     sync_gain: f32,
+    #[serde(rename = "colourIntensity", default)]
+    colour_intensity: f32,
 }
 
 impl PreferencesStore {
@@ -128,6 +133,7 @@ impl PreferencesStore {
         }
         Preferences {
             sync_gain: normalize_sync_gain(file.sync_gain),
+            colour_intensity: normalize_sync_intensity(file.colour_intensity),
         }
     }
 
@@ -135,6 +141,7 @@ impl PreferencesStore {
         let file = PreferencesFile {
             version: 1,
             sync_gain: normalize_sync_gain(preferences.sync_gain),
+            colour_intensity: normalize_sync_intensity(preferences.colour_intensity),
         };
         let text = serde_json::to_string_pretty(&file).map_err(|source| StoreError::Decode {
             path: self.path.clone(),
@@ -231,11 +238,27 @@ mod tests {
         let directory = tempfile::tempdir()?;
         let path = directory.path().join("prefs.json");
         let store = PreferencesStore::new(path.clone());
-        store.save(Preferences { sync_gain: 1.5 })?;
+        store.save(Preferences {
+            sync_gain: 1.5,
+            colour_intensity: 60.0,
+        })?;
         assert_eq!(store.load().sync_gain, 1.5);
+        assert_eq!(store.load().colour_intensity, 60.0);
 
         std::fs::write(&path, "{ broken")?;
         assert_eq!(store.load(), Preferences::default());
+        Ok(())
+    }
+
+    #[test]
+    fn older_preferences_without_intensity_still_load() -> Result<(), Box<dyn std::error::Error>> {
+        let directory = tempfile::tempdir()?;
+        let path = directory.path().join("prefs.json");
+        let store = PreferencesStore::new(path.clone());
+        std::fs::write(&path, r#"{"version":1,"syncGain":1.3}"#)?;
+        let preferences = store.load();
+        assert_eq!(preferences.sync_gain, 1.3);
+        assert_eq!(preferences.colour_intensity, 0.0);
         Ok(())
     }
 }

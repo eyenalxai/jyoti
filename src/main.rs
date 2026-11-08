@@ -79,7 +79,11 @@ const SCENES: &[(&str, SceneFn)] = &[
         app.sync.selected_monitor = Some("eDP-1".to_owned());
         app.sync.status = SyncStatus::Running;
         app.sync.gain = 1.2;
-        app.sync.derived = Some(Rgb::new(255, 140, 64));
+        app.sync.colour_intensity = 35.0;
+        app.sync.derived = Some(crate::screen::intensity::intensify(
+            Rgb::new(255, 140, 64),
+            35.0,
+        ));
         app.sync.brightness = 57;
         app.sync.last_scene = Some(Scene {
             color: Rgb::new(255, 140, 64),
@@ -100,7 +104,6 @@ const SCENES: &[(&str, SceneFn)] = &[
         app.notify("The bulb at 192.168.1.42 did not answer.", ToastKind::Error);
     }),
     ("settings", |app| app.screen = Screen::Settings),
-    ("help", |app| app.screen = Screen::Help),
 ];
 
 fn main() {
@@ -111,6 +114,10 @@ fn main() {
         poll: Some(poll),
         scenes: SCENES,
         ..AppSpec::new("jyoti", (500.0, 640.0), App::new, ui::view)
+    })
+    .window_options(rune::WindowOptions {
+        max_size: Some((520.0, 760.0)),
+        ..rune::WindowOptions::default()
     })
     .on_quit(on_quit)
     .run();

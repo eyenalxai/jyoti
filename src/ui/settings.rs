@@ -49,7 +49,7 @@ pub fn view(app: &App, k: &Kit) -> El {
                     .child(setting_block(
                         k,
                         "Preferences file",
-                        "Screen-sync brightness gain.",
+                        "Screen-sync brightness gain and colour intensity.",
                         path(k, &preferences),
                     ))
                     .child(Divider::horizontal().build(k))

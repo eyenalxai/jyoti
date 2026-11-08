@@ -4,6 +4,7 @@ pub mod color;
 pub mod flash;
 pub mod gain;
 pub mod grid;
+pub mod intensity;
 pub mod kmeans;
 pub mod monitor;
 pub mod reducer;
