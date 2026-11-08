@@ -73,8 +73,8 @@ a command fails; it is not cached across runs.
 ## Unreachable
 
 A bulb that did not answer its hello or command before the timeout. The control
-screen keeps the bulb and its metadata, the selector shows its state, the light
-panel shows the failure inline, and Refresh retries.
+screen keeps the bulb and its metadata, the selector shows its state, the control
+deck shows the failure inline, and Refresh retries.
 
 ## Restored
 
@@ -163,8 +163,9 @@ stage is a readout, not a control.
 ## Nameplate
 
 The cream plate on a light stage. Ink text on it stays legible whatever colour
-fills the stage. It carries the power state, the scope, the light name, the
-colour or temperature detail and the brightness.
+fills the stage. On Control it carries the power state; on Sync, the run state.
+Both carry the scope, the light name, the colour or temperature detail and the
+brightness.
 
 ## Control deck
 

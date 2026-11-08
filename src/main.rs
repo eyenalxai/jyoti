@@ -122,7 +122,7 @@ fn main() {
         poll: Some(poll),
         scenes: SCENES,
         fonts: FONTS,
-        families: ("Inter", "IBM Plex Mono"),
+        families: ("Inter, Inter Variable", "IBM Plex Mono"),
         ..AppSpec::new("jyoti", (500.0, 680.0), App::new, ui::view)
     })
     .on_quit(on_quit)

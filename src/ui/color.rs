@@ -7,10 +7,9 @@ use crate::app::App;
 use crate::screen::color::{Hsb, hsb_to_rgb};
 use crate::ui::theme;
 use crate::ui::widget::{
-    ALERT, BACK, SliderSpec, gradient_slider, hairline, notice, rgb_color, subpage_header, surface,
+    ALERT, BACK, SLIDER_WIDTH, SliderSpec, gradient_slider, hairline, notice, rgb_color,
+    subpage_header, surface,
 };
-
-const SLIDER_WIDTH: f32 = 400.0;
 
 pub fn view(app: &App, k: &Kit) -> El {
     let preview = app.color.preview;
@@ -58,8 +57,8 @@ pub fn view(app: &App, k: &Kit) -> El {
         .linear_gradient(
             std::f32::consts::PI,
             [
-                (0.0, Color::WHITE.alpha(0.2)),
-                (0.55, Color::WHITE.alpha(0.0)),
+                (0.0, k.c.white.alpha(0.2)),
+                (0.55, k.c.white.alpha(0.0)),
                 (1.0, theme::ink().alpha(0.1)),
             ],
         )
@@ -141,10 +140,11 @@ pub fn view(app: &App, k: &Kit) -> El {
         .child(hairline(k))
         .child(tune_block(
             k,
-            Tune {
+            SliderSpec {
                 label: "Hue",
                 key: "hue",
                 step: 1.0 / 360.0,
+                width: SLIDER_WIDTH,
             },
             format!("{:.0}°", app.color.hue),
             app.color.hue / 360.0,
@@ -156,10 +156,11 @@ pub fn view(app: &App, k: &Kit) -> El {
         ))
         .child(tune_block(
             k,
-            Tune {
+            SliderSpec {
                 label: "Saturation",
                 key: "saturation",
                 step: 1.0 / 100.0,
+                width: SLIDER_WIDTH,
             },
             format!("{:.0}%", app.color.saturation),
             app.color.saturation / 100.0,
@@ -171,10 +172,11 @@ pub fn view(app: &App, k: &Kit) -> El {
         ))
         .child(tune_block(
             k,
-            Tune {
+            SliderSpec {
                 label: "Brightness",
                 key: "value",
                 step: 1.0 / 100.0,
+                width: SLIDER_WIDTH,
             },
             format!("{:.0}%", app.color.value),
             app.color.value / 100.0,
@@ -224,15 +226,9 @@ pub fn view(app: &App, k: &Kit) -> El {
         .child(footer)
 }
 
-struct Tune<'a> {
-    label: &'a str,
-    key: &'a str,
-    step: f32,
-}
-
 fn tune_block(
     k: &Kit,
-    tune: Tune<'_>,
+    spec: SliderSpec<'_>,
     display: String,
     value: f32,
     stops: Vec<(f32, Color)>,
@@ -248,7 +244,7 @@ fn tune_block(
                 .gap(8.0)
                 .center_y()
                 .child(
-                    text(tune.label.to_owned())
+                    text(spec.label.to_owned())
                         .font(k.ty.ui_medium)
                         .color(k.c.text_base),
                 )
@@ -258,16 +254,10 @@ fn tune_block(
                         .color(k.c.text_muted),
                 ),
         )
-        .child(row().w_full().justify_center().child(gradient_slider(
-            k,
-            value,
-            SliderSpec {
-                key: tune.key,
-                label: tune.label,
-                step: tune.step,
-                width: SLIDER_WIDTH,
-            },
-            stops,
-            on_change,
-        )))
+        .child(
+            row()
+                .w_full()
+                .justify_center()
+                .child(gradient_slider(k, value, spec, stops, on_change)),
+        )
 }

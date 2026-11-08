@@ -24,11 +24,11 @@ generic kit:
 - **Colour.** Warm paper in light, espresso in dark, one brass accent for
   interaction, light-state colours for status. All values are semantic tokens in
   `src/ui/theme.rs`; screens never name a raw colour.
-- **Type.** Fraunces carries page titles, the light name and the colour hex;
-  Inter carries the interface and tabular figures; IBM Plex Mono carries
-  addresses, hex input and paths. The three families are bundled with their SIL
-  Open Font License texts and loaded through `AppSpec::fonts`. No text role is
-  smaller than 12 points.
+- **Type.** Fraunces carries page titles and the light name; Inter carries the
+  interface and tabular figures; IBM Plex Mono carries hex values, addresses and
+  paths. The three families are bundled with their SIL Open Font License texts
+  and loaded through `AppSpec::fonts`; the variable Inter registers under the
+  `Inter` slot. No text role is smaller than 12 points.
 - **Light stage.** Control opens on a field filled with the light the bulbs are
   showing. A cream nameplate on the field carries the state, name and brightness
   so the readout stays legible over any colour. The stage is a readout, not a

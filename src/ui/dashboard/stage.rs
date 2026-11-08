@@ -1,15 +1,14 @@
-use rune::{Color, El, col, el, oklch, row, text};
+use rune::{Color, El, col, row, text};
 use rune_kit::{Button, ButtonVariant, ControlSize, Kit};
 
 use crate::app::App;
 use crate::bulb::aggregate::{AggregatePower, LightQuality, light_quality_of};
-use crate::bulb::model::Rgb;
 use crate::bulb::selection::Selection;
 use crate::screen::color::kelvin_to_rgb;
 use crate::ui::theme;
-use crate::ui::widget::{ALERT, BULB, rgb_color};
+use crate::ui::widget::{ALERT, BULB, PAGE_PAD, dot, nameplate, rgb_color, stage_surface};
 
-use super::{PAGE_PAD, STAGE_HEIGHT, single_power};
+use super::{STAGE_HEIGHT, single_power};
 
 pub fn light_stage(app: &App, k: &Kit) -> El {
     let all = matches!(app.selection, Some(Selection::All));
@@ -23,7 +22,6 @@ pub fn light_stage(app: &App, k: &Kit) -> El {
     let white = quality == LightQuality::White;
     let colour = quality == LightQuality::Color;
     let mixed = quality == LightQuality::Mixed;
-    let unknown = quality == LightQuality::Unknown;
     let power = if all {
         aggregate.power
     } else {
@@ -50,17 +48,15 @@ pub fn light_stage(app: &App, k: &Kit) -> El {
             Some(crate::bulb::aggregate::AggregateColor::Mixed)
         );
     let base = if white {
-        kelvin_to_rgb(temperature)
+        Some(kelvin_to_rgb(temperature))
     } else if colour {
-        colour_value.unwrap_or(Rgb::WHITE)
+        colour_value
     } else {
-        Rgb::new(214, 205, 192)
+        None
     };
-    let mut fill = rgb_color(base);
+    let mut fill = base.map_or(k.c.layer_02, rgb_color);
     if dimmed {
         fill = fill.mix(k.c.layer_03, 0.72);
-    } else if mixed || unknown {
-        fill = fill.mix(k.c.layer_02, 0.45);
     }
 
     let title = if white {
@@ -133,108 +129,82 @@ pub fn light_stage(app: &App, k: &Kit) -> El {
     let (status_ink, status_word) = stage_status(power);
     let plate_ink = theme::ink();
     let plate_muted = plate_ink.alpha(0.62);
-    let plate = col()
-        .w_full()
-        .gap(9.0)
-        .padding(14.0)
-        .radius(k.radius.md)
-        .fill(theme::plate())
-        .border(1.0, plate_ink.alpha(0.08))
-        .child(
-            row()
-                .w_full()
-                .justify_between()
-                .gap(12.0)
-                .center_y()
-                .child(
-                    row()
-                        .gap(6.0)
-                        .center_y()
-                        .child(el().size(7.0, 7.0).radius(4.0).fill(status_ink))
-                        .child(
+    let plate = nameplate(
+        k,
+        col()
+            .w_full()
+            .gap(8.0)
+            .child(
+                row()
+                    .w_full()
+                    .justify_between()
+                    .gap(12.0)
+                    .center_y()
+                    .child(
+                        row().gap(6.0).center_y().child(dot(status_ink)).child(
                             text(status_word.to_owned())
                                 .font(k.ty.small_medium)
                                 .color(plate_ink),
                         ),
-                )
-                .child(
-                    row()
-                        .grow(1.0)
-                        .min_w(0.0)
-                        .justify_end()
-                        .child(text(scope).font(k.ty.small).color(plate_muted).truncate()),
-                ),
-        )
-        .child(
-            row()
-                .w_full()
-                .items_end()
-                .justify_between()
-                .gap(10.0)
-                .child(
-                    col()
-                        .grow(1.0)
-                        .min_w(0.0)
-                        .gap(1.0)
-                        .child(
-                            text(title)
-                                .font(theme::display(27.0, 580.0))
-                                .color(plate_ink)
-                                .truncate(),
-                        )
-                        .child(
-                            text(detail)
-                                .font(detail_style)
-                                .color(plate_muted)
-                                .truncate(),
-                        ),
-                )
-                .child(
-                    col()
-                        .items_end()
-                        .gap(0.0)
-                        .child(text("BRIGHTNESS").font(theme::label()).color(plate_muted))
-                        .child(
-                            row()
-                                .items_end()
-                                .gap(1.0)
-                                .child(
-                                    text(brightness_text)
-                                        .font(theme::number(38.0, 610.0))
-                                        .color(plate_ink),
-                                )
-                                .child(
-                                    text("%")
-                                        .font(theme::number(16.0, 560.0))
-                                        .color(plate_muted),
-                                ),
-                        ),
-                ),
-        );
-
-    let plate = k.elevate(plate, &k.elevation.floating);
+                    )
+                    .child(
+                        row()
+                            .grow(1.0)
+                            .min_w(0.0)
+                            .justify_end()
+                            .child(text(scope).font(k.ty.small).color(plate_muted).truncate()),
+                    ),
+            )
+            .child(
+                row()
+                    .w_full()
+                    .items_end()
+                    .justify_between()
+                    .gap(10.0)
+                    .child(
+                        col()
+                            .grow(1.0)
+                            .min_w(0.0)
+                            .gap(1.0)
+                            .child(
+                                text(title)
+                                    .font(theme::display(27.0, 580.0))
+                                    .color(plate_ink)
+                                    .truncate(),
+                            )
+                            .child(
+                                text(detail)
+                                    .font(detail_style)
+                                    .color(plate_muted)
+                                    .truncate(),
+                            ),
+                    )
+                    .child(
+                        col()
+                            .items_end()
+                            .gap(0.0)
+                            .child(text("BRIGHTNESS").font(theme::label()).color(plate_muted))
+                            .child(
+                                row()
+                                    .items_end()
+                                    .gap(1.0)
+                                    .child(
+                                        text(brightness_text)
+                                            .font(theme::number(38.0, 610.0))
+                                            .color(plate_ink),
+                                    )
+                                    .child(
+                                        text("%")
+                                            .font(theme::number(16.0, 560.0))
+                                            .color(plate_muted),
+                                    ),
+                            ),
+                    ),
+            ),
+    );
 
     let glow = if dimmed { 0.0 } else { 0.24 };
-    let stage = col()
-        .w_full()
-        .h(STAGE_HEIGHT)
-        .min_h(STAGE_HEIGHT)
-        .justify_end()
-        .padding(12.0)
-        .radius(k.radius.xl)
-        .clip_soft(k.radius.xl)
-        .fill(fill)
-        .linear_gradient(
-            std::f32::consts::PI,
-            [
-                (0.0, Color::WHITE.alpha(0.26)),
-                (0.38, Color::WHITE.alpha(0.02)),
-                (1.0, theme::ink().alpha(0.16)),
-            ],
-        )
-        .border(1.0, theme::ink().alpha(0.1))
-        .shadow(0.0, 22.0, fill.alpha(glow))
-        .child(plate);
+    let stage = stage_surface(k, STAGE_HEIGHT, fill, glow, plate);
 
     if all && aggregate.failed > 0 {
         stage.child(
@@ -257,7 +227,7 @@ pub fn light_stage(app: &App, k: &Kit) -> El {
     }
 }
 
-pub fn empty_state(_app: &App, k: &Kit) -> El {
+pub fn empty_state(k: &Kit) -> El {
     let add = Button::new("Add a bulb")
         .variant(ButtonVariant::Contrast)
         .control_size(ControlSize::Large)
@@ -319,10 +289,10 @@ pub fn empty_state(_app: &App, k: &Kit) -> El {
 /// rather than taken from the window appearance.
 fn stage_status(power: AggregatePower) -> (Color, &'static str) {
     match power {
-        AggregatePower::On => (oklch(0.52, 0.12, 148.0), "On"),
-        AggregatePower::Off => (theme::ink().alpha(0.38), "Off"),
-        AggregatePower::Mixed => (oklch(0.6, 0.12, 72.0), "Mixed"),
-        AggregatePower::Unknown => (theme::ink().alpha(0.38), "Connecting"),
+        AggregatePower::On => (theme::positive_on_plate(), "On"),
+        AggregatePower::Off => (theme::quiet_on_plate(), "Off"),
+        AggregatePower::Mixed => (theme::warning_on_plate(), "Mixed"),
+        AggregatePower::Unknown => (theme::quiet_on_plate(), "Connecting"),
     }
 }
 

@@ -1,4 +1,4 @@
-use rune::{Color, El, ScrollSpec, col, el, oklch, row, text};
+use rune::{Color, El, ScrollSpec, col, row, text};
 use rune_kit::{Button, ButtonVariant, ControlSize, Kit, Menu, MenuItem};
 
 use crate::app::App;
@@ -8,12 +8,11 @@ use crate::screen::intensity::intensify;
 use crate::screen::sync::SyncStatus;
 use crate::ui::theme;
 use crate::ui::widget::{
-    ALERT, BULB, SYNC, SliderSpec, dropdown_trigger, frame_age, gradient_slider, hairline, notice,
-    rgb_color, slider, surface, swatch, value_text,
+    ALERT, BULB, PAGE_PAD, SLIDER_WIDTH, SYNC, SliderSpec, dot, dropdown_trigger, frame_age,
+    gradient_slider, hairline, nameplate, notice, rgb_color, slider, stage_surface, surface,
+    swatch, value_text,
 };
 
-const PAGE_PAD: f32 = 14.0;
-const SLIDER_WIDTH: f32 = 400.0;
 const STAGE_HEIGHT: f32 = 190.0;
 
 pub fn view(app: &App, k: &Kit, layers: &mut Vec<El>) -> El {
@@ -119,99 +118,85 @@ fn capture_stage(app: &App, k: &Kit) -> El {
         "Choose a monitor, then start sync.".to_owned()
     };
     let status = &app.sync.status;
+    let status_word = match status {
+        SyncStatus::Error(_) => "Error".to_owned(),
+        _ => status.label(),
+    };
     let status_ink = sync_status_ink(status);
     let plate_ink = theme::ink();
     let muted = plate_ink.alpha(0.62);
-    let plate = col()
-        .w_full()
-        .gap(8.0)
-        .padding(14.0)
-        .radius(k.radius.md)
-        .fill(theme::plate())
-        .border(1.0, plate_ink.alpha(0.08))
-        .child(
-            row()
-                .w_full()
-                .justify_between()
-                .gap(12.0)
-                .center_y()
-                .child(
-                    row()
-                        .gap(6.0)
-                        .center_y()
-                        .child(el().size(7.0, 7.0).radius(4.0).fill(status_ink))
-                        .child(
-                            text(status.label())
-                                .font(k.ty.small_medium)
-                                .color(plate_ink),
-                        ),
-                )
-                .child(
-                    text(format!("Frame {}", frame_age(app.sync.last_scene_at)))
-                        .font(theme::number(12.0, 450.0))
-                        .color(muted),
-                ),
-        )
-        .child(
-            row()
-                .w_full()
-                .items_end()
-                .justify_between()
-                .gap(10.0)
-                .child(
-                    col()
-                        .grow(1.0)
-                        .min_w(0.0)
-                        .gap(1.0)
-                        .child(text(title).font(title_style).color(plate_ink).truncate())
-                        .child(text(detail).font(k.ty.small).color(muted).truncate()),
-                )
-                .child(
-                    col()
-                        .items_end()
-                        .gap(0.0)
-                        .child(text("BRIGHTNESS").font(theme::label()).color(muted))
-                        .child(if derived.is_some() {
-                            row()
-                                .items_end()
-                                .gap(1.0)
-                                .child(
-                                    text(format!("{}", app.sync.brightness))
-                                        .font(theme::number(38.0, 610.0))
-                                        .color(plate_ink),
+    let plate = nameplate(
+        k,
+        col()
+            .w_full()
+            .gap(8.0)
+            .child(
+                row()
+                    .w_full()
+                    .justify_between()
+                    .gap(12.0)
+                    .center_y()
+                    .child(
+                        row()
+                            .grow(1.0)
+                            .min_w(0.0)
+                            .gap(6.0)
+                            .center_y()
+                            .child(dot(status_ink))
+                            .child(
+                                text(status_word)
+                                    .font(k.ty.small_medium)
+                                    .color(plate_ink)
+                                    .truncate(),
+                            ),
+                    )
+                    .child(
+                        text(format!("Frame {}", frame_age(app.sync.last_scene_at)))
+                            .font(theme::number(12.0, 450.0))
+                            .color(muted),
+                    ),
+            )
+            .child(
+                row()
+                    .w_full()
+                    .items_end()
+                    .justify_between()
+                    .gap(10.0)
+                    .child(
+                        col()
+                            .grow(1.0)
+                            .min_w(0.0)
+                            .gap(1.0)
+                            .child(text(title).font(title_style).color(plate_ink).truncate())
+                            .child(text(detail).font(k.ty.small).color(muted).truncate()),
+                    )
+                    .child(
+                        col()
+                            .items_end()
+                            .gap(0.0)
+                            .child(text("BRIGHTNESS").font(theme::label()).color(muted))
+                            .child(if derived.is_some() {
+                                row()
+                                    .items_end()
+                                    .gap(1.0)
+                                    .child(
+                                        text(format!("{}", app.sync.brightness))
+                                            .font(theme::number(38.0, 610.0))
+                                            .color(plate_ink),
+                                    )
+                                    .child(text("%").font(theme::number(16.0, 560.0)).color(muted))
+                            } else {
+                                row().child(
+                                    text("–".to_owned())
+                                        .font(theme::number(28.0, 560.0))
+                                        .color(muted),
                                 )
-                                .child(text("%").font(theme::number(16.0, 560.0)).color(muted))
-                        } else {
-                            row().child(
-                                text("–".to_owned())
-                                    .font(theme::number(28.0, 560.0))
-                                    .color(muted),
-                            )
-                        }),
-                ),
-        );
+                            }),
+                    ),
+            ),
+    );
 
-    let plate = k.elevate(plate, &k.elevation.floating);
-    col()
-        .w_full()
-        .h(STAGE_HEIGHT)
-        .min_h(STAGE_HEIGHT)
-        .justify_end()
-        .padding(12.0)
-        .radius(k.radius.xl)
-        .clip_soft(k.radius.xl)
-        .fill(fill)
-        .linear_gradient(
-            std::f32::consts::PI,
-            [
-                (0.0, Color::WHITE.alpha(0.26)),
-                (0.38, Color::WHITE.alpha(0.02)),
-                (1.0, theme::ink().alpha(0.16)),
-            ],
-        )
-        .border(1.0, theme::ink().alpha(0.1))
-        .shadow(0.0, 22.0, fill.alpha(0.2))
-        .child(plate)
+    stage_surface(k, STAGE_HEIGHT, fill, 0.2, plate)
 }
 
 fn capture_panel(app: &App, k: &Kit, layers: &mut Vec<El>) -> El {
@@ -231,7 +216,15 @@ fn capture_panel(app: &App, k: &Kit, layers: &mut Vec<El>) -> El {
             k.c.warning,
         ));
     }
-    if let Some(error) = &app.sync.capture_error {
+    let error = app
+        .sync
+        .capture_error
+        .clone()
+        .or_else(|| match &app.sync.status {
+            SyncStatus::Error(message) => Some(message.clone()),
+            _ => None,
+        });
+    if let Some(error) = &error {
         body = body
             .child(hairline(k))
             .child(padded_notice(k, &ALERT, error, k.c.danger))
@@ -445,10 +438,10 @@ fn padded_notice(
 
 fn sync_status_ink(status: &SyncStatus) -> Color {
     match status {
-        SyncStatus::Running | SyncStatus::Starting => oklch(0.52, 0.12, 148.0),
-        SyncStatus::Paused | SyncStatus::Stopping => oklch(0.6, 0.12, 72.0),
-        SyncStatus::Error(_) => oklch(0.53, 0.16, 28.0),
-        SyncStatus::Restored => oklch(0.5, 0.09, 240.0),
-        SyncStatus::Idle => theme::ink().alpha(0.4),
+        SyncStatus::Running | SyncStatus::Starting => theme::positive_on_plate(),
+        SyncStatus::Paused | SyncStatus::Stopping => theme::warning_on_plate(),
+        SyncStatus::Error(_) => theme::danger_on_plate(),
+        SyncStatus::Restored => theme::info_on_plate(),
+        SyncStatus::Idle => theme::quiet_on_plate(),
     }
 }

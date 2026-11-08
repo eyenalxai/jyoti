@@ -2,7 +2,7 @@ use rune::{El, ScrollSpec, col, row, text};
 use rune_kit::Kit;
 
 use crate::app::App;
-use crate::ui::widget::{LOCK, chip, fact_row, group, hairline, setting_row};
+use crate::ui::widget::{LOCK, fact_row, group, hairline, setting_row};
 
 pub fn view(app: &App, k: &Kit) -> El {
     let appearance = group(
@@ -12,7 +12,9 @@ pub fn view(app: &App, k: &Kit) -> El {
             k,
             "Theme",
             "Light or dark follows the desktop setting.",
-            chip(k, "Follows system", k.c.text_accent),
+            text("System".to_owned())
+                .font(k.ty.small_medium)
+                .color(k.c.text_muted),
         ),
     );
 

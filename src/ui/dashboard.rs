@@ -18,17 +18,16 @@ use crate::bulb::selection::Selection;
 use crate::screen::color::kelvin_to_rgb;
 use crate::ui::theme;
 use crate::ui::widget::{
-    ALERT, BULB, EDIT, MORE, PLUS, REFRESH, SliderSpec, TRASH, dot, dropdown_trigger, error_text,
-    gradient_slider, hairline, notice, rgb_color, slider, surface, swatch,
+    ALERT, BULB, EDIT, MORE, PAGE_PAD, PLUS, REFRESH, SLIDER_WIDTH, SliderSpec, TRASH, dim_when,
+    dot, dropdown_trigger, error_text, gradient_slider, hairline, notice, rgb_color, slider,
+    surface, swatch,
 };
 
-const PAGE_PAD: f32 = 14.0;
-const SLIDER_WIDTH: f32 = 400.0;
-const STAGE_HEIGHT: f32 = 212.0;
+const STAGE_HEIGHT: f32 = 202.0;
 
 pub fn content(app: &App, k: &Kit, layers: &mut Vec<El>) -> El {
     if app.bulbs.is_empty() {
-        return stage::empty_state(app, k);
+        return stage::empty_state(k);
     }
 
     let viewport = col()
@@ -340,11 +339,7 @@ fn brightness_block(
         SLIDER_WIDTH,
         |app: &mut App, fraction| app.set_brightness(brightness_from_fraction(fraction)),
     );
-    let slider = if disabled {
-        slider.inert().layer_opacity(0.5)
-    } else {
-        slider
-    };
+    let slider = dim_when(slider, disabled);
     let block = col()
         .w_full()
         .gap(2.0)
@@ -368,11 +363,7 @@ fn brightness_block(
                 ),
         )
         .child(row().w_full().justify_center().child(slider));
-    if disabled {
-        block.inert().layer_opacity(0.5)
-    } else {
-        block
-    }
+    dim_when(block, disabled)
 }
 
 fn mode_block(k: &Kit, white: bool, colour: bool, disabled: bool) -> El {
@@ -387,7 +378,11 @@ fn mode_block(k: &Kit, white: bool, colour: bool, disabled: bool) -> El {
         .label("Light mode")
         .width(None)
         .on_pick(|app: &mut App, index, tx: &mut Tx| {
-            choose_mode(app, index);
+            if index == 0 {
+                app.set_mode_white();
+            } else {
+                app.set_mode_color();
+            }
             tx.wake_after(Duration::ZERO);
         })
         .build(k);
@@ -403,11 +398,7 @@ fn mode_block(k: &Kit, white: bool, colour: bool, disabled: bool) -> El {
                 .color(k.c.text_base),
         )
         .child(row().grow(1.0).min_w(0.0).child(control));
-    if disabled {
-        block.inert().layer_opacity(0.5)
-    } else {
-        block
-    }
+    dim_when(block, disabled)
 }
 
 fn temperature_block(
@@ -455,11 +446,7 @@ fn temperature_block(
         stops,
         |app: &mut App, fraction| app.set_temperature(temperature_from_fraction(fraction)),
     );
-    let slider = if disabled {
-        slider.inert().layer_opacity(0.5)
-    } else {
-        slider
-    };
+    let slider = dim_when(slider, disabled);
     let block = col()
         .w_full()
         .gap(2.0)
@@ -504,11 +491,7 @@ fn temperature_block(
                         .color(k.c.text_faint),
                 ),
         );
-    if disabled {
-        block.inert().layer_opacity(0.5)
-    } else {
-        block
-    }
+    dim_when(block, disabled)
 }
 
 fn colour_block(
@@ -560,19 +543,7 @@ fn colour_block(
         .child(swatch(k, fill, 30.0))
         .child(text(label).font(label_style).color(k.c.text_base).grow(1.0))
         .child(choose);
-    if disabled {
-        block.inert().layer_opacity(0.5)
-    } else {
-        block
-    }
-}
-
-fn choose_mode(app: &mut App, index: usize) {
-    if index == 0 {
-        app.set_mode_white();
-    } else {
-        app.set_mode_color();
-    }
+    dim_when(block, disabled)
 }
 
 fn selection_label(app: &App) -> String {

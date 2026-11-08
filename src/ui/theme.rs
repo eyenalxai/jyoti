@@ -204,7 +204,7 @@ fn typography() -> Type {
     Type {
         ui,
         ui_medium: TextStyle {
-            weight: 540.0,
+            weight: 560.0,
             ..ui
         },
         ui_compact: ui.lh(18.0),
@@ -333,6 +333,28 @@ pub fn ink() -> Color {
 /// The warm paper a stage's nameplate is printed on, in both appearances.
 pub fn plate() -> Color {
     oklch(0.982, 0.008, 85.0)
+}
+
+/// Fixed state inks for a cream nameplate: the plate does not follow the
+/// window appearance, so its dots must not either.
+pub fn positive_on_plate() -> Color {
+    oklch(0.52, 0.12, 148.0)
+}
+
+pub fn warning_on_plate() -> Color {
+    oklch(0.6, 0.12, 72.0)
+}
+
+pub fn danger_on_plate() -> Color {
+    oklch(0.53, 0.16, 28.0)
+}
+
+pub fn info_on_plate() -> Color {
+    oklch(0.5, 0.09, 240.0)
+}
+
+pub fn quiet_on_plate() -> Color {
+    ink().alpha(0.4)
 }
 
 fn pal((l, c, h): (f32, f32, f32)) -> Color {

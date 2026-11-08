@@ -8,6 +8,11 @@ use crate::app::App;
 use crate::screen::sync::SyncStatus;
 use crate::ui::theme;
 
+/// Side padding of a screen page.
+pub const PAGE_PAD: f32 = 14.0;
+/// The one slider width that fits the 480-point minimum page.
+pub const SLIDER_WIDTH: f32 = 400.0;
+
 pub static BULB: Icon = Icon {
     name: "jyoti-bulb",
     view: 16.0,
@@ -76,6 +81,52 @@ pub fn sync_status_tone(k: &Kit, status: &SyncStatus) -> Color {
         SyncStatus::Error(_) => k.c.danger.icon,
         SyncStatus::Restored => k.c.info.icon,
         SyncStatus::Idle => k.c.text_faint,
+    }
+}
+
+/// The light field shared by Control and Sync: the exact fill, a lit top edge,
+/// a grounded bottom and one soft colour halo.
+pub fn stage_surface(k: &Kit, height: f32, fill: Color, glow: f32, plate: El) -> El {
+    col()
+        .w_full()
+        .h(height)
+        .min_h(height)
+        .justify_end()
+        .padding(12.0)
+        .radius(k.radius.xl)
+        .clip_soft(k.radius.xl)
+        .fill(fill)
+        .linear_gradient(
+            std::f32::consts::PI,
+            [
+                (0.0, k.c.white.alpha(0.26)),
+                (0.38, k.c.white.alpha(0.02)),
+                (1.0, theme::ink().alpha(0.16)),
+            ],
+        )
+        .border(1.0, theme::ink().alpha(0.1))
+        .shadow(0.0, 22.0, fill.alpha(glow))
+        .child(plate)
+}
+
+/// The cream plate a stage's readout is printed on, in both appearances.
+pub fn nameplate(k: &Kit, body: El) -> El {
+    let plate = col()
+        .w_full()
+        .padding(14.0)
+        .radius(k.radius.md)
+        .fill(theme::plate())
+        .border(1.0, theme::ink().alpha(0.08))
+        .child(body);
+    k.elevate(plate, &k.elevation.floating)
+}
+
+/// Dims a control while a sync run owns it, without hiding its value.
+pub fn dim_when(e: El, disabled: bool) -> El {
+    if disabled {
+        e.inert().layer_opacity(0.5)
+    } else {
+        e
     }
 }
 
@@ -257,18 +308,6 @@ pub fn dot(color: Color) -> El {
     el().size(7.0, 7.0).radius(4.0).fill(color).a11y_hidden()
 }
 
-pub fn chip(k: &Kit, value: &str, tone: Color) -> El {
-    row()
-        .h(24.0)
-        .px(9.0)
-        .gap(6.0)
-        .center_y()
-        .radius(12.0)
-        .fill(tone.alpha(0.11))
-        .child(dot(tone))
-        .child(text(value.to_owned()).font(k.ty.small_medium).color(tone))
-}
-
 pub fn swatch(k: &Kit, color: Color, size: f32) -> El {
     el().size(size, size)
         .radius(if size >= 24.0 {
@@ -303,6 +342,7 @@ pub fn slider(
     )
 }
 
+#[derive(Clone, Copy)]
 pub struct SliderSpec<'a> {
     pub key: &'a str,
     pub label: &'a str,
@@ -357,7 +397,7 @@ fn slider_inner(
         width,
         track,
     } = config;
-    let (w, h, knob) = (width, 34.0, 20.0);
+    let (w, h, knob) = (width, 40.0, 20.0);
     let track_is_fill = matches!(track, SliderTrack::Fill);
     let bar = if track_is_fill { 5.0 } else { 10.0 };
     let travel = w - knob;

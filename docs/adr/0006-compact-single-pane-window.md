@@ -1,7 +1,7 @@
 # 6. The window is compact and single-pane
 
 Date: 2026-11-08
-Status: Accepted (visual treatment superseded by 8)
+Status: Accepted (window and flow retained; visual treatment and metrics superseded by 8)
 
 ## Context
 
