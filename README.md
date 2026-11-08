@@ -19,9 +19,10 @@ non-secret metadata is written to disk.
 - Keeps every action on a visible pointer control. A transient toast reports a
   bulb that does not answer.
 - Follows the desktop's light or dark appearance.
-- Uses a compact ReUI-derived window: one three-tab bar, a bulb selector, flat
-  panels and one light-control surface, with every action on a pointer control.
-- Opens at 500 × 640, resizes between 480 × 600 and 520 × 760, and keeps its
+- Uses a compact ReUI-derived window: one three-tab bar, readable type, larger
+  controls, flat panels and one light-control surface, with every action on a
+  pointer control.
+- Opens at 500 × 680, resizes between 480 × 600 and 520 × 760, and keeps its
   484-point page centered.
 - Starts empty. It does not read the reference script's `tokens.env`.
 

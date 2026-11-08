@@ -14,12 +14,13 @@ pub fn view(app: &App, k: &Kit) -> El {
     let preview = app.color.preview;
     let back = IconButton::new(&BACK)
         .variant(IconButtonVariant::GhostMuted)
-        .control_size(ControlSize::Regular)
+        .control_size(ControlSize::ExtraLarge)
         .help("Back")
         .on_press(|app: &mut App| app.back())
         .build(k);
     let done = Button::new("Keep colour")
         .variant(ButtonVariant::Contrast)
+        .control_size(ControlSize::Large)
         .on_press(|app: &mut App| app.commit_color())
         .build(k);
     let hex = TextInput::new(&app.color.hex)
@@ -34,7 +35,7 @@ pub fn view(app: &App, k: &Kit) -> El {
         .build(k);
     let apply = Button::new("Apply")
         .variant(ButtonVariant::Outline)
-        .control_size(ControlSize::Small)
+        .control_size(ControlSize::Large)
         .on_press(|app: &mut App| app.update_color_from_hex())
         .build(k);
 
@@ -51,7 +52,7 @@ pub fn view(app: &App, k: &Kit) -> El {
                     .gap(2.0)
                     .child(
                         text(preview.hex())
-                            .font(TextStyle::new(22.0, 600.0).lh(26.0))
+                            .font(TextStyle::new(24.0, 600.0).lh(28.0))
                             .color(k.c.text_base),
                     )
                     .child(

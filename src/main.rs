@@ -113,7 +113,7 @@ fn main() {
         setup: Some(setup),
         poll: Some(poll),
         scenes: SCENES,
-        ..AppSpec::new("jyoti", (500.0, 640.0), App::new, ui::view)
+        ..AppSpec::new("jyoti", (500.0, 680.0), App::new, ui::view)
     })
     .window_options(rune::WindowOptions {
         max_size: Some((520.0, 760.0)),

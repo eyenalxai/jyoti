@@ -50,7 +50,7 @@ fn picker_row(app: &App, k: &Kit, layers: &mut Vec<El>) -> El {
     let current = selection_label(app);
     let trigger = dropdown_trigger(
         k,
-        360.0,
+        348.0,
         "Bulb",
         &current,
         app.bulb_picker_open,
@@ -116,7 +116,7 @@ fn picker_row(app: &App, k: &Kit, layers: &mut Vec<El>) -> El {
 
     let add = IconButton::new(&PLUS)
         .variant(IconButtonVariant::GhostMuted)
-        .control_size(ControlSize::Regular)
+        .control_size(ControlSize::ExtraLarge)
         .help("Add bulb")
         .on_press(|app: &mut App| app.open_add())
         .build(k);
@@ -124,7 +124,7 @@ fn picker_row(app: &App, k: &Kit, layers: &mut Vec<El>) -> El {
     let single = matches!(app.selection, Some(Selection::Bulb(_)));
     let trigger = IconButton::new(&MORE)
         .variant(IconButtonVariant::GhostMuted)
-        .control_size(ControlSize::Regular)
+        .control_size(ControlSize::ExtraLarge)
         .help("Bulb actions")
         .on_press(|app: &mut App| app.bulb_menu_open = !app.bulb_menu_open)
         .build(k);
@@ -165,7 +165,7 @@ fn picker_row(app: &App, k: &Kit, layers: &mut Vec<El>) -> El {
 
     row()
         .w_full()
-        .gap(8.0)
+        .gap(6.0)
         .center_y()
         .child(select)
         .child(add)
@@ -196,7 +196,7 @@ fn light_panel(app: &App, k: &Kit) -> El {
         AggregatePower::Unknown
     };
     let power_switch = Switch::new(power == AggregatePower::On)
-        .control_size(ControlSize::Small)
+        .control_size(ControlSize::Large)
         .label("Power")
         .on_toggle(|app: &mut App| app.toggle_power())
         .build(k);
@@ -261,7 +261,7 @@ fn light_panel(app: &App, k: &Kit) -> El {
                 .gap(2.0)
                 .child(
                     text(title.to_owned())
-                        .font(TextStyle::new(17.0, 600.0).lh(21.0))
+                        .font(TextStyle::new(18.0, 600.0).lh(23.0))
                         .color(k.c.text_base)
                         .truncate(),
                 )
@@ -396,7 +396,7 @@ fn brightness_block(
                 )
                 .child(
                     text(label)
-                        .font(TextStyle::new(24.0, 600.0).lh(28.0))
+                        .font(TextStyle::new(26.0, 600.0).lh(30.0))
                         .color(k.c.text_base),
                 ),
         )
@@ -523,7 +523,7 @@ fn colour_tile(
     let fill = color.map_or(k.c.layer_03, rgb_color);
     let mut tile = row()
         .w_full()
-        .h(54.0)
+        .h(58.0)
         .padding(8.0)
         .gap(8.0)
         .center_y()
@@ -545,11 +545,11 @@ fn colour_tile(
     }
     let pill = |content: El| {
         row()
-            .h(26.0)
-            .px(8.0)
-            .gap(5.0)
+            .h(30.0)
+            .px(10.0)
+            .gap(6.0)
             .center_y()
-            .radius(13.0)
+            .radius(15.0)
             .fill(k.c.bg_base.alpha(0.92))
             .border(1.0, k.c.border_base)
             .child(content)
@@ -573,7 +573,7 @@ fn colour_tile(
                         .color(k.c.text_base)
                         .a11y_hidden(),
                 )
-                .child(rune::icon(&EDIT, 13.0).color(k.c.text_muted).a11y_hidden()),
+                .child(rune::icon(&EDIT, 15.0).color(k.c.text_muted).a11y_hidden()),
         ));
     }
     tile
@@ -591,6 +591,7 @@ fn white_name(kelvin: u16) -> &'static str {
 fn empty_state(_app: &App, k: &Kit) -> El {
     let add = Button::new("Add a bulb")
         .variant(ButtonVariant::Contrast)
+        .control_size(ControlSize::Large)
         .on_press(|app: &mut App| app.open_add())
         .build(k);
     let body = col()

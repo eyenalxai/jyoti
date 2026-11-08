@@ -38,10 +38,10 @@ fn brand(k: &Kit) -> El {
     row()
         .gap(6.0)
         .center_y()
-        .child(rune::icon(&BULB, 15.0).color(k.c.text_muted))
+        .child(rune::icon(&BULB, 16.0).color(k.c.text_muted))
         .child(
             text("jyoti".to_owned())
-                .font(TextStyle::new(15.0, 600.0).lh(18.0))
+                .font(TextStyle::new(16.0, 600.0).lh(19.0))
                 .color(k.c.text_base),
         )
 }
@@ -56,7 +56,7 @@ fn nav(app: &App, k: &Kit) -> El {
     let labels = ["Control", "Sync", "Settings"];
     let mut tabs = row()
         .w_full()
-        .h(32.0)
+        .h(40.0)
         .gap(2.0)
         .role("tablist")
         .label("Sections")
@@ -66,9 +66,9 @@ fn nav(app: &App, k: &Kit) -> El {
         let mut tab = row()
             .key(format!("tab-{index}"))
             .grow(1.0)
-            .h(32.0)
+            .h(40.0)
             .center()
-            .radius(k.radius.md)
+            .radius(k.radius.lg)
             .role("tab")
             .label(label)
             .position_in_set(index + 1, labels.len())

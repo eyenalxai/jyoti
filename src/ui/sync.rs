@@ -19,13 +19,13 @@ pub fn view(app: &App, k: &Kit, layers: &mut Vec<El>) -> El {
 
     let start = Button::new("Start sync")
         .variant(ButtonVariant::Contrast)
-        .control_size(ControlSize::Small)
+        .control_size(ControlSize::Large)
         .disabled(active || stopping || app.sync.monitors.is_empty())
         .on_press(|app: &mut App| app.start_sync())
         .build(k);
     let pause = Button::new(if paused { "Resume" } else { "Pause" })
         .variant(ButtonVariant::Outline)
-        .control_size(ControlSize::Small)
+        .control_size(ControlSize::Large)
         .disabled(!running || stopping)
         .on_press(|app: &mut App| {
             if app.sync.status == SyncStatus::Paused {
@@ -37,7 +37,7 @@ pub fn view(app: &App, k: &Kit, layers: &mut Vec<El>) -> El {
         .build(k);
     let stop = Button::new("Stop and restore")
         .variant(ButtonVariant::Danger)
-        .control_size(ControlSize::Small)
+        .control_size(ControlSize::Large)
         .disabled(!active)
         .on_press(|app: &mut App| app.stop_sync())
         .build(k);
@@ -49,7 +49,7 @@ pub fn view(app: &App, k: &Kit, layers: &mut Vec<El>) -> El {
             .child(panel_header(
                 k,
                 "Live capture",
-                Some("One monitor drives every configured bulb."),
+                None,
                 vec![badge(
                     k,
                     &app.sync.status.label(),
@@ -175,7 +175,7 @@ fn capture_body(app: &App, k: &Kit, layers: &mut Vec<El>) -> El {
         body = body.child(notice(k, &SYNC, error, k.c.danger)).child(
             Button::new("Retry capture")
                 .variant(ButtonVariant::Outline)
-                .control_size(ControlSize::Small)
+                .control_size(ControlSize::Regular)
                 .on_press(|app: &mut App| app.restart_screen())
                 .build(k),
         );
@@ -293,12 +293,7 @@ fn output_panel(app: &App, k: &Kit) -> El {
         k,
         col()
             .w_full()
-            .child(panel_header(
-                k,
-                "Lighting output",
-                Some("How the captured scene reaches the bulbs."),
-                Vec::new(),
-            ))
+            .child(panel_header(k, "Lighting output", None, Vec::new()))
             .child(panel_body(
                 col()
                     .w_full()
@@ -324,24 +319,18 @@ fn output_panel(app: &App, k: &Kit) -> El {
                                             .center_y()
                                             .child(swatch(k, output, 14.0))
                                             .child(
-                                                text(format!(
-                                                    "{:.0}%",
-                                                    app.sync.colour_intensity
-                                                ))
-                                                .font(k.ty.mono)
-                                                .color(k.c.text_base),
+                                                text(format!("{:.0}%", app.sync.colour_intensity))
+                                                    .font(k.ty.mono)
+                                                    .color(k.c.text_base),
                                             ),
                                     ),
                             )
                             .child(intensity)
                             .child(
-                                text(
-                                    "0% keeps the captured colour; 100% pushes it to full saturation."
-                                        .to_owned(),
-                                )
-                                .font(k.ty.small)
-                                .color(k.c.text_muted)
-                                .wrap(),
+                                text("0% natural; 100% full saturation.".to_owned())
+                                    .font(k.ty.small)
+                                    .color(k.c.text_muted)
+                                    .wrap(),
                             ),
                     )
                     .child(Divider::horizontal().build(k))
@@ -368,13 +357,10 @@ fn output_panel(app: &App, k: &Kit) -> El {
                             )
                             .child(gain)
                             .child(
-                                text(
-                                    "Multiplies captured brightness from 50% to 400%; the bulb still stops at 100%."
-                                        .to_owned(),
-                                )
-                                .font(k.ty.small)
-                                .color(k.c.text_muted)
-                                .wrap(),
+                                text("50–400%; output caps at 100%.".to_owned())
+                                    .font(k.ty.small)
+                                    .color(k.c.text_muted)
+                                    .wrap(),
                             ),
                     ),
             )),
