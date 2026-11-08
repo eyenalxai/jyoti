@@ -1,74 +1,177 @@
-use rune::{Cx, El, ScrollSpec, col, row, text};
-use rune_kit::shell::Page;
-use rune_kit::{IconButton, IconButtonVariant, Kit};
+use rune::{El, ScrollSpec, col, row, text};
+use rune_kit::{Button, ButtonVariant, ControlSize, Divider, Kit};
 
 use crate::app::App;
-use crate::ui::widget::{BACK, section, shortcut_row, shortcut_text};
+use crate::ui::widget::{badge, panel, panel_body, panel_footer, panel_header, setting_row};
 
-pub fn view(_app: &App, cx: &mut Cx<App>, k: &Kit) -> El {
-    let back = IconButton::new(&BACK)
-        .variant(IconButtonVariant::GhostMuted)
-        .help("Back")
-        .on_press(|app: &mut App| app.back())
+pub fn view(app: &App, k: &Kit) -> El {
+    let reset = Button::new("Reset to 100%")
+        .variant(ButtonVariant::Outline)
+        .control_size(ControlSize::Small)
+        .on_press(|app: &mut App| app.reset_sync_gain())
+        .build(k);
+    let open_sync = Button::new("Open screen sync")
+        .variant(ButtonVariant::Ghost)
+        .control_size(ControlSize::Small)
+        .on_press(|app: &mut App| app.open_sync())
         .build(k);
 
-    let shortcuts = section(
+    let preferences = panel(
         k,
-        "Keyboard",
         col()
-            .gap(8.0)
-            .child(shortcut_row(k, "Add bulb", shortcut_text("⌘N")))
-            .child(shortcut_row(k, "Refresh bulbs", shortcut_text("⌘R")))
-            .child(shortcut_row(k, "Toggle power", "Space"))
-            .child(shortcut_row(k, "White light", "W"))
-            .child(shortcut_row(k, "Colour light", "C"))
-            .child(shortcut_row(k, "Edit bulb", shortcut_text("⌘E")))
-            .child(shortcut_row(k, "Screen sync", shortcut_text("⌘S")))
-            .child(shortcut_row(k, "Settings", shortcut_text("⌘,")))
-            .child(shortcut_row(k, "Back", "Esc")),
+            .w_full()
+            .child(panel_header(
+                k,
+                "Preferences",
+                Some("Settings the app carries between launches."),
+                Vec::new(),
+            ))
+            .child(panel_body(
+                col()
+                    .w_full()
+                    .gap(0.0)
+                    .child(setting_row(
+                        k,
+                        "Sync brightness gain",
+                        "Scales only the brightness derived from the screen, from 50% to 200%.",
+                        row()
+                            .gap(10.0)
+                            .center_y()
+                            .child(
+                                text(format!("{:.1}×", app.sync.gain))
+                                    .font(k.ty.mono)
+                                    .color(k.c.text_base),
+                            )
+                            .child(reset),
+                    ))
+                    .child(Divider::horizontal().build(k))
+                    .child(setting_row(
+                        k,
+                        "Appearance",
+                        "jyoti follows the desktop's light or dark appearance.",
+                        badge(k, "Follow system", k.c.info.icon),
+                    )),
+            ))
+            .child(panel_footer(k, vec![open_sync])),
     );
 
-    let about = section(
+    let metadata = app.config.config_path.display().to_string();
+    let preferences_path = app.config.preferences_path.display().to_string();
+    let storage = panel(
         k,
-        "About",
         col()
-            .gap(6.0)
-            .child(
-                text("jyoti controls Xiaomi light bulbs over the local network. Tokens live in the OS keyring; metadata lives in the XDG config folder."
-                    .to_owned())
-                    .font(k.ty.small)
-                    .color(k.c.text_muted)
-                    .wrap(),
-            )
-            .child(
-                text("Screen sync captures one Wayland monitor, derives its colour and drives every configured bulb."
-                    .to_owned())
-                    .font(k.ty.small)
-                    .color(k.c.text_muted)
-                    .wrap(),
-            ),
+            .w_full()
+            .child(panel_header(
+                k,
+                "Storage",
+                Some("Secrets stay out of files and logs."),
+                Vec::new(),
+            ))
+            .child(panel_body(
+                col()
+                    .w_full()
+                    .gap(0.0)
+                    .child(setting_row(
+                        k,
+                        "Bulb metadata",
+                        "Name, address and model.",
+                        path_text(k, &metadata),
+                    ))
+                    .child(Divider::horizontal().build(k))
+                    .child(setting_row(
+                        k,
+                        "Preferences",
+                        "Sync brightness gain.",
+                        path_text(k, &preferences_path),
+                    ))
+                    .child(Divider::horizontal().build(k))
+                    .child(setting_row(
+                        k,
+                        "Tokens",
+                        "One OS keyring entry per bulb. Never written to config.",
+                        badge(k, "OS keyring", k.c.success.icon),
+                    ))
+                    .child(Divider::horizontal().build(k))
+                    .child(setting_row(
+                        k,
+                        "Keyring service",
+                        "Token account prefix.",
+                        text(app.config.keyring_service.clone())
+                            .font(k.ty.mono)
+                            .color(k.c.text_muted),
+                    )),
+            )),
     );
 
-    let body = col()
+    let about = panel(
+        k,
+        col()
+            .w_full()
+            .child(panel_header(
+                k,
+                "About",
+                Some("A small native control panel with no daemon or account."),
+                Vec::new(),
+            ))
+            .child(panel_body(
+                col()
+                    .w_full()
+                    .gap(0.0)
+                    .child(setting_row(
+                        k,
+                        "Version",
+                        "Built from this checkout.",
+                        text(env!("CARGO_PKG_VERSION"))
+                            .font(k.ty.mono)
+                            .color(k.c.text_base),
+                    ))
+                    .child(Divider::horizontal().build(k))
+                    .child(setting_row(
+                        k,
+                        "Protocol",
+                        "Xiaomi miIO over UDP on the local network.",
+                        text("miIO · UDP".to_owned())
+                            .font(k.ty.mono)
+                            .color(k.c.text_muted),
+                    ))
+                    .child(Divider::horizontal().build(k))
+                    .child(setting_row(
+                        k,
+                        "Screen capture",
+                        "Wayland, libwayshot, EGL/DMA-BUF.",
+                        text("libwayshot".to_owned())
+                            .font(k.ty.mono)
+                            .color(k.c.text_muted),
+                    )),
+            )),
+    );
+
+    let scroll = col()
         .key("settings")
         .w_full()
-        .max_w(720.0)
-        .padding(32.0)
-        .gap(20.0)
-        .child(shortcuts)
-        .child(about)
+        .padding(18.0)
+        .gap(14.0)
+        .child(preferences)
+        .child(
+            row()
+                .w_full()
+                .gap(14.0)
+                .child(col().grow(1.0).child(storage))
+                .child(col().grow(1.0).child(about)),
+        )
         .scroll(ScrollSpec {
             stick_bottom: false,
         })
         .grow(1.0)
         .min_h(0.0);
-    let body = row().w_full().h_full().justify_center().child(body);
 
-    Page::new(body)
-        .title("Settings")
-        .leading(back)
-        .titlebar_inset(cx.titlebar_inset())
-        .frame_inset(8.0)
-        .toolbar_in_panel()
-        .build(k)
+    col().w_full().h_full().min_h(0.0).child(scroll)
+}
+
+fn path_text(k: &Kit, value: &str) -> El {
+    text(value.to_owned())
+        .font(k.ty.mono)
+        .color(k.c.text_muted)
+        .truncate()
+        .w(300.0)
 }

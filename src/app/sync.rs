@@ -351,3 +351,10 @@ impl App {
         }
     }
 }
+
+impl App {
+    pub(crate) fn reset_sync_gain(&mut self) {
+        self.sync.gain = crate::screen::gain::SYNC_GAIN_DEFAULT;
+        self.save_preferences();
+    }
+}

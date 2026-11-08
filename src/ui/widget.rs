@@ -1,7 +1,8 @@
 use std::rc::Rc;
+use std::time::{Duration, Instant};
 
-use rune::{Align, Color, Drag, El, Icon, Phase, Spring, Tx, col, el, row, text};
-use rune_kit::{Kit, SegmentedControl};
+use rune::{Align, Color, Drag, El, Icon, Phase, Spring, TextStyle, Tx, col, el, row, text};
+use rune_kit::{Divider, Kit, SegmentedControl, StateColors};
 
 use crate::app::App;
 use crate::screen::sync::SyncStatus;
@@ -21,11 +22,7 @@ pub static TRASH: Icon = Icon {
     view: 16.0,
     body: r#"<path d="M3.5 4.5h9M6 4.5V3h4v1.5M4.5 4.5l.5 8.5h6l.5-8.5M6.5 7v4M9.5 7v4" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" fill="none"/>"#,
 };
-pub static REFRESH: Icon = Icon {
-    name: "jyoti-refresh",
-    view: 16.0,
-    body: r#"<path d="M12.8 6.2A5 5 0 1 0 13 9.7" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" fill="none"/><path d="M12.8 3.4v3h-3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" fill="none"/>"#,
-};
+
 pub static PLUS: Icon = Icon {
     name: "jyoti-plus",
     view: 16.0,
@@ -46,11 +43,6 @@ pub static HELP: Icon = Icon {
     view: 16.0,
     body: r#"<circle cx="8" cy="8" r="5.6" stroke="currentColor" stroke-width="1.2" fill="none"/><path d="M6.5 6.2a1.6 1.6 0 1 1 2.4 1.4c-.6.4-1 .8-1 1.5M8 11.4v.1" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" fill="none"/>"#,
 };
-pub static BACK: Icon = Icon {
-    name: "jyoti-back",
-    view: 16.0,
-    body: r#"<path d="M9.5 3.5 5 8l4.5 4.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" fill="none"/>"#,
-};
 
 pub fn sync_status_tone(k: &Kit, status: &SyncStatus) -> Color {
     match status {
@@ -62,12 +54,172 @@ pub fn sync_status_tone(k: &Kit, status: &SyncStatus) -> Color {
     }
 }
 
-pub fn shortcut_text(keys: &str) -> String {
-    if cfg!(target_os = "macos") {
-        keys.to_owned()
-    } else {
-        keys.replace('⌘', "Ctrl+")
+pub fn panel(k: &Kit, body: El) -> El {
+    col()
+        .w_full()
+        .min_w(0.0)
+        .radius(k.radius.lg)
+        .clip_soft(k.radius.lg)
+        .fill(k.c.layer_01)
+        .border(1.0, k.c.border_weak)
+        .child(body)
+}
+
+pub fn panel_header(k: &Kit, title: &str, description: Option<&str>, actions: Vec<El>) -> El {
+    let mut heading = col().grow(1.0).min_w(0.0).gap(2.0).child(
+        text(title.to_owned())
+            .font(k.ty.ui_medium)
+            .color(k.c.text_base)
+            .truncate(),
+    );
+    if let Some(description) = description {
+        heading = heading.child(
+            text(description.to_owned())
+                .font(k.ty.small)
+                .color(k.c.text_muted)
+                .wrap(),
+        );
     }
+    let mut header = row()
+        .w_full()
+        .px(14.0)
+        .py(11.0)
+        .gap(12.0)
+        .center_y()
+        .child(heading);
+    if !actions.is_empty() {
+        header = header.child(row().gap(6.0).center_y().children(actions));
+    }
+    col()
+        .w_full()
+        .child(header)
+        .child(Divider::horizontal().build(k))
+}
+
+pub fn panel_body(body: El) -> El {
+    col()
+        .w_full()
+        .min_w(0.0)
+        .padding(14.0)
+        .gap(12.0)
+        .child(body)
+}
+
+pub fn panel_footer(k: &Kit, actions: Vec<El>) -> El {
+    col().w_full().child(Divider::horizontal().build(k)).child(
+        row()
+            .w_full()
+            .px(14.0)
+            .py(10.0)
+            .gap(8.0)
+            .justify_end()
+            .children(actions),
+    )
+}
+
+pub fn stat(
+    k: &Kit,
+    label: &str,
+    value: impl Into<String>,
+    meta: impl Into<String>,
+    accent: Color,
+) -> El {
+    col()
+        .grow(1.0)
+        .min_w(0.0)
+        .padding(14.0)
+        .gap(8.0)
+        .radius(k.radius.lg)
+        .fill(k.c.layer_01)
+        .border(1.0, k.c.border_weak)
+        .child(
+            row()
+                .w_full()
+                .justify_between()
+                .gap(8.0)
+                .center_y()
+                .child(
+                    text(label.to_owned())
+                        .font(k.ty.small)
+                        .color(k.c.text_muted)
+                        .truncate(),
+                )
+                .child(dot(accent)),
+        )
+        .child(
+            text(value.into())
+                .font(TextStyle::new(20.0, 600.0).lh(24.0))
+                .color(k.c.text_base)
+                .truncate(),
+        )
+        .child(
+            text(meta.into())
+                .font(k.ty.small)
+                .color(k.c.text_faint)
+                .truncate(),
+        )
+}
+
+pub fn setting_row(k: &Kit, title: &str, description: &str, control: El) -> El {
+    row()
+        .w_full()
+        .min_w(0.0)
+        .gap(20.0)
+        .py(10.0)
+        .items_start()
+        .child(
+            col()
+                .grow(1.0)
+                .min_w(0.0)
+                .gap(2.0)
+                .child(
+                    text(title.to_owned())
+                        .font(k.ty.ui_medium)
+                        .color(k.c.text_base),
+                )
+                .child(
+                    text(description.to_owned())
+                        .font(k.ty.small)
+                        .color(k.c.text_muted)
+                        .wrap(),
+                ),
+        )
+        .child(control)
+}
+
+pub fn fact_row(k: &Kit, label: &str, value: impl Into<String>) -> El {
+    row()
+        .w_full()
+        .justify_between()
+        .gap(16.0)
+        .py(7.0)
+        .center_y()
+        .child(
+            text(label.to_owned())
+                .font(k.ty.small)
+                .color(k.c.text_muted),
+        )
+        .child(value_text(k, value))
+}
+
+pub fn notice(k: &Kit, icon: &'static Icon, message: &str, state: StateColors) -> El {
+    row()
+        .w_full()
+        .padding(10.0)
+        .gap(8.0)
+        .center_y()
+        .radius(k.radius.md)
+        .fill(state.bg)
+        .border(1.0, state.border)
+        .child(rune::icon(icon, 16.0).color(state.icon).a11y_hidden())
+        .child(
+            text(message.to_owned())
+                .font(k.ty.small)
+                .color(state.fg)
+                .wrap()
+                .grow(1.0)
+                .min_w(0.0),
+        )
 }
 
 pub fn rgb_color(rgb: crate::bulb::model::Rgb) -> Color {
@@ -83,40 +235,23 @@ pub fn dot(color: Color) -> El {
     el().size(7.0, 7.0).radius(3.5).fill(color)
 }
 
-pub fn card(k: &Kit, body: El) -> El {
-    col()
-        .w_full()
-        .padding(16.0)
-        .gap(12.0)
-        .radius(k.radius.lg)
-        .fill(k.c.layer_01)
-        .border(1.0, k.c.border_weak)
-        .child(body)
-}
-
-pub fn section(k: &Kit, title: &str, body: El) -> El {
-    col()
-        .w_full()
-        .gap(8.0)
-        .child(
-            text(title.to_owned())
-                .font(k.ty.small_medium)
-                .color(k.c.text_muted),
-        )
-        .child(card(k, body))
-}
-
 pub fn badge(k: &Kit, label: &str, tone: Color) -> El {
     row()
+        .role("status")
+        .label(label.to_owned())
         .gap(5.0)
         .px(8.0)
-        .h(22.0)
+        .h(20.0)
         .center_y()
-        .radius(11.0)
+        .radius(10.0)
         .fill(tone.alpha(0.12))
-        .child(dot(tone))
-        .child(text(label.to_owned()).font(k.ty.small).color(tone))
-        .a11y_hidden()
+        .child(dot(tone).a11y_hidden())
+        .child(
+            text(label.to_owned())
+                .font(k.ty.small)
+                .color(tone)
+                .a11y_hidden(),
+        )
 }
 
 pub fn swatch(k: &Kit, color: Color, size: f32) -> El {
@@ -136,9 +271,10 @@ pub fn slider(
     value: f32,
     label: &str,
     step: f32,
+    width: f32,
     on_change: impl Fn(&mut App, f32) + 'static,
 ) -> El {
-    let (w, h, knob, bar) = (260.0, 24.0, 18.0, 4.0);
+    let (w, h, knob, bar) = (width, 22.0, 16.0, 3.0);
     let travel = w - knob;
     let value = value.clamp(0.0, 1.0);
     let on_change = Rc::new(on_change);
@@ -235,13 +371,16 @@ pub fn segmented(
         .build(k)
 }
 
-pub fn shortcut_row(k: &Kit, label: &str, keys: impl Into<String>) -> El {
-    row()
-        .w_full()
-        .justify_between()
-        .gap(16.0)
-        .child(text(label.to_owned()).font(k.ty.ui).color(k.c.text_base))
-        .child(text(keys.into()).font(k.ty.mono).color(k.c.text_muted))
+pub fn frame_age(at: Option<Instant>) -> String {
+    let Some(at) = at else {
+        return "—".to_owned();
+    };
+    let elapsed = at.elapsed();
+    if elapsed < Duration::from_secs(1) {
+        format!("{} ms", elapsed.as_millis())
+    } else {
+        format!("{:.1} s", elapsed.as_secs_f32())
+    }
 }
 
 pub fn value_text(k: &Kit, value: impl Into<String>) -> El {
