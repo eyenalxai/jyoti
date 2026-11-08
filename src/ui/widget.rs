@@ -28,20 +28,25 @@ pub static PLUS: Icon = Icon {
     view: 16.0,
     body: r#"<path d="M8 3.5v9M3.5 8h9" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>"#,
 };
-pub static GEAR: Icon = Icon {
-    name: "jyoti-gear",
-    view: 16.0,
-    body: r#"<circle cx="8" cy="8" r="2.2" stroke="currentColor" stroke-width="1.2" fill="none"/><path d="M8 2.2v1.5M8 12.3v1.5M2.2 8h1.5M12.3 8h1.5M3.9 3.9l1 1M11.1 11.1l1 1M12.1 3.9l-1 1M4.9 11.1l-1 1" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>"#,
-};
 pub static SYNC: Icon = Icon {
     name: "jyoti-sync",
     view: 16.0,
     body: r#"<path d="M3 6.5A3 3 0 0 1 6 4h5M10.5 2.5 13 4l-2.5 1.5M13 9.5A3 3 0 0 1 10 12H5M5.5 13.5 3 12l2.5-1.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>"#,
 };
-pub static HELP: Icon = Icon {
-    name: "jyoti-help",
+pub static REFRESH: Icon = Icon {
+    name: "jyoti-refresh",
     view: 16.0,
-    body: r#"<circle cx="8" cy="8" r="5.6" stroke="currentColor" stroke-width="1.2" fill="none"/><path d="M6.5 6.2a1.6 1.6 0 1 1 2.4 1.4c-.6.4-1 .8-1 1.5M8 11.4v.1" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" fill="none"/>"#,
+    body: r#"<path d="M13 8a5 5 0 1 1-1.5-3.6M13 2.6v3h-3" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>"#,
+};
+pub static BACK: Icon = Icon {
+    name: "jyoti-back",
+    view: 16.0,
+    body: r#"<path d="M9.8 3.8 5.6 8l4.2 4.2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" fill="none"/>"#,
+};
+pub static MORE: Icon = Icon {
+    name: "jyoti-more",
+    view: 16.0,
+    body: r#"<circle cx="3.6" cy="8" r="1.05" fill="currentColor"/><circle cx="8" cy="8" r="1.05" fill="currentColor"/><circle cx="12.4" cy="8" r="1.05" fill="currentColor"/>"#,
 };
 
 pub fn sync_status_tone(k: &Kit, status: &SyncStatus) -> Color {
@@ -117,74 +122,93 @@ pub fn panel_footer(k: &Kit, actions: Vec<El>) -> El {
     )
 }
 
-pub fn stat(
-    k: &Kit,
-    label: &str,
-    value: impl Into<String>,
-    meta: impl Into<String>,
-    accent: Color,
-) -> El {
+pub fn setting_block(k: &Kit, title: &str, description: &str, control: El) -> El {
     col()
-        .grow(1.0)
-        .min_w(0.0)
-        .padding(14.0)
-        .gap(8.0)
-        .radius(k.radius.lg)
-        .fill(k.c.layer_01)
-        .border(1.0, k.c.border_weak)
-        .child(
-            row()
-                .w_full()
-                .justify_between()
-                .gap(8.0)
-                .center_y()
-                .child(
-                    text(label.to_owned())
-                        .font(k.ty.small)
-                        .color(k.c.text_muted)
-                        .truncate(),
-                )
-                .child(dot(accent)),
-        )
-        .child(
-            text(value.into())
-                .font(TextStyle::new(20.0, 600.0).lh(24.0))
-                .color(k.c.text_base)
-                .truncate(),
-        )
-        .child(
-            text(meta.into())
-                .font(k.ty.small)
-                .color(k.c.text_faint)
-                .truncate(),
-        )
-}
-
-pub fn setting_row(k: &Kit, title: &str, description: &str, control: El) -> El {
-    row()
         .w_full()
         .min_w(0.0)
-        .gap(20.0)
-        .py(10.0)
         .items_start()
+        .gap(4.0)
+        .py(10.0)
         .child(
-            col()
-                .grow(1.0)
-                .min_w(0.0)
-                .gap(2.0)
-                .child(
-                    text(title.to_owned())
-                        .font(k.ty.ui_medium)
-                        .color(k.c.text_base),
-                )
-                .child(
-                    text(description.to_owned())
-                        .font(k.ty.small)
-                        .color(k.c.text_muted)
-                        .wrap(),
-                ),
+            text(title.to_owned())
+                .font(k.ty.ui_medium)
+                .color(k.c.text_base),
+        )
+        .child(
+            text(description.to_owned())
+                .font(k.ty.small)
+                .color(k.c.text_muted)
+                .wrap(),
         )
         .child(control)
+}
+
+pub fn dropdown_trigger(
+    k: &Kit,
+    label: &str,
+    value: &str,
+    open: bool,
+    status: Option<Color>,
+    on_press: impl Fn(&mut App) + 'static,
+) -> El {
+    let chevron = if open {
+        k.glyph.chevron_up
+    } else {
+        k.glyph.chevron_down
+    };
+    let mut trigger = row()
+        .w(360.0)
+        .h(28.0)
+        .pl(8.0)
+        .pr(6.0)
+        .gap(6.0)
+        .center_y()
+        .role("button")
+        .label(label.to_owned())
+        .a11y_value(value.to_owned())
+        .expanded(open)
+        .radius(k.radius.md)
+        .fill(k.c.bg_base)
+        .border(1.0, k.c.border_base)
+        .hover(k.c.hover)
+        .press(k.c.pressed)
+        .focusable(true)
+        .focus_ring(2.0, 1.0, k.c.border_focus)
+        .on_press(on_press);
+    if let Some(status) = status {
+        trigger = trigger.child(dot(status));
+    }
+    trigger
+        .child(
+            text(value.to_owned())
+                .font(k.ty.ui_compact)
+                .color(k.c.text_base)
+                .truncate()
+                .grow(1.0)
+                .min_w(0.0),
+        )
+        .child(rune::icon(chevron, 16.0).color(k.c.icon_muted))
+}
+
+pub fn subpage_header(k: &Kit, title: &str, description: &str, back: El) -> El {
+    row().w_full().gap(8.0).center_y().child(back).child(
+        col()
+            .grow(1.0)
+            .min_w(0.0)
+            .gap(1.0)
+            .child(
+                text(title.to_owned())
+                    .font(TextStyle::new(17.0, 600.0).lh(21.0))
+                    .color(k.c.text_base)
+                    .truncate(),
+            )
+            .child(
+                text(description.to_owned())
+                    .font(k.ty.small)
+                    .color(k.c.text_muted)
+                    .truncate(),
+            ),
+    )
 }
 
 pub fn fact_row(k: &Kit, label: &str, value: impl Into<String>) -> El {

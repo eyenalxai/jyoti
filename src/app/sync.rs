@@ -12,6 +12,7 @@ use crate::screen::sync::{RestoreReport, SyncStatus, restore_control};
 
 impl App {
     pub(crate) fn start_sync(&mut self) {
+        self.monitor_picker_open = false;
         if self.sync.status.is_busy() {
             return;
         }
@@ -194,6 +195,7 @@ impl App {
     }
 
     pub(crate) fn select_monitor(&mut self, name: String) {
+        self.monitor_picker_open = false;
         self.sync.selected_monitor = Some(name.clone());
         if self.sync.status.is_running()
             && let Some(handle) = &self.screen_handle
@@ -349,12 +351,5 @@ impl App {
         if !flashing {
             self.sync.brightness = target;
         }
-    }
-}
-
-impl App {
-    pub(crate) fn reset_sync_gain(&mut self) {
-        self.sync.gain = crate::screen::gain::SYNC_GAIN_DEFAULT;
-        self.save_preferences();
     }
 }
