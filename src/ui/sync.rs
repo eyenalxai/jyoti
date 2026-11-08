@@ -1,12 +1,14 @@
 use rune::{El, ScrollSpec, TextStyle, col, row, text};
-use rune_kit::{Button, ButtonVariant, ControlSize, Kit, Menu, MenuItem};
+use rune_kit::{Button, ButtonVariant, ControlSize, Divider, Kit, Menu, MenuItem};
 
 use crate::app::App;
+use crate::bulb::model::Rgb;
 use crate::screen::gain::{SYNC_GAIN_MAX, SYNC_GAIN_MIN};
+use crate::screen::intensity::intensify;
 use crate::screen::sync::SyncStatus;
 use crate::ui::widget::{
-    SYNC, badge, dropdown_trigger, frame_age, notice, panel, panel_body, panel_header, rgb_color,
-    slider, swatch, sync_status_tone,
+    SYNC, SliderSpec, badge, dropdown_trigger, frame_age, gradient_slider, notice, panel,
+    panel_body, panel_header, rgb_color, slider, swatch, sync_status_tone,
 };
 
 pub fn view(app: &App, k: &Kit, layers: &mut Vec<El>) -> El {
@@ -54,12 +56,11 @@ pub fn view(app: &App, k: &Kit, layers: &mut Vec<El>) -> El {
                     sync_status_tone(k, &app.sync.status),
                 )],
             ))
-            .child(panel_body(capture_body(app, k)))
+            .child(panel_body(capture_body(app, k, layers)))
             .child(crate::ui::widget::panel_footer(k, vec![start, pause, stop])),
     );
 
-    let monitor = monitor_panel(app, k, layers);
-    let gain = gain_panel(app, k);
+    let output = output_panel(app, k);
 
     let mut content = col()
         .key("sync")
@@ -67,8 +68,7 @@ pub fn view(app: &App, k: &Kit, layers: &mut Vec<El>) -> El {
         .padding(16.0)
         .gap(12.0)
         .child(capture)
-        .child(monitor)
-        .child(gain);
+        .child(output);
 
     if let Some(report) = &app.sync.restore_report {
         let tone = if report.not_restored.is_empty() {
@@ -109,7 +109,7 @@ pub fn view(app: &App, k: &Kit, layers: &mut Vec<El>) -> El {
     col().w_full().h_full().min_h(0.0).child(scroll)
 }
 
-fn capture_body(app: &App, k: &Kit) -> El {
+fn capture_body(app: &App, k: &Kit, layers: &mut Vec<El>) -> El {
     let derived = app
         .sync
         .derived
@@ -153,10 +153,9 @@ fn capture_body(app: &App, k: &Kit) -> El {
         .child(
             row()
                 .w_full()
-                .gap(10.0)
-                .child(fact(k, "Frame", frame_age(app.sync.last_scene_at)))
-                .child(fact(k, "Gain", format!("{:.1}×", app.sync.gain))),
-        );
+                .child(fact(k, "Frame", frame_age(app.sync.last_scene_at))),
+        )
+        .child(monitor_chooser(app, k, layers));
     if app.sync.stale {
         body = body.child(notice(
             k,
@@ -184,76 +183,100 @@ fn capture_body(app: &App, k: &Kit) -> El {
     body
 }
 
-fn monitor_panel(app: &App, k: &Kit, layers: &mut Vec<El>) -> El {
-    let mut body = col().w_full().gap(8.0);
+fn monitor_chooser(app: &App, k: &Kit, layers: &mut Vec<El>) -> El {
     if app.sync.monitors.is_empty() {
-        body = body.child(notice(
+        return notice(
             k,
             &SYNC,
             "No monitors found. Capture needs a Wayland compositor with wlr-screencopy, such as Hyprland or Sway.",
             k.c.warning,
-        ));
-    } else {
-        let current = app
-            .sync
-            .selected_monitor
-            .clone()
-            .unwrap_or_else(|| "Select a monitor".to_owned());
-        let trigger = dropdown_trigger(
-            k,
-            "Monitor",
-            &current,
-            app.monitor_picker_open,
-            None,
-            |app: &mut App| app.monitor_picker_open = !app.monitor_picker_open,
         );
-        let mut picker = Menu::new("monitor-picker")
-            .trigger(trigger)
-            .open(app.monitor_picker_open)
-            .min_width(360.0)
-            .on_close(|app: &mut App| app.monitor_picker_open = false);
-        for monitor in &app.sync.monitors {
-            let selected = app.sync.selected_monitor.as_deref() == Some(monitor.name.as_str());
-            let name = monitor.name.clone();
-            let detail = format!(
-                "{} × {}{}",
-                monitor.width,
-                monitor.height,
-                if monitor.description.is_empty() {
-                    String::new()
-                } else {
-                    format!(" · {}", monitor.description)
-                }
-            );
-            picker = picker.item(
-                MenuItem::new(monitor.name.clone())
-                    .checked(selected)
-                    .description(detail)
-                    .on_select(move |app: &mut App| {
-                        app.monitor_picker_open = false;
-                        app.select_monitor(name.clone());
-                    }),
-            );
-        }
-        body = body.child(picker.build(k, layers));
     }
-    panel(
+    let current = app
+        .sync
+        .selected_monitor
+        .clone()
+        .unwrap_or_else(|| "Select a monitor".to_owned());
+    let resolution = app
+        .sync
+        .monitors
+        .iter()
+        .find(|monitor| monitor.name == current)
+        .map_or_else(String::new, |monitor| {
+            format!("{} × {}", monitor.width, monitor.height)
+        });
+    let trigger = dropdown_trigger(
         k,
-        col()
-            .w_full()
-            .child(panel_header(
-                k,
-                "Monitor",
-                Some("Choose the output to capture."),
-                Vec::new(),
-            ))
-            .child(panel_body(body)),
-    )
+        400.0,
+        "Monitor",
+        &current,
+        app.monitor_picker_open,
+        None,
+        |app: &mut App| app.monitor_picker_open = !app.monitor_picker_open,
+    );
+    let mut picker = Menu::new("monitor-picker")
+        .trigger(trigger)
+        .open(app.monitor_picker_open)
+        .min_width(400.0)
+        .on_close(|app: &mut App| app.monitor_picker_open = false);
+    for monitor in &app.sync.monitors {
+        let selected = app.sync.selected_monitor.as_deref() == Some(monitor.name.as_str());
+        let name = monitor.name.clone();
+        let detail = format!(
+            "{} × {}{}",
+            monitor.width,
+            monitor.height,
+            if monitor.description.is_empty() {
+                String::new()
+            } else {
+                format!(" · {}", monitor.description)
+            }
+        );
+        picker = picker.item(
+            MenuItem::new(monitor.name.clone())
+                .checked(selected)
+                .description(detail)
+                .on_select(move |app: &mut App| {
+                    app.monitor_picker_open = false;
+                    app.select_monitor(name.clone());
+                }),
+        );
+    }
+    col()
+        .w_full()
+        .gap(5.0)
+        .child(
+            row()
+                .w_full()
+                .justify_between()
+                .gap(8.0)
+                .child(
+                    text("Monitor".to_owned())
+                        .font(k.ty.small_medium)
+                        .color(k.c.text_muted),
+                )
+                .child(text(resolution).font(k.ty.small).color(k.c.text_faint)),
+        )
+        .child(picker.build(k, layers))
 }
 
-fn gain_panel(app: &App, k: &Kit) -> El {
+fn output_panel(app: &App, k: &Kit) -> El {
+    let source = app.sync.last_scene.map_or(Rgb::WHITE, |scene| scene.color);
+    let vivid = intensify(source, 100.0);
+    let intensity = gradient_slider(
+        k,
+        app.sync.colour_intensity / 100.0,
+        SliderSpec {
+            key: "sync-intensity",
+            label: "Colour intensity",
+            step: 1.0 / 100.0,
+            width: 400.0,
+        },
+        vec![(0.0, rgb_color(source)), (1.0, rgb_color(vivid))],
+        |app: &mut App, fraction| app.set_sync_intensity(fraction * 100.0),
+    );
     let gain = ((app.sync.gain - SYNC_GAIN_MIN) / (SYNC_GAIN_MAX - SYNC_GAIN_MIN)).clamp(0.0, 1.0);
-    let slider = slider(
+    let gain = slider(
         k,
         "sync-gain",
         gain,
@@ -264,44 +287,95 @@ fn gain_panel(app: &App, k: &Kit) -> El {
             app.set_sync_gain(SYNC_GAIN_MIN + fraction * (SYNC_GAIN_MAX - SYNC_GAIN_MIN));
         },
     );
+    let output = app.sync.derived.map_or(k.c.layer_03, rgb_color);
+
     panel(
         k,
         col()
             .w_full()
             .child(panel_header(
                 k,
-                "Capture settings",
-                Some("Gain scales brightness, never colour, from 50% to 400%."),
+                "Lighting output",
+                Some("How the captured scene reaches the bulbs."),
                 Vec::new(),
             ))
             .child(panel_body(
                 col()
                     .w_full()
-                    .gap(4.0)
+                    .gap(14.0)
                     .child(
-                        row()
+                        col()
                             .w_full()
-                            .justify_between()
-                            .gap(8.0)
+                            .gap(5.0)
                             .child(
-                                text("Brightness gain".to_owned())
-                                    .font(k.ty.ui_medium)
-                                    .color(k.c.text_base),
+                                row()
+                                    .w_full()
+                                    .justify_between()
+                                    .gap(8.0)
+                                    .center_y()
+                                    .child(
+                                        text("Colour intensity".to_owned())
+                                            .font(k.ty.small_medium)
+                                            .color(k.c.text_muted),
+                                    )
+                                    .child(
+                                        row()
+                                            .gap(6.0)
+                                            .center_y()
+                                            .child(swatch(k, output, 14.0))
+                                            .child(
+                                                text(format!(
+                                                    "{:.0}%",
+                                                    app.sync.colour_intensity
+                                                ))
+                                                .font(k.ty.mono)
+                                                .color(k.c.text_base),
+                                            ),
+                                    ),
                             )
+                            .child(intensity)
                             .child(
-                                text(format!("{:.1}×", app.sync.gain))
-                                    .font(k.ty.mono)
-                                    .color(k.c.text_base),
+                                text(
+                                    "0% keeps the captured colour; 100% pushes it to full saturation."
+                                        .to_owned(),
+                                )
+                                .font(k.ty.small)
+                                .color(k.c.text_muted)
+                                .wrap(),
                             ),
                     )
-                    .child(slider)
+                    .child(Divider::horizontal().build(k))
                     .child(
-                        text(
-                            "Stop bounds confirmed restore sends to about two seconds.".to_owned(),
-                        )
-                        .font(k.ty.small)
-                        .color(k.c.text_muted)
-                        .wrap(),
+                        col()
+                            .w_full()
+                            .gap(5.0)
+                            .child(
+                                row()
+                                    .w_full()
+                                    .justify_between()
+                                    .gap(8.0)
+                                    .center_y()
+                                    .child(
+                                        text("Brightness gain".to_owned())
+                                            .font(k.ty.small_medium)
+                                            .color(k.c.text_muted),
+                                    )
+                                    .child(
+                                        text(format!("{:.1}×", app.sync.gain))
+                                            .font(k.ty.mono)
+                                            .color(k.c.text_base),
+                                    ),
+                            )
+                            .child(gain)
+                            .child(
+                                text(
+                                    "Multiplies captured brightness from 50% to 400%; the bulb still stops at 100%."
+                                        .to_owned(),
+                                )
+                                .font(k.ty.small)
+                                .color(k.c.text_muted)
+                                .wrap(),
+                            ),
                     ),
             )),
     )

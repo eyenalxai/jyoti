@@ -21,11 +21,6 @@ impl App {
         self.screen = Screen::Dashboard;
     }
 
-    pub(crate) fn open_help(&mut self) {
-        self.leave_color();
-        self.screen = Screen::Help;
-    }
-
     pub(crate) fn select_all(&mut self) {
         self.leave_color();
         self.selection = Some(Selection::All);

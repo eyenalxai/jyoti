@@ -13,7 +13,6 @@ pub enum Screen {
     Dashboard,
     Sync,
     Settings,
-    Help,
     Form(FormMode),
     Remove(String),
     Color,
@@ -47,16 +46,8 @@ impl Default for FormState {
     }
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub enum ColorTab {
-    #[default]
-    Hs,
-    Rgb,
-}
-
 pub struct ColorState {
     pub targets: Vec<String>,
-    pub tab: ColorTab,
     pub hue: f32,
     pub saturation: f32,
     pub value: f32,
@@ -70,7 +61,6 @@ impl Default for ColorState {
     fn default() -> Self {
         Self {
             targets: Vec::new(),
-            tab: ColorTab::Hs,
             hue: 0.0,
             saturation: 0.0,
             value: 100.0,
@@ -111,6 +101,7 @@ pub struct SyncState {
     pub capture_error: Option<String>,
     pub selected_monitor: Option<String>,
     pub gain: f32,
+    pub colour_intensity: f32,
     pub last_scene: Option<Scene>,
     pub last_scene_at: Option<Instant>,
     pub derived: Option<Rgb>,
@@ -138,6 +129,7 @@ impl Default for SyncState {
             capture_error: None,
             selected_monitor: None,
             gain: crate::screen::gain::SYNC_GAIN_DEFAULT,
+            colour_intensity: crate::screen::intensity::SYNC_INTENSITY_DEFAULT,
             last_scene: None,
             last_scene_at: None,
             derived: None,

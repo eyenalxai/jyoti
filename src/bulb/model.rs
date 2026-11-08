@@ -65,12 +65,6 @@ impl Rgb {
         green: 255,
         blue: 255,
     };
-    pub const BLACK: Rgb = Rgb {
-        red: 0,
-        green: 0,
-        blue: 0,
-    };
-
     pub fn new(red: u8, green: u8, blue: u8) -> Self {
         Self { red, green, blue }
     }

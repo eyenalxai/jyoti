@@ -1,7 +1,6 @@
 mod color;
 mod dashboard;
 mod forms;
-mod help;
 mod settings;
 mod shell;
 mod sync;
@@ -21,7 +20,6 @@ pub fn view(app: &App, cx: &mut Cx<App>) -> El {
         Screen::Dashboard => dashboard::content(app, &k, &mut layers),
         Screen::Sync => sync::view(app, &k, &mut layers),
         Screen::Settings => settings::view(app, &k),
-        Screen::Help => help::view(app, &k),
         Screen::Form(_) => forms::form_view(app, &k),
         Screen::Remove(_) => forms::remove_view(app, &k),
         Screen::Color => color::view(app, &k),

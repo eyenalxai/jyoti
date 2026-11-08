@@ -27,8 +27,8 @@ version. It never holds a token.
 ## Preferences file
 
 `$XDG_CONFIG_HOME/jyoti/prefs.json`, next to the config file. It holds
-preferences that survive launches, currently the sync brightness gain. It never
-holds a token.
+preferences that survive launches, currently the sync brightness gain and colour
+intensity. It never holds a token.
 
 ## Token
 
@@ -73,8 +73,8 @@ a command fails; it is not cached across runs.
 ## Unreachable
 
 A bulb that did not answer its hello or command before the timeout. The control
-screen keeps the bulb and its metadata, the selector shows its state, the
-summary shows the failure inline, and Refresh retries.
+screen keeps the bulb and its metadata, the selector shows its state, the light
+panel shows the failure inline, and Refresh retries.
 
 ## Restored
 
@@ -105,16 +105,16 @@ the two light modes.
 ## Packed colour
 
 The `siid 2 / piid 4` property as one packed 24-bit RGB integer. The picker
-edits hue and saturation or the RGB channels and accepts a six-digit hex value.
-Every value it can produce is an sRGB colour, so the swatch is exactly what is
-sent.
+edits hue, saturation and brightness and accepts a six-digit hex value. Every
+value it can produce is an sRGB colour, so the swatch is exactly what is sent.
 
 ## Colour intensity
 
-The saturation of the current packed colour, from 0% grey to 100% full hue. The
-Control slider preserves each selected bulb's hue and value while changing its
-saturation, so a light red can become a vivid red without changing the colour
-family. The picker exposes the same value as Saturation.
+The saturation boost applied to the derived screen colour before it is sent,
+from 0% natural to 100% full saturation. Hue and value stay put, so a light red
+becomes a vivid red without changing the colour family. It is adjusted on Sync
+and remembered in the preferences file. Manual colours use the picker's
+Saturation slider instead.
 
 ## Mode
 
@@ -150,9 +150,9 @@ bulb keeps the current choice.
 
 ## Control
 
-The main screen: a bulb selector, a compact power and state summary, and one
-light surface for mode, brightness, warmth or colour. The overflow menu owns
-refresh, edit and remove.
+The main screen: a bulb selector and one light surface with a live preview,
+power, brightness, mode and warmth or colour. The overflow menu owns refresh,
+edit and remove.
 
 ## Bulb selector
 
@@ -162,8 +162,8 @@ the light surface; there is no second bulb list.
 
 ## Tabs
 
-The four section buttons under the window title: Control, Sync, Settings and
-Help. They are the only navigation. A form, the colour picker and the remove
+The three section buttons under the window title: Control, Sync and Settings.
+They are the only navigation. A form, the colour picker and the remove
 confirmation replace the tabs and carry a Back control.
 
 ## Toast
@@ -186,19 +186,19 @@ and 1.5 Hz tick.
 ## Paused
 
 A sync run that keeps capture and state but publishes nothing. The bulbs stay on
-the last derived colour and sync brightness. Resume catches up with the current
+the last output colour and sync brightness. Resume catches up with the current
 scene instead of replaying it.
 
 ## Sync strip
 
 The notice on the Sync screen while a run exists or has just stopped. It
-carries the state, derived colour, sync brightness and a stale marker.
+carries the state, output colour, sync brightness and a stale marker.
 
 ## Sync page
 
 The screen opened from the Sync tab. It owns start/stop, pause, the captured
-monitor, the gain and the restore report. It is the only place the sync controls
-live.
+monitor, the gain, colour intensity and the restore report. It is the only place
+the sync controls live.
 
 ## Captured monitor
 
@@ -208,12 +208,17 @@ The monitor a sync run reads. The monitor list comes from the Wayland outputs.
 
 The single colour the reducer produces for a frame: the colour of the winning
 OKLab cluster — its mean lightness and hue, with the chroma raised toward the
-cluster's 75th percentile. It is sent as it is, white, grey and black included.
+cluster's 75th percentile. It is the input to colour intensity.
+
+## Output colour
+
+The derived colour after colour intensity. Sync publishes this colour, so the
+swatch, the hex value and the packed colour sent to the bulbs all agree.
 
 ## Scene brightness
 
 The mean per-pixel drive of the captured content, `max(r, g, b) / 255`, from 0
-to 1, published separately from the derived colour.
+to 1, published separately from the output colour.
 
 ## Sync brightness
 
@@ -226,7 +231,7 @@ The multiplier applied to the rounded envelope result, from `0.5` to `4.0` in
 `0.1` steps. It is `1.0` on a first run and is remembered across launches in the
 preferences file. It is adjusted on the Sync page. The gained brightness is
 clamped at `100%`; the 8% floor applies to the result, so a gain above `1.0`
-raises the floor and a gain below `1.0` does not lower it. The derived colour is
+raises the floor and a gain below `1.0` does not lower it. The output colour is
 never changed by the gain. The flash guard watches the gained brightness.
 
 ## Flash guard

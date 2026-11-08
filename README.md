@@ -10,8 +10,8 @@ non-secret metadata is written to disk.
 
 ## What it does
 
-- Lists any number of bulbs, with live power, brightness, colour temperature,
-  RGB colour and colour intensity.
+- Lists any number of bulbs, with live power, brightness, colour temperature
+  and RGB colour.
 - Adds, edits and removes bulbs without touching a config file by hand.
 - Sends power, brightness, warmth and colour changes to the selected bulb, or to
   every bulb when **All bulbs** is selected, over UDP.
@@ -19,9 +19,10 @@ non-secret metadata is written to disk.
 - Keeps every action on a visible pointer control. A transient toast reports a
   bulb that does not answer.
 - Follows the desktop's light or dark appearance.
-- Uses a compact ReUI-derived window: one four-tab bar, a bulb selector, flat
+- Uses a compact ReUI-derived window: one three-tab bar, a bulb selector, flat
   panels and one light-control surface, with every action on a pointer control.
-- Opens at 500 × 640 and can shrink to 480 × 600.
+- Opens at 500 × 640, resizes between 480 × 600 and 520 × 760, and keeps its
+  484-point page centered.
 - Starts empty. It does not read the reference script's `tokens.env`.
 
 ## Requirements
@@ -61,7 +62,7 @@ cargo run -- --demo --scene dashboard --snap dashboard.png
 ```
 
 `--scene` accepts `dashboard`, `empty`, `form`, `edit`, `color`, `color-control`,
-`remove`, `sync`, `sync-live`, `settings`, `help`, `toast`, `picker` and `menu`.
+`remove`, `sync`, `sync-live`, `settings`, `toast`, `picker` and `menu`.
 `--list-scenes` prints them.
 
 ## Storage and security
@@ -69,7 +70,7 @@ cargo run -- --demo --scene dashboard --snap dashboard.png
 - Metadata: `$XDG_CONFIG_HOME/jyoti/bulbs.json`, falling back to
   `~/.config/jyoti/bulbs.json`.
 - Preferences: `$XDG_CONFIG_HOME/jyoti/prefs.json`, next to the metadata. It
-  holds the sync brightness gain.
+  holds the sync brightness gain and colour intensity.
 - Tokens: one OS keyring entry per bulb under the `jyoti` service, keyed by the
   bulb's stable ID. They never enter the config file, a log line or an error
   message. Legacy `secret-tool` entries are read and migrated on first use.
@@ -90,8 +91,11 @@ the CPU reducer.
 - A run captures at 1.5 Hz. Pause holds the last colour; resume catches up with
   the current scene.
 - The derived colour is the winning OKLab cluster's mean lightness and hue,
-  with its chroma raised toward the cluster's 75th percentile. It is sent as it
-  is, white, grey and black included.
+  with its chroma raised toward the cluster's 75th percentile. It is the input
+  to colour intensity.
+- **Colour intensity** runs from 0% to 100%. At 0% the derived colour is sent
+  unchanged; at 100% its saturation is raised to full while hue and value stay
+  put. It is adjusted on Sync and remembered in `prefs.json`.
 - Sync brightness follows the frame's mean drive through an 8–100% envelope and
   the gain. The gain scales only the brightness, from 50% to 400% in 0.1 steps,
   and is remembered in `prefs.json`.
@@ -118,7 +122,7 @@ src/
   app/
     state.rs           screen, form, colour, toast and sync state
     selection.rs       bulb selection, overlay state, colour-page exit
-    color.rs           colour preview, intensity and the picker screen
+    color.rs           colour preview and the picker screen
     actions.rs         bulb CRUD, controls, forms and toasts
     sync.rs            sync run, scene application and restore
   bulb/
@@ -143,16 +147,16 @@ src/
     brightness.rs      scene brightness and gain envelope
     flash.rs           flash guard
     gain.rs            sync brightness gain
+    intensity.rs       sync colour-intensity boost
     monitor.rs         monitor and scene records
     sync.rs            sync status and restore report
   ui/
-    shell.rs           compact app frame and section tabs
+    shell.rs           compact app frame and three section tabs
     dashboard.rs       bulb selector and one light-control surface
     forms.rs           add, edit and remove screens
-    color.rs           hue/saturation and RGB colour picker
+    color.rs           hue, saturation and brightness picker
     sync.rs            screen sync screen
     settings.rs        appearance, storage and about
-    help.rs            accordion help screen
     toast.rs           transient notifications
     widget.rs          icons and shared controls
 docs/

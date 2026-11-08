@@ -6,6 +6,7 @@ use crate::bulb::model::BulbState;
 use crate::bulb::worker::Command;
 use crate::screen::brightness::sync_brightness_for;
 use crate::screen::capture::{ScreenCommand, ScreenEvent};
+use crate::screen::intensity::intensify;
 use crate::screen::monitor::Scene;
 use crate::screen::reducer::{DerivedColor, lab_for_color, should_publish};
 use crate::screen::sync::{RestoreReport, SyncStatus, restore_control};
@@ -77,6 +78,8 @@ impl App {
             return;
         }
         self.sync.status = SyncStatus::Running;
+        self.sync.stale = false;
+        self.sync.last_scene_at = Some(Instant::now());
         if let Some(handle) = &self.screen_handle {
             let _ = handle.send(ScreenCommand::Resume);
         }
@@ -243,8 +246,7 @@ impl App {
                     self.apply_scene(scene);
                 } else {
                     self.sync.last_scene = Some(scene);
-                    self.sync.derived = Some(scene.color);
-                    self.sync.brightness = sync_brightness_for(scene.brightness, self.sync.gain);
+                    self.sync.derived = Some(intensify(scene.color, self.sync.colour_intensity));
                     self.sync.last_scene_at = Some(Instant::now());
                     self.sync.stale = false;
                 }
@@ -282,14 +284,17 @@ impl App {
     }
 
     pub(crate) fn republish_to(&mut self, id: &str) {
-        if !self.sync.status.is_running() || self.sync.unreachable.contains(id) {
+        if self.sync.status != SyncStatus::Running || self.sync.unreachable.contains(id) {
             return;
         }
         let Some(scene) = self.sync.last_scene else {
             return;
         };
+        let Some(color) = self.sync.derived else {
+            return;
+        };
         if let Some(sender) = self.workers.get(id) {
-            let _ = sender.send(Command::SetColor(scene.color));
+            let _ = sender.send(Command::SetColor(color));
         }
         if self.states.get(id).and_then(|state| state.power) == Some(true) {
             let target = sync_brightness_for(scene.brightness, self.sync.gain);
@@ -303,18 +308,19 @@ impl App {
 
     fn apply_scene(&mut self, scene: Scene) {
         let now = Instant::now();
+        let color = intensify(scene.color, self.sync.colour_intensity);
         self.sync.last_scene = Some(scene);
         self.sync.last_scene_at = Some(now);
-        self.sync.derived = Some(scene.color);
+        self.sync.derived = Some(color);
         self.sync.stale = false;
 
         let target = sync_brightness_for(scene.brightness, self.sync.gain);
         let flashing = self.sync.flash.guard(target, now);
         self.sync.flashing = flashing;
 
-        let lab = lab_for_color(scene.color);
+        let lab = lab_for_color(color);
         let derived = DerivedColor {
-            rgb: scene.color,
+            rgb: color,
             lab,
             scene_brightness: scene.brightness,
         };
@@ -328,7 +334,7 @@ impl App {
                     continue;
                 }
                 if let Some(sender) = self.workers.get(&bulb.id) {
-                    let _ = sender.send(Command::SetColor(scene.color));
+                    let _ = sender.send(Command::SetColor(color));
                 }
             }
         }
