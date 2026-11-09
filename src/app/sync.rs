@@ -3,11 +3,11 @@ pub(crate) mod run;
 
 use std::collections::{HashMap, HashSet};
 use std::sync::mpsc::Sender;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use crate::app::App;
 use crate::app::state::ToastKind;
-use crate::app::sync::restore::{RestorePlan, RestoreRequest, StopPhase};
+use crate::app::sync::restore::{RESTORE_WINDOW, RestorePlan, RestoreRequest, StopPhase};
 use crate::app::sync::run::RunEvent;
 use crate::bulb::model::{Bulb, BulbState, Rgb};
 use crate::bulb::worker::Command;
@@ -51,6 +51,7 @@ impl App {
         self.sync.brightness = 0;
         self.sync.flash_until = None;
         self.sync.stop = StopPhase::Idle;
+        self.sync.stop_seen = false;
         self.sync.unreachable.clear();
         self.sync.failures.clear();
         self.sync.capture_error = None;
@@ -135,8 +136,9 @@ impl App {
 
     pub(crate) fn begin_restore(&mut self) {
         self.sync.stop = StopPhase::Waiting {
-            until: Instant::now() + Duration::from_millis(2_000),
+            until: Instant::now() + RESTORE_WINDOW,
         };
+        self.sync.stop_seen = false;
 
         let generation = self.sync.status.generation().unwrap_or(0);
         let sent = self.screen_handle.as_ref().is_some_and(|handle| {
@@ -144,6 +146,7 @@ impl App {
             handle.send(ScreenCommand::Stop)
         });
         if !sent {
+            self.sync.stop_seen = true;
             self.start_restore();
         }
     }
@@ -152,7 +155,7 @@ impl App {
         if !matches!(self.sync.stop, StopPhase::Waiting { .. }) {
             return;
         }
-        let deadline = Instant::now() + Duration::from_millis(2_000);
+        let deadline = Instant::now() + RESTORE_WINDOW;
         self.sync.stop = StopPhase::Restoring { deadline };
         self.dispatch_restore(deadline);
     }
@@ -166,11 +169,12 @@ impl App {
                         self.sync.restore.mark_failed(&id);
                         continue;
                     };
+                    let (color, temperature) = controls.color_and_temperature();
                     let sent = sender
                         .send(Command::Restore {
                             generation: self.sync.status.generation().unwrap_or(0),
-                            color: controls.color,
-                            temperature: controls.temperature,
+                            color,
+                            temperature,
                             brightness: controls.brightness,
                             deadline,
                         })
@@ -184,7 +188,10 @@ impl App {
                 RestoreRequest::MissingValue { id } => self.sync.restore.mark_failed(&id),
             }
         }
-        if !self.sync.restore.is_open() && matches!(self.sync.stop, StopPhase::Restoring { .. }) {
+        if self.sync.stop_seen
+            && !self.sync.restore.is_open()
+            && matches!(self.sync.stop, StopPhase::Restoring { .. })
+        {
             self.finish_restore();
         }
     }
@@ -254,6 +261,7 @@ impl App {
             }
             ScreenEvent::Stopped { generation, drove } => {
                 if self.sync.apply(RunEvent::Stopped(generation)).is_ok() {
+                    self.sync.stop_seen = true;
                     self.sync.restore.record(&drove);
                     match self.sync.stop {
                         StopPhase::Waiting { .. } => self.start_restore(),

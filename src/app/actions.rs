@@ -4,7 +4,7 @@ use rune::{TextEdit, Tx};
 
 use crate::app::App;
 use crate::app::state::{Dashboard, FormMode, FormState, Screen, Toast, ToastKind};
-use crate::app::sync::restore::StopPhase;
+use crate::app::sync::restore::{RESTORE_WINDOW, StopPhase};
 use crate::bulb::aggregate::AggregatePower;
 use crate::bulb::model::{
     Bulb, BulbField, BulbState, ColorMode, NEUTRAL_TEMPERATURE, Rgb, new_id, trim_model,
@@ -90,7 +90,7 @@ impl App {
                 let current = self.sync.status.generation() == Some(generation);
                 if current {
                     self.sync.restore.acknowledge(&id, ok);
-                    if !self.sync.restore.is_open() {
+                    if self.sync.stop_seen && !self.sync.restore.is_open() {
                         self.finish_restore();
                     }
                 }
@@ -638,7 +638,7 @@ impl App {
             self.stop_sync();
         }
         if self.sync.stop != StopPhase::Idle {
-            let stop_deadline = Instant::now() + Duration::from_millis(2_000);
+            let stop_deadline = Instant::now() + RESTORE_WINDOW;
             loop {
                 let mut events = Vec::new();
                 if let Some(handle) = &self.screen_handle {
@@ -664,10 +664,20 @@ impl App {
                 StopPhase::Idle | StopPhase::Waiting { .. } => Instant::now(),
             };
             loop {
+                let mut events = Vec::new();
+                if let Some(handle) = &self.screen_handle {
+                    while let Ok(event) = handle.events.try_recv() {
+                        events.push(event);
+                    }
+                }
+                for event in events {
+                    self.handle_screen_event(event);
+                }
                 while let Ok(event) = self.worker_events.try_recv() {
                     let _ = self.handle_worker_event(event);
                 }
-                if !self.sync.restore.is_open() || Instant::now() >= restore_deadline {
+                let expired = Instant::now() >= restore_deadline;
+                if expired || (self.sync.stop_seen && !self.sync.restore.is_open()) {
                     break;
                 }
                 std::thread::sleep(Duration::from_millis(20));

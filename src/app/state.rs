@@ -168,6 +168,7 @@ pub struct SyncState {
     pub failures: HashMap<String, u8>,
     pub last_probe: Instant,
     pub stop: StopPhase,
+    pub stop_seen: bool,
 }
 
 impl Default for SyncState {
@@ -191,6 +192,7 @@ impl Default for SyncState {
             failures: HashMap::new(),
             last_probe: Instant::now(),
             stop: StopPhase::Idle,
+            stop_seen: false,
         }
     }
 }

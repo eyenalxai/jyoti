@@ -1,20 +1,10 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
-use crate::bulb::model::{Bulb, BulbState, Rgb};
-use crate::screen::sync::{Drove, RestoreControl, RestoreReport, restore_control};
+use crate::bulb::model::{Bulb, BulbState, ColorMode, Rgb};
+use crate::screen::sync::Drove;
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-struct DrivenControls {
-    color: bool,
-    brightness: bool,
-}
-
-#[derive(Clone, Debug)]
-struct ExpectedBulb {
-    name: String,
-    snapshot: Option<BulbState>,
-}
+pub const RESTORE_WINDOW: Duration = Duration::from_millis(2_000);
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum StopPhase {
@@ -28,6 +18,84 @@ pub enum StopPhase {
     },
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum RestoreControl {
+    Color(Rgb),
+    Temperature(u16),
+}
+
+pub fn restore_control(state: &BulbState) -> Option<RestoreControl> {
+    if state.mode == ColorMode::Temperature
+        && let Some(temperature) = state.temperature
+    {
+        return Some(RestoreControl::Temperature(temperature));
+    }
+    if let Some(color) = state.color {
+        return Some(RestoreControl::Color(color));
+    }
+    state.temperature.map(RestoreControl::Temperature)
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct RestoreReport {
+    pub not_restored: Vec<String>,
+    pub total: usize,
+}
+
+impl RestoreReport {
+    pub fn restored(&self) -> usize {
+        self.total.saturating_sub(self.not_restored.len())
+    }
+
+    pub fn message(&self) -> String {
+        if self.total == 0 {
+            return "Nothing to restore.".to_owned();
+        }
+        if self.not_restored.is_empty() {
+            return format!("Restored {} of {} bulbs.", self.restored(), self.total);
+        }
+        format!(
+            "Restored {} of {} bulbs. Not restored: {}.",
+            self.restored(),
+            self.total,
+            self.not_restored.join(", ")
+        )
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RestoreControls {
+    pub color: Option<RestoreControl>,
+    pub brightness: Option<u8>,
+    pub incomplete: bool,
+}
+
+impl RestoreControls {
+    fn is_empty(&self) -> bool {
+        self.color.is_none() && self.brightness.is_none()
+    }
+
+    pub fn color_and_temperature(&self) -> (Option<Rgb>, Option<u16>) {
+        match self.color {
+            Some(RestoreControl::Color(value)) => (Some(value), None),
+            Some(RestoreControl::Temperature(value)) => (None, Some(value)),
+            None => (None, None),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+struct DrivenControls {
+    color: bool,
+    brightness: bool,
+}
+
+#[derive(Clone, Debug)]
+struct ExpectedBulb {
+    name: String,
+    snapshot: Option<BulbState>,
+}
+
 #[derive(Clone, Debug, Default)]
 pub struct RestorePlan {
     expected: BTreeMap<String, ExpectedBulb>,
@@ -35,20 +103,6 @@ pub struct RestorePlan {
     waiting: BTreeSet<String>,
     acknowledged: BTreeSet<String>,
     failed: BTreeSet<String>,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct RestoreControls {
-    pub color: Option<Rgb>,
-    pub temperature: Option<u16>,
-    pub brightness: Option<u8>,
-    pub incomplete: bool,
-}
-
-impl RestoreControls {
-    fn is_empty(&self) -> bool {
-        self.color.is_none() && self.temperature.is_none() && self.brightness.is_none()
-    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -110,20 +164,32 @@ impl RestorePlan {
 
     pub fn record(&mut self, drove: &Drove) {
         for id in &drove.color {
-            self.record_one(id, true, false);
+            self.record_one(
+                id,
+                DrivenControls {
+                    color: true,
+                    brightness: false,
+                },
+            );
         }
         for id in &drove.brightness {
-            self.record_one(id, false, true);
+            self.record_one(
+                id,
+                DrivenControls {
+                    color: false,
+                    brightness: true,
+                },
+            );
         }
     }
 
-    fn record_one(&mut self, id: &str, color: bool, brightness: bool) {
+    fn record_one(&mut self, id: &str, written: DrivenControls) {
         if !self.covers(id) {
             return;
         }
         let driven = self.driven.entry(id.to_owned()).or_default();
-        driven.color |= color;
-        driven.brightness |= brightness;
+        driven.color |= written.color;
+        driven.brightness |= written.brightness;
     }
 
     pub fn requests(&self) -> Vec<RestoreRequest> {
@@ -175,27 +241,27 @@ impl RestorePlan {
     }
 
     pub fn report(&self) -> RestoreReport {
-        let total = self.expected.len();
-        let mut not_restored: Vec<String> = self
-            .expected
-            .iter()
-            .filter_map(|(id, expected)| {
-                let missing_snapshot = expected.snapshot.is_none();
-                if let Some(driven) = self.driven.get(id) {
-                    let incomplete = self
-                        .controls(id, *driven)
-                        .is_none_or(|controls| controls.incomplete);
-                    let unacknowledged = !self.acknowledged.contains(id);
-                    (missing_snapshot || incomplete || unacknowledged)
-                        .then_some(expected.name.clone())
-                } else {
-                    missing_snapshot.then_some(expected.name.clone())
-                }
-            })
-            .collect();
+        let mut total = 0;
+        let mut not_restored = Vec::new();
+        for (id, expected) in &self.expected {
+            if expected.snapshot.is_none() {
+                total += 1;
+                not_restored.push(expected.name.clone());
+                continue;
+            }
+            let Some(driven) = self.driven.get(id) else {
+                continue;
+            };
+            total += 1;
+            let incomplete = self
+                .controls(id, *driven)
+                .is_none_or(|controls| controls.incomplete);
+            if incomplete || !self.acknowledged.contains(id) {
+                not_restored.push(expected.name.clone());
+            }
+        }
         not_restored.sort();
         RestoreReport {
-            restored: total.saturating_sub(not_restored.len()),
             not_restored,
             total,
         }
@@ -207,16 +273,18 @@ impl RestorePlan {
 
     fn controls(&self, id: &str, driven: DrivenControls) -> Option<RestoreControls> {
         let snapshot = self.expected.get(id)?.snapshot.as_ref()?;
-        let mut color = None;
-        let mut temperature = None;
         let mut incomplete = false;
-        if driven.color {
+        let color = if driven.color {
             match restore_control(snapshot) {
-                Some(RestoreControl::Color(value)) => color = Some(value),
-                Some(RestoreControl::Temperature(value)) => temperature = Some(value),
-                None => incomplete = true,
+                Some(value) => Some(value),
+                None => {
+                    incomplete = true;
+                    None
+                }
             }
-        }
+        } else {
+            None
+        };
         let brightness = if driven.brightness {
             match snapshot.brightness {
                 Some(value) => Some(value),
@@ -230,7 +298,6 @@ impl RestorePlan {
         };
         Some(RestoreControls {
             color,
-            temperature,
             brightness,
             incomplete,
         })
@@ -241,7 +308,7 @@ impl RestorePlan {
 mod tests {
     use std::collections::HashMap;
 
-    use super::{RestoreControls, RestorePlan, RestoreRequest};
+    use super::{RestoreControl, RestoreControls, RestorePlan, RestoreReport, RestoreRequest};
     use crate::bulb::model::{Bulb, BulbState, ColorMode, Rgb};
     use crate::screen::sync::Drove;
 
@@ -274,14 +341,9 @@ mod tests {
         }
     }
 
-    fn controls(
-        color: Option<Rgb>,
-        temperature: Option<u16>,
-        brightness: Option<u8>,
-    ) -> RestoreControls {
+    fn controls(color: Option<RestoreControl>, brightness: Option<u8>) -> RestoreControls {
         RestoreControls {
             color,
-            temperature,
             brightness,
             incomplete: false,
         }
@@ -324,7 +386,7 @@ mod tests {
             plan.requests(),
             vec![RestoreRequest::Restore {
                 id: "bulb".to_owned(),
-                controls: controls(Some(Rgb::new(255, 0, 0)), None, None),
+                controls: controls(Some(RestoreControl::Color(Rgb::new(255, 0, 0))), None),
             }]
         );
     }
@@ -340,10 +402,10 @@ mod tests {
         assert!(plan.requests().is_empty());
         assert!(!plan.is_open());
         let report = plan.finish();
-        assert_eq!(report.total, 1);
-        assert_eq!(report.restored, 1);
+        assert_eq!(report.total, 0);
+        assert_eq!(report.restored(), 0);
         assert!(report.not_restored.is_empty());
-        assert_eq!(report.message(), "Restored 1 of 1 bulbs.");
+        assert_eq!(report.message(), "Nothing to restore.");
     }
 
     #[test]
@@ -359,7 +421,7 @@ mod tests {
             plan.requests(),
             vec![RestoreRequest::Restore {
                 id: "desk".to_owned(),
-                controls: controls(Some(Rgb::new(255, 128, 0)), None, None),
+                controls: controls(Some(RestoreControl::Color(Rgb::new(255, 128, 0))), None),
             }]
         );
     }
@@ -377,7 +439,7 @@ mod tests {
             plan.requests(),
             vec![RestoreRequest::Restore {
                 id: "desk".to_owned(),
-                controls: controls(None, None, Some(40)),
+                controls: controls(None, Some(40)),
             }]
         );
     }
@@ -395,7 +457,7 @@ mod tests {
             plan.requests(),
             vec![RestoreRequest::Restore {
                 id: "desk".to_owned(),
-                controls: controls(None, Some(3_000), None),
+                controls: controls(Some(RestoreControl::Temperature(3_000)), None),
             }]
         );
     }
@@ -419,8 +481,7 @@ mod tests {
             vec![RestoreRequest::Restore {
                 id: "desk".to_owned(),
                 controls: RestoreControls {
-                    color: Some(Rgb::new(255, 0, 0)),
-                    temperature: None,
+                    color: Some(RestoreControl::Color(Rgb::new(255, 0, 0))),
                     brightness: None,
                     incomplete: true,
                 },
@@ -431,7 +492,7 @@ mod tests {
 
         let report = plan.finish();
         assert_eq!(report.total, 1);
-        assert_eq!(report.restored, 0);
+        assert_eq!(report.restored(), 0);
         assert_eq!(report.not_restored, vec!["Desk lamp".to_owned()]);
     }
 
@@ -453,7 +514,7 @@ mod tests {
 
         let report = plan.finish();
         assert_eq!(report.total, 1);
-        assert_eq!(report.restored, 0);
+        assert_eq!(report.restored(), 0);
         assert_eq!(report.not_restored, vec!["Desk lamp".to_owned()]);
     }
 
@@ -488,7 +549,7 @@ mod tests {
 
         let report = plan.finish();
         assert_eq!(report.total, 2);
-        assert_eq!(report.restored, 2);
+        assert_eq!(report.restored(), 2);
         assert!(report.not_restored.is_empty());
         assert_eq!(report.message(), "Restored 2 of 2 bulbs.");
     }
@@ -511,7 +572,7 @@ mod tests {
         let report = plan.finish();
         assert!(!plan.is_open());
         assert_eq!(report.total, 2);
-        assert_eq!(report.restored, 1);
+        assert_eq!(report.restored(), 1);
         assert_eq!(report.not_restored, vec!["Shelf lamp".to_owned()]);
         assert_eq!(
             report.message(),
@@ -532,7 +593,7 @@ mod tests {
 
         assert!(!plan.is_open());
         let report = plan.finish();
-        assert_eq!(report.restored, 0);
+        assert_eq!(report.restored(), 0);
         assert_eq!(report.not_restored, vec!["Desk lamp".to_owned()]);
     }
 
@@ -549,8 +610,20 @@ mod tests {
 
         let report = plan.finish();
         assert_eq!(report.total, 2);
-        assert_eq!(report.restored, 1);
+        assert_eq!(report.restored(), 1);
         assert_eq!(report.not_restored, vec!["Shelf lamp".to_owned()]);
+    }
+
+    #[test]
+    fn an_unwritten_snapshot_is_not_counted_as_restored() {
+        let desk = bulb("desk", "Desk lamp");
+        let states = HashMap::from([(desk.id.clone(), colour_state(Rgb::new(255, 0, 0), 40))]);
+        let mut plan = RestorePlan::default();
+        plan.begin(&[desk], &states);
+
+        let report = plan.finish();
+        assert_eq!(report.total, 0);
+        assert!(report.not_restored.is_empty());
     }
 
     #[test]
@@ -561,5 +634,28 @@ mod tests {
         let report = plan.finish();
         assert_eq!(report.total, 0);
         assert_eq!(report.message(), "Nothing to restore.");
+    }
+
+    #[test]
+    fn restore_report_names_the_bulbs_that_did_not_return() {
+        let report = RestoreReport {
+            not_restored: vec!["Shelf lamp".to_owned()],
+            total: 3,
+        };
+        assert_eq!(report.restored(), 2);
+        assert_eq!(
+            report.message(),
+            "Restored 2 of 3 bulbs. Not restored: Shelf lamp."
+        );
+    }
+
+    #[test]
+    fn a_clean_restore_counts_every_bulb() {
+        let report = RestoreReport {
+            not_restored: Vec::new(),
+            total: 3,
+        };
+        assert_eq!(report.restored(), 3);
+        assert_eq!(report.message(), "Restored 3 of 3 bulbs.");
     }
 }
