@@ -6,6 +6,7 @@ use rune::TextEdit;
 use crate::app::sync::restore::{RestorePlan, StopPhase};
 use crate::app::sync::run::{Controls, RunEvent, RunPhase, RunRejection};
 use crate::bulb::model::{BulbField, BulbState, Rgb};
+use crate::screen::color::rgb_to_hsb;
 use crate::screen::monitor::{MonitorInfo, Scene};
 
 pub const STALE_AFTER: Duration = Duration::from_secs(5);
@@ -98,8 +99,31 @@ impl Default for FormState {
     }
 }
 
-pub struct ColorState {
-    pub open: bool,
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Overlay {
+    #[default]
+    None,
+    BulbPicker,
+    BulbMenu,
+    MonitorPicker,
+}
+
+impl Overlay {
+    pub fn toggle(self, overlay: Self) -> Self {
+        if self == overlay { Self::None } else { overlay }
+    }
+
+    pub fn close(self, overlay: Self) -> Self {
+        if self == overlay { Self::None } else { self }
+    }
+}
+
+pub enum ColorEditor {
+    Closed(Box<TextEdit>),
+    Open(Box<ColorSession>),
+}
+
+pub struct ColorSession {
     pub targets: Vec<String>,
     pub hue: f32,
     pub saturation: f32,
@@ -107,22 +131,86 @@ pub struct ColorState {
     pub hex: TextEdit,
     pub preview: Rgb,
     pub error: Option<String>,
-    pub revert: HashMap<String, BulbState>,
+    pre_open: HashMap<String, Option<BulbState>>,
 }
 
-impl Default for ColorState {
-    fn default() -> Self {
+impl ColorSession {
+    fn new(targets: Vec<String>, color: Rgb, pre_open: HashMap<String, Option<BulbState>>) -> Self {
+        let hsb = rgb_to_hsb(color);
         Self {
-            open: false,
-            targets: Vec::new(),
-            hue: 0.0,
-            saturation: 0.0,
-            value: 100.0,
-            hex: TextEdit::new(""),
-            preview: Rgb::WHITE,
+            targets,
+            hue: hsb.hue,
+            saturation: hsb.saturation,
+            value: hsb.value,
+            hex: TextEdit::new(color.hex()),
+            preview: color,
             error: None,
-            revert: HashMap::new(),
+            pre_open,
         }
+    }
+
+    pub fn into_pre_open(self) -> HashMap<String, Option<BulbState>> {
+        self.pre_open
+    }
+}
+
+impl ColorEditor {
+    pub fn open(
+        targets: Vec<String>,
+        color: Rgb,
+        pre_open: HashMap<String, Option<BulbState>>,
+    ) -> Self {
+        Self::Open(Box::new(ColorSession::new(targets, color, pre_open)))
+    }
+
+    fn closed() -> Self {
+        Self::Closed(Box::new(TextEdit::new("")))
+    }
+
+    pub fn is_open(&self) -> bool {
+        matches!(self, Self::Open(_))
+    }
+
+    pub fn session(&self) -> Option<&ColorSession> {
+        match self {
+            Self::Closed(_) => None,
+            Self::Open(session) => Some(session),
+        }
+    }
+
+    pub fn session_mut(&mut self) -> Option<&mut ColorSession> {
+        match self {
+            Self::Closed(_) => None,
+            Self::Open(session) => Some(session),
+        }
+    }
+
+    // The text input binds to a `&mut TextEdit`; a closed editor keeps an empty
+    // buffer for that binding, but no targets or pre-open values.
+    pub fn hex_mut(&mut self) -> &mut TextEdit {
+        match self {
+            Self::Closed(hex) => hex.as_mut(),
+            Self::Open(session) => &mut session.hex,
+        }
+    }
+
+    pub fn take(&mut self) -> Option<ColorSession> {
+        match std::mem::take(self) {
+            Self::Open(session) => Some(*session),
+            Self::Closed(_) => None,
+        }
+    }
+
+    pub fn commit(&mut self) -> Option<Rgb> {
+        let color = self.session()?.preview;
+        *self = Self::closed();
+        Some(color)
+    }
+}
+
+impl Default for ColorEditor {
+    fn default() -> Self {
+        Self::closed()
     }
 }
 
@@ -255,12 +343,15 @@ pub fn toast_duration(kind: ToastKind) -> Duration {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashMap;
     use std::time::{Duration, Instant};
 
     use super::{
-        FormMode, LocalEdits, NavDirection, STALE_AFTER, Screen, SyncState, nav_direction,
+        ColorEditor, FormMode, LocalEdits, NavDirection, Overlay, STALE_AFTER, Screen, SyncState,
+        nav_direction,
     };
     use crate::app::sync::run::RunPhase;
+    use crate::bulb::model::{BulbState, ColorMode, Rgb};
     use crate::screen::flash::FLASH_HOLD;
 
     #[test]
@@ -388,5 +479,87 @@ mod tests {
             nav_direction(&form, &Screen::Dashboard),
             NavDirection::Backward
         );
+    }
+
+    fn state(color: Rgb) -> BulbState {
+        BulbState {
+            power: Some(true),
+            brightness: Some(40),
+            color: Some(color),
+            mode: ColorMode::Color,
+            ..BulbState::default()
+        }
+    }
+
+    fn pre_open() -> HashMap<String, Option<BulbState>> {
+        HashMap::from([
+            ("desk".to_owned(), Some(state(Rgb::new(10, 20, 30)))),
+            ("shelf".to_owned(), None),
+        ])
+    }
+
+    #[test]
+    fn only_one_overlay_is_open() {
+        assert_eq!(
+            Overlay::None.toggle(Overlay::BulbPicker),
+            Overlay::BulbPicker
+        );
+        assert_eq!(
+            Overlay::BulbPicker.toggle(Overlay::BulbMenu),
+            Overlay::BulbMenu
+        );
+        assert_eq!(Overlay::BulbMenu.toggle(Overlay::BulbMenu), Overlay::None);
+        assert_eq!(
+            Overlay::BulbMenu.close(Overlay::BulbPicker),
+            Overlay::BulbMenu
+        );
+        assert_eq!(Overlay::BulbMenu.close(Overlay::BulbMenu), Overlay::None);
+    }
+
+    #[test]
+    fn a_closed_editor_has_no_session() {
+        let mut editor = ColorEditor::default();
+
+        assert!(!editor.is_open());
+        assert!(editor.session().is_none());
+        assert!(editor.session_mut().is_none());
+        assert!(editor.take().is_none());
+        assert!(!editor.is_open());
+    }
+
+    #[test]
+    fn opening_captures_targets_and_pre_open_values() -> Result<(), Box<dyn std::error::Error>> {
+        let before = pre_open();
+        let mut editor = ColorEditor::open(
+            vec!["desk".to_owned(), "shelf".to_owned()],
+            Rgb::new(255, 128, 0),
+            before.clone(),
+        );
+
+        let session = editor.session().ok_or("the editor should be open")?;
+        assert_eq!(session.targets, vec!["desk".to_owned(), "shelf".to_owned()]);
+        assert_eq!(session.preview, Rgb::new(255, 128, 0));
+        assert_eq!(session.hex.text, "#FF8000");
+
+        let cancelled = editor
+            .take()
+            .ok_or("the editor should be open")?
+            .into_pre_open();
+        assert_eq!(cancelled, before);
+        assert!(!editor.is_open());
+        Ok(())
+    }
+
+    #[test]
+    fn committing_returns_the_preview_and_closes() -> Result<(), Box<dyn std::error::Error>> {
+        let mut editor =
+            ColorEditor::open(vec!["desk".to_owned()], Rgb::new(255, 128, 0), pre_open());
+
+        let preview = editor.commit().ok_or("the editor should commit")?;
+
+        assert_eq!(preview, Rgb::new(255, 128, 0));
+        assert!(!editor.is_open());
+        assert!(editor.take().is_none());
+        Ok(())
     }
 }

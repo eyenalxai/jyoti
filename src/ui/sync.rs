@@ -4,6 +4,7 @@ use rune::{Color, El, ScrollSpec, col, row, text};
 use rune_kit::{Button, ButtonVariant, ControlSize, Kit, Menu, MenuItem};
 
 use crate::app::App;
+use crate::app::state::Overlay;
 use crate::app::sync::run::RunPhase;
 use crate::bulb::model::Rgb;
 use crate::screen::gain::{SYNC_GAIN_MAX, SYNC_GAIN_MIN};
@@ -261,15 +262,15 @@ fn monitor_row(app: &App, k: &Kit, layers: &mut Vec<El>) -> El {
         240.0,
         "Monitor",
         &current,
-        app.monitor_picker_open,
+        app.overlay == Overlay::MonitorPicker,
         None,
-        |app: &mut App| app.monitor_picker_open = !app.monitor_picker_open,
+        |app: &mut App| app.toggle_overlay(Overlay::MonitorPicker),
     );
     let mut picker = Menu::new("monitor-picker")
         .trigger(trigger)
-        .open(app.monitor_picker_open)
+        .open(app.overlay == Overlay::MonitorPicker)
         .min_width(300.0)
-        .on_close(|app: &mut App| app.monitor_picker_open = false);
+        .on_close(|app: &mut App| app.close_overlay(Overlay::MonitorPicker));
     for monitor in &app.sync.monitors {
         let selected = app.sync.selected_monitor.as_deref() == Some(monitor.name.as_str());
         let name = monitor.name.clone();
@@ -288,7 +289,7 @@ fn monitor_row(app: &App, k: &Kit, layers: &mut Vec<El>) -> El {
                 .checked(selected)
                 .description(detail)
                 .on_select(move |app: &mut App| {
-                    app.monitor_picker_open = false;
+                    app.close_overlay(Overlay::MonitorPicker);
                     app.select_monitor(name.clone());
                 }),
         );

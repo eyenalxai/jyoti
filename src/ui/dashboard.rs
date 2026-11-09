@@ -8,6 +8,7 @@ use rune_kit::{
 
 use crate::app::App;
 use crate::app::selected::{SelectedLight, selected_light};
+use crate::app::state::Overlay;
 use crate::bulb::aggregate::{AggregatePower, LightQuality, power_of_state};
 use crate::bulb::health::HealthStatus;
 use crate::bulb::model::{
@@ -59,15 +60,15 @@ fn picker_row(app: &App, k: &Kit, layers: &mut Vec<El>, view: &SelectedLight) ->
         344.0,
         "Bulb",
         &view.name,
-        app.bulb_picker_open,
+        app.overlay == Overlay::BulbPicker,
         Some(current_tone),
-        |app: &mut App| app.bulb_picker_open = !app.bulb_picker_open,
+        |app: &mut App| app.toggle_overlay(Overlay::BulbPicker),
     );
     let mut picker = Menu::new("bulb-picker")
         .trigger(trigger)
-        .open(app.bulb_picker_open)
+        .open(app.overlay == Overlay::BulbPicker)
         .min_width(360.0)
-        .on_close(|app: &mut App| app.bulb_picker_open = false);
+        .on_close(|app: &mut App| app.close_overlay(Overlay::BulbPicker));
     if show_all {
         let all_light =
             match selected_light(&app.bulbs, &app.states, &app.health, Some(&Selection::All)) {
@@ -83,7 +84,7 @@ fn picker_row(app: &App, k: &Kit, layers: &mut Vec<El>, view: &SelectedLight) ->
                     all_light.health.total, all_light.health.reachable
                 ))
                 .on_select(|app: &mut App| {
-                    app.bulb_picker_open = false;
+                    app.close_overlay(Overlay::BulbPicker);
                     app.select_all();
                 }),
         );
@@ -115,7 +116,7 @@ fn picker_row(app: &App, k: &Kit, layers: &mut Vec<El>, view: &SelectedLight) ->
                 .lead(dot(tone))
                 .description(format!("{} · {}", bulb.address, power))
                 .on_select(move |app: &mut App| {
-                    app.bulb_picker_open = false;
+                    app.close_overlay(Overlay::BulbPicker);
                     app.select_bulb(&id);
                 }),
         );
@@ -135,19 +136,19 @@ fn picker_row(app: &App, k: &Kit, layers: &mut Vec<El>, view: &SelectedLight) ->
         &MORE,
         "Bulb actions",
         IconButtonVariant::GhostMuted,
-        |app: &mut App| app.bulb_menu_open = !app.bulb_menu_open,
+        |app: &mut App| app.toggle_overlay(Overlay::BulbMenu),
     );
     let single = !view.is_all();
     let menu = Menu::new("bulb-actions")
         .trigger(trigger)
-        .open(app.bulb_menu_open)
-        .on_close(|app: &mut App| app.bulb_menu_open = false)
+        .open(app.overlay == Overlay::BulbMenu)
+        .on_close(|app: &mut App| app.close_overlay(Overlay::BulbMenu))
         .item(
             MenuItem::new("Refresh")
                 .icon(&REFRESH)
                 .disabled(!app.sync.controls().manual)
                 .on_select_tx(|app: &mut App, tx: &mut Tx| {
-                    app.bulb_menu_open = false;
+                    app.close_overlay(Overlay::BulbMenu);
                     app.refresh_all(tx);
                 }),
         )
@@ -156,7 +157,7 @@ fn picker_row(app: &App, k: &Kit, layers: &mut Vec<El>, view: &SelectedLight) ->
                 .icon(&EDIT)
                 .disabled(!single)
                 .on_select(|app: &mut App| {
-                    app.bulb_menu_open = false;
+                    app.close_overlay(Overlay::BulbMenu);
                     app.edit_selected();
                 }),
         )
@@ -167,7 +168,7 @@ fn picker_row(app: &App, k: &Kit, layers: &mut Vec<El>, view: &SelectedLight) ->
                 .danger(true)
                 .disabled(!single)
                 .on_select(|app: &mut App| {
-                    app.bulb_menu_open = false;
+                    app.close_overlay(Overlay::BulbMenu);
                     if let Some(Selection::Bulb(id)) = app.selection.clone() {
                         app.open_remove(&id);
                     }
@@ -246,11 +247,14 @@ fn control_deck(app: &App, k: &Kit, layers: &mut Vec<El>, view: &SelectedLight) 
     }
 
     deck = deck.child(brightness_block(k, view, sync_owned));
-    deck =
-        deck.child(hairline(k))
-            .child(mode_block(k, white, colour, sync_owned || app.color.open));
-    if white || colour || app.color.open {
-        let (key, edge, block) = if white && !app.color.open {
+    deck = deck.child(hairline(k)).child(mode_block(
+        k,
+        white,
+        colour,
+        sync_owned || app.color.is_open(),
+    ));
+    if white || colour || app.color.is_open() {
+        let (key, edge, block) = if white && !app.color.is_open() {
             (
                 "tuning-white",
                 Edge::Leading,
@@ -473,11 +477,11 @@ fn colour_block(
     disabled: bool,
     layers: &mut Vec<El>,
 ) -> El {
-    let editing = app.color.open;
-    let (color, mixed) = if editing {
-        (Some(app.color.preview), false)
-    } else {
-        (view.color_value(), view.color_mixed())
+    let session = app.color.session();
+    let editing = session.is_some();
+    let (color, mixed) = match session {
+        Some(session) => (Some(session.preview), false),
+        None => (view.color_value(), view.color_mixed()),
     };
     let label = color.map_or_else(
         || {
@@ -519,8 +523,8 @@ fn colour_block(
         .placement(Placement::TopEnd)
         .gutter(8.0)
         .label("Colour editor");
-    if editing {
-        popover = popover.child(color::popover(app, k));
+    if let Some(session) = app.color.session() {
+        popover = popover.child(color::popover(session, k));
     }
     let trigger = popover.build(k, layers);
 

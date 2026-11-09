@@ -11,7 +11,7 @@ use std::time::Instant;
 use rune::{AppSpec, Tx, Waker};
 
 use crate::app::App;
-use crate::app::state::{FormMode, Screen, ToastKind};
+use crate::app::state::{FormMode, Overlay, Screen, ToastKind};
 use crate::app::sync::run::RunPhase;
 use crate::bulb::model::Rgb;
 use crate::screen::monitor::{MonitorInfo, Scene};
@@ -112,11 +112,11 @@ const SCENES: &[(&str, SceneFn)] = &[
     }),
     ("picker", |app| {
         app.screen = Screen::Dashboard;
-        app.bulb_picker_open = true;
+        app.overlay = Overlay::BulbPicker;
     }),
     ("menu", |app| {
         app.screen = Screen::Dashboard;
-        app.bulb_menu_open = true;
+        app.overlay = Overlay::BulbMenu;
     }),
     ("toast", |app| {
         app.screen = Screen::Dashboard;
