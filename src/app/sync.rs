@@ -1,16 +1,20 @@
+pub(crate) mod restore;
 pub(crate) mod run;
 
+use std::collections::{HashMap, HashSet};
+use std::sync::mpsc::Sender;
 use std::time::{Duration, Instant};
 
 use crate::app::App;
 use crate::app::state::{StopPhase, ToastKind};
+use crate::app::sync::restore::{RestorePlan, RestoreRequest};
 use crate::app::sync::run::RunEvent;
-use crate::bulb::model::{BulbState, Rgb};
+use crate::bulb::model::{Bulb, BulbState, Rgb};
 use crate::bulb::worker::Command;
 use crate::screen::capture::{ScreenCommand, ScreenEvent};
 use crate::screen::intensity::intensify;
 use crate::screen::monitor::Scene;
-use crate::screen::sync::{RestoreReport, SyncConfig, SyncFrame, SyncTarget, restore_control};
+use crate::screen::sync::{SyncConfig, SyncFrame, SyncTarget};
 
 impl App {
     pub(crate) fn start_sync(&mut self) {
@@ -39,16 +43,13 @@ impl App {
             return;
         }
         self.flush_pending();
+        self.sync.restore.begin(&self.bulbs, &self.states);
 
-        self.sync.snapshots = self.states.clone();
-        self.sync.drove_brightness.clear();
-        self.sync.restore_report = None;
         self.sync.last_scene = None;
         self.sync.last_scene_at = None;
         self.sync.derived = None;
         self.sync.brightness = 0;
         self.sync.flash_until = None;
-        self.sync.pending_restore.clear();
         self.sync.stop = StopPhase::Idle;
         self.sync.unreachable.clear();
         self.sync.failures.clear();
@@ -87,18 +88,13 @@ impl App {
         SyncConfig {
             gain: self.sync.gain,
             intensity: self.sync.colour_intensity,
-            targets: self
-                .bulbs
-                .iter()
-                .filter(|bulb| !self.sync.unreachable.contains(&bulb.id))
-                .filter_map(|bulb| {
-                    Some(SyncTarget {
-                        id: bulb.id.clone(),
-                        sender: self.workers.get(&bulb.id)?.clone(),
-                        on: self.states.get(&bulb.id).and_then(|state| state.power) == Some(true),
-                    })
-                })
-                .collect(),
+            targets: sync_targets(
+                &self.bulbs,
+                &self.states,
+                &self.workers,
+                &self.sync.unreachable,
+                &self.sync.restore,
+            ),
         }
     }
 
@@ -138,7 +134,6 @@ impl App {
     }
 
     pub(crate) fn begin_restore(&mut self) {
-        self.sync.pending_restore.clear();
         self.sync.stop = StopPhase::Waiting {
             until: Instant::now() + Duration::from_millis(2_000),
         };
@@ -156,63 +151,39 @@ impl App {
         if !matches!(self.sync.stop, StopPhase::Waiting { .. }) {
             return;
         }
-        let restore_deadline = Instant::now() + Duration::from_millis(2_000);
-        self.sync.stop = StopPhase::Restoring {
-            deadline: restore_deadline,
-        };
+        let deadline = Instant::now() + Duration::from_millis(2_000);
+        self.sync.stop = StopPhase::Restoring { deadline };
+        self.dispatch_restore(deadline);
+    }
 
-        let mut report = RestoreReport {
-            restored: 0,
-            not_restored: Vec::new(),
-            total: self.bulbs.len(),
-        };
-        for bulb in &self.bulbs {
-            if !self.sync.snapshots.contains_key(&bulb.id) {
-                report.not_restored.push(bulb.name.clone());
+    fn dispatch_restore(&mut self, deadline: Instant) {
+        let requests = self.sync.restore.requests();
+        for request in requests {
+            match request {
+                RestoreRequest::Restore { id, controls } => {
+                    let Some(sender) = self.workers.get(&id) else {
+                        self.sync.restore.mark_failed(&id);
+                        continue;
+                    };
+                    let sent = sender
+                        .send(Command::Restore {
+                            generation: self.sync.status.generation().unwrap_or(0),
+                            color: controls.color,
+                            temperature: controls.temperature,
+                            brightness: controls.brightness,
+                            deadline,
+                        })
+                        .is_ok();
+                    if sent {
+                        self.sync.restore.mark_waiting(&id);
+                    } else {
+                        self.sync.restore.mark_failed(&id);
+                    }
+                }
+                RestoreRequest::Missing { id } => self.sync.restore.mark_failed(&id),
             }
         }
-
-        let snapshots: Vec<(String, BulbState)> = self
-            .sync
-            .snapshots
-            .iter()
-            .map(|(id, state)| (id.clone(), state.clone()))
-            .collect();
-        for (id, state) in snapshots {
-            let (color, temperature) = match restore_control(&state) {
-                Some(crate::screen::sync::RestoreControl::Color(color)) => (Some(color), None),
-                Some(crate::screen::sync::RestoreControl::Temperature(temperature)) => {
-                    (None, Some(temperature))
-                }
-                None => (None, None),
-            };
-            let brightness = if self.sync.drove_brightness.contains(&id) {
-                state.brightness
-            } else {
-                None
-            };
-
-            if color.is_none() && temperature.is_none() && brightness.is_none() {
-                if let Some(bulb) = self.bulbs.iter().find(|bulb| bulb.id == id) {
-                    report.not_restored.push(bulb.name.clone());
-                }
-                continue;
-            }
-            if let Some(sender) = self.workers.get(&id) {
-                let _ = sender.send(Command::Restore {
-                    color,
-                    temperature,
-                    brightness,
-                    deadline: restore_deadline,
-                });
-                self.sync.pending_restore.insert(id);
-            } else if let Some(bulb) = self.bulbs.iter().find(|bulb| bulb.id == id) {
-                report.not_restored.push(bulb.name.clone());
-            }
-        }
-
-        self.sync.restore_report = Some(report);
-        if self.sync.pending_restore.is_empty() {
+        if !self.sync.restore.is_open() && matches!(self.sync.stop, StopPhase::Restoring { .. }) {
             self.finish_restore();
         }
     }
@@ -222,30 +193,14 @@ impl App {
             return;
         }
         self.sync.stop = StopPhase::Idle;
-        if let Some(report) = self.sync.restore_report.as_mut() {
-            for id in &self.sync.pending_restore {
-                if let Some(bulb) = self.bulbs.iter().find(|bulb| &bulb.id == id)
-                    && !report.not_restored.contains(&bulb.name)
-                {
-                    report.not_restored.push(bulb.name.clone());
-                }
-            }
-        }
-        self.sync.pending_restore.clear();
         let _ = self.sync.apply(RunEvent::Restored);
-        let report = self.sync.restore_report.take();
-        let message = report
-            .as_ref()
-            .map_or_else(|| "Screen sync stopped.".to_owned(), RestoreReport::message);
-        let kind = if report
-            .as_ref()
-            .is_some_and(|report| report.not_restored.is_empty())
-        {
+        let report = self.sync.restore.report();
+        let kind = if report.not_restored.is_empty() {
             ToastKind::Success
         } else {
             ToastKind::Error
         };
-        self.notify(message, kind);
+        self.notify(report.message(), kind);
     }
 
     pub(crate) fn select_monitor(&mut self, name: String) {
@@ -296,11 +251,17 @@ impl App {
                 self.sync.capture_error = None;
                 let _ = self.sync.apply(RunEvent::Started(generation));
             }
-            ScreenEvent::Stopped { generation, drove } => {
+            ScreenEvent::Stopped {
+                generation,
+                drove_color,
+                drove_brightness,
+            } => {
                 if self.sync.apply(RunEvent::Stopped(generation)).is_ok() {
-                    self.sync.drove_brightness.extend(drove);
-                    if matches!(self.sync.stop, StopPhase::Waiting { .. }) {
-                        self.start_restore();
+                    self.sync.restore.record(&drove_color, &drove_brightness);
+                    match self.sync.stop {
+                        StopPhase::Waiting { .. } => self.start_restore(),
+                        StopPhase::Restoring { deadline } => self.dispatch_restore(deadline),
+                        StopPhase::Idle => {}
                     }
                 }
             }
@@ -342,12 +303,13 @@ impl App {
             output,
             brightness,
             flash_until,
+            drove_color,
             drove_brightness,
         } = frame;
-        self.sync.drove_brightness.extend(drove_brightness);
         if self.sync.apply(RunEvent::Frame).is_err() {
             return;
         }
+        self.sync.restore.record(&drove_color, &drove_brightness);
         self.sync.capture_error = None;
         self.note_frame(scene, output);
         self.sync.brightness = brightness;
@@ -359,5 +321,120 @@ impl App {
         self.sync.derived = Some(output);
         self.sync.last_scene_at = Some(Instant::now());
         self.sync.capture_failed = false;
+    }
+}
+
+fn sync_targets(
+    bulbs: &[Bulb],
+    states: &HashMap<String, BulbState>,
+    workers: &HashMap<String, Sender<Command>>,
+    unreachable: &HashSet<String>,
+    restore: &RestorePlan,
+) -> Vec<SyncTarget> {
+    bulbs
+        .iter()
+        .filter(|bulb| !unreachable.contains(&bulb.id))
+        .filter(|bulb| restore.covers(&bulb.id))
+        .filter_map(|bulb| {
+            Some(SyncTarget {
+                id: bulb.id.clone(),
+                sender: workers.get(&bulb.id)?.clone(),
+                on: states.get(&bulb.id).and_then(|state| state.power) == Some(true),
+            })
+        })
+        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::{HashMap, HashSet};
+    use std::sync::mpsc::channel;
+
+    use super::sync_targets;
+    use crate::app::sync::restore::RestorePlan;
+    use crate::bulb::model::{Bulb, BulbState, ColorMode, Rgb};
+    use crate::bulb::worker::Command;
+
+    fn bulb(id: &str, name: &str) -> Bulb {
+        Bulb {
+            id: id.to_owned(),
+            name: name.to_owned(),
+            address: "192.168.1.42".to_owned(),
+            model: None,
+        }
+    }
+
+    fn state(on: bool) -> BulbState {
+        BulbState {
+            power: Some(on),
+            brightness: Some(40),
+            color: Some(Rgb::new(255, 0, 0)),
+            mode: ColorMode::Color,
+            ..BulbState::default()
+        }
+    }
+
+    #[test]
+    fn a_bulb_without_a_plan_entry_is_never_a_target() {
+        let desk = bulb("desk", "Desk lamp");
+        let shelf = bulb("shelf", "Shelf lamp");
+        let bulbs = vec![desk, shelf];
+        let states = HashMap::from([
+            ("desk".to_owned(), state(true)),
+            ("shelf".to_owned(), state(true)),
+        ]);
+        let (desk_sender, _desk_commands) = channel();
+        let (shelf_sender, _shelf_commands) = channel();
+        let workers = HashMap::from([
+            ("desk".to_owned(), desk_sender),
+            ("shelf".to_owned(), shelf_sender),
+        ]);
+        let mut restore = RestorePlan::default();
+        restore.observe("desk", "Desk lamp", &state(true));
+
+        let targets = sync_targets(&bulbs, &states, &workers, &HashSet::new(), &restore);
+
+        let ids: Vec<String> = targets.into_iter().map(|target| target.id).collect();
+        assert_eq!(ids, vec!["desk".to_owned()]);
+    }
+
+    #[test]
+    fn an_unreachable_bulb_is_not_a_target() {
+        let desk = bulb("desk", "Desk lamp");
+        let shelf = bulb("shelf", "Shelf lamp");
+        let bulbs = vec![desk, shelf];
+        let states = HashMap::from([
+            ("desk".to_owned(), state(true)),
+            ("shelf".to_owned(), state(true)),
+        ]);
+        let (desk_sender, _desk_commands) = channel();
+        let (shelf_sender, _shelf_commands) = channel();
+        let workers = HashMap::from([
+            ("desk".to_owned(), desk_sender),
+            ("shelf".to_owned(), shelf_sender),
+        ]);
+        let mut restore = RestorePlan::default();
+        restore.observe("desk", "Desk lamp", &state(true));
+        restore.observe("shelf", "Shelf lamp", &state(true));
+        let unreachable = HashSet::from(["shelf".to_owned()]);
+
+        let targets = sync_targets(&bulbs, &states, &workers, &unreachable, &restore);
+
+        let ids: Vec<String> = targets.into_iter().map(|target| target.id).collect();
+        assert_eq!(ids, vec!["desk".to_owned()]);
+    }
+
+    #[test]
+    fn a_bulb_without_a_worker_is_not_a_target() {
+        let desk = bulb("desk", "Desk lamp");
+        let bulbs = vec![desk];
+        let states = HashMap::from([("desk".to_owned(), state(true))]);
+        let workers = HashMap::<String, std::sync::mpsc::Sender<Command>>::new();
+        let mut restore = RestorePlan::default();
+        restore.observe("desk", "Desk lamp", &state(true));
+
+        let targets = sync_targets(&bulbs, &states, &workers, &HashSet::new(), &restore);
+
+        assert!(targets.is_empty());
     }
 }

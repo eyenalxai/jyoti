@@ -52,10 +52,15 @@ impl App {
             WorkerEvent::State { id, state } => {
                 let was_on = self.states.get(&id).and_then(|state| state.power) == Some(true);
                 let is_on = state.power == Some(true);
+                if self.sync.status.is_running()
+                    && let Some(bulb) = self.bulbs.iter().find(|bulb| bulb.id == id)
+                {
+                    reconfigure |= self.sync.restore.observe(&id, &bulb.name, &state);
+                }
                 self.states.insert(id.clone(), state);
                 self.errors.remove(&id);
                 self.sync.failures.remove(&id);
-                reconfigure = was_on != is_on;
+                reconfigure |= was_on != is_on;
                 if self.sync.status.is_running() {
                     reconfigure |= self.sync.unreachable.remove(&id);
                 }
@@ -80,21 +85,15 @@ impl App {
                 self.notify(error.to_string(), ToastKind::Error);
                 true
             }
-            WorkerEvent::Restored { id, ok } => {
-                self.sync.pending_restore.remove(&id);
-                let report = self
-                    .sync
-                    .restore_report
-                    .get_or_insert_with(Default::default);
-                if ok {
-                    report.restored += 1;
-                } else if let Some(bulb) = self.bulbs.iter().find(|bulb| bulb.id == id) {
-                    report.not_restored.push(bulb.name.clone());
+            WorkerEvent::Restored { id, generation, ok } => {
+                let current = self.sync.status.generation() == Some(generation);
+                if current {
+                    self.sync.restore.acknowledge(&id, ok);
+                    if !self.sync.restore.is_open() {
+                        self.finish_restore();
+                    }
                 }
-                if self.sync.pending_restore.is_empty() {
-                    self.finish_restore();
-                }
-                true
+                current
             }
             WorkerEvent::Reachable { id, reachable } => {
                 if reachable {
@@ -115,6 +114,9 @@ impl App {
     }
 
     pub(crate) fn refresh_all(&mut self, tx: &mut Tx) {
+        if !self.ensure_sync_stopped("refresh the bulb list") {
+            return;
+        }
         match self.store.load() {
             Ok(bulbs) => {
                 self.startup_error = None;
@@ -640,6 +642,7 @@ impl App {
 
     pub(crate) fn shutdown(&mut self) {
         self.leave_color();
+        self.flush_pending();
         if self.sync.status.is_active() {
             self.stop_sync();
         }
@@ -669,7 +672,7 @@ impl App {
                 StopPhase::Restoring { deadline } => deadline,
                 StopPhase::Idle | StopPhase::Waiting { .. } => Instant::now(),
             };
-            while Instant::now() < restore_deadline && !self.sync.pending_restore.is_empty() {
+            while Instant::now() < restore_deadline && self.sync.restore.is_open() {
                 while let Ok(event) = self.worker_events.try_recv() {
                     let _ = self.handle_worker_event(event);
                 }

@@ -21,6 +21,7 @@ pub enum Command {
     SetTemperature(u16),
     SetColor(Rgb),
     Restore {
+        generation: u64,
         color: Option<Rgb>,
         temperature: Option<u16>,
         brightness: Option<u8>,
@@ -32,11 +33,26 @@ pub enum Command {
 
 #[derive(Clone, Debug)]
 pub enum WorkerEvent {
-    State { id: String, state: BulbState },
-    Sent { id: String },
-    Error { id: String, error: MiioError },
-    Restored { id: String, ok: bool },
-    Reachable { id: String, reachable: bool },
+    State {
+        id: String,
+        state: BulbState,
+    },
+    Sent {
+        id: String,
+    },
+    Error {
+        id: String,
+        error: MiioError,
+    },
+    Restored {
+        id: String,
+        generation: u64,
+        ok: bool,
+    },
+    Reachable {
+        id: String,
+        reachable: bool,
+    },
 }
 
 pub fn spawn(
@@ -131,6 +147,7 @@ pub fn spawn(
                         Err(error) => fail(&mut session, &events, &id, error),
                     },
                     Command::Restore {
+                        generation,
                         color,
                         temperature,
                         brightness,
@@ -141,7 +158,11 @@ pub fn spawn(
                             restore_params(color, temperature, brightness).unwrap_or(empty);
                         let ok = params.is_empty()
                             || session.confirm_properties_until(params, deadline).is_ok();
-                        let _ = events.send(WorkerEvent::Restored { id: id.clone(), ok });
+                        let _ = events.send(WorkerEvent::Restored {
+                            id: id.clone(),
+                            generation,
+                            ok,
+                        });
                     }
                     Command::Probe => {
                         let ok = session.hello().is_ok();

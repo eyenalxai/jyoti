@@ -42,8 +42,14 @@ pub enum ScreenCommand {
 pub enum ScreenEvent {
     Monitors(Vec<MonitorInfo>),
     Scene(Scene),
-    Started { generation: u64 },
-    Stopped { generation: u64, drove: Vec<String> },
+    Started {
+        generation: u64,
+    },
+    Stopped {
+        generation: u64,
+        drove_color: Vec<String>,
+        drove_brightness: Vec<String>,
+    },
     Error(String),
     Fatal(String),
 }
@@ -189,8 +195,12 @@ fn run(
                 running = false;
                 paused = false;
                 let generation = run_generation.take().unwrap_or(0);
-                let drove = finish_run(&mut run);
-                let _ = events.send(ScreenEvent::Stopped { generation, drove });
+                let (drove_color, drove_brightness) = finish_run(&mut run);
+                let _ = events.send(ScreenEvent::Stopped {
+                    generation,
+                    drove_color,
+                    drove_brightness,
+                });
                 waker();
             }
             Some(ScreenCommand::CaptureOnce) => {
@@ -206,8 +216,12 @@ fn run(
             }
             Some(ScreenCommand::Shutdown) => {
                 let generation = run_generation.take().unwrap_or(0);
-                let drove = finish_run(&mut run);
-                let _ = events.send(ScreenEvent::Stopped { generation, drove });
+                let (drove_color, drove_brightness) = finish_run(&mut run);
+                let _ = events.send(ScreenEvent::Stopped {
+                    generation,
+                    drove_color,
+                    drove_brightness,
+                });
                 break;
             }
             None => {
@@ -229,9 +243,9 @@ fn run(
     }
 }
 
-fn finish_run(run: &mut Option<SyncRun>) -> Vec<String> {
+fn finish_run(run: &mut Option<SyncRun>) -> (Vec<String>, Vec<String>) {
     run.take()
-        .map(|run| run.drove_brightness())
+        .map(|run| (run.drove_color(), run.drove_brightness()))
         .unwrap_or_default()
 }
 

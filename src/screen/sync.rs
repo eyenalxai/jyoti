@@ -31,6 +31,7 @@ pub struct SyncFrame {
     pub output: Rgb,
     pub brightness: u8,
     pub flash_until: Option<Instant>,
+    pub drove_color: Vec<String>,
     pub drove_brightness: Vec<String>,
 }
 
@@ -39,7 +40,8 @@ pub struct SyncRun {
     flash: FlashGuard,
     last_publish: Option<Lab>,
     brightness: u8,
-    drove: HashSet<String>,
+    drove_color: HashSet<String>,
+    drove_brightness: HashSet<String>,
     republish: bool,
 }
 
@@ -50,7 +52,8 @@ impl SyncRun {
             flash: FlashGuard::default(),
             last_publish: None,
             brightness: 0,
-            drove: HashSet::new(),
+            drove_color: HashSet::new(),
+            drove_brightness: HashSet::new(),
             republish: false,
         }
     }
@@ -71,8 +74,12 @@ impl SyncRun {
         self.config = config;
     }
 
+    pub fn drove_color(&self) -> Vec<String> {
+        self.drove_color.iter().cloned().collect()
+    }
+
     pub fn drove_brightness(&self) -> Vec<String> {
-        self.drove.iter().cloned().collect()
+        self.drove_brightness.iter().cloned().collect()
     }
 
     pub fn apply(&mut self, scene: Scene, now: Instant) -> SyncFrame {
@@ -96,24 +103,30 @@ impl SyncRun {
                 self.last_publish,
             );
         let publish_brightness = !flashing && (republish || brightness_target != self.brightness);
-        let mut drove = Vec::new();
+        let mut drove_color = Vec::new();
+        let mut drove_brightness = Vec::new();
 
         if publish_color {
             self.last_publish = Some(lab);
             for target in &self.config.targets {
-                let _ = target.sender.send(Command::SetColor(output));
+                if target.sender.send(Command::SetColor(output)).is_ok()
+                    && self.drove_color.insert(target.id.clone())
+                {
+                    drove_color.push(target.id.clone());
+                }
             }
         }
 
         if publish_brightness {
             for target in &self.config.targets {
-                if target.on {
-                    let _ = target
+                if target.on
+                    && target
                         .sender
-                        .send(Command::SetBrightness(brightness_target));
-                    if self.drove.insert(target.id.clone()) {
-                        drove.push(target.id.clone());
-                    }
+                        .send(Command::SetBrightness(brightness_target))
+                        .is_ok()
+                    && self.drove_brightness.insert(target.id.clone())
+                {
+                    drove_brightness.push(target.id.clone());
                 }
             }
         }
@@ -127,7 +140,8 @@ impl SyncRun {
             output,
             brightness: self.brightness,
             flash_until,
-            drove_brightness: drove,
+            drove_color,
+            drove_brightness,
         }
     }
 }
@@ -204,7 +218,9 @@ mod tests {
         let published = run.apply(scene(Rgb::new(255, 0, 0), 1.0), Instant::now());
 
         assert_eq!(published.brightness, 100);
+        assert_eq!(published.drove_color, vec!["bulb".to_owned()]);
         assert_eq!(published.drove_brightness, vec!["bulb".to_owned()]);
+        assert_eq!(run.drove_color(), vec!["bulb".to_owned()]);
         let commands: Vec<Command> = receiver.try_iter().collect();
         assert!(
             commands
@@ -232,6 +248,7 @@ mod tests {
 
         assert!(receiver.try_iter().next().is_none());
         assert!(published.flash_until.is_none());
+        assert!(published.drove_color.is_empty());
     }
 
     #[test]
@@ -239,6 +256,7 @@ mod tests {
         let (mut run, receiver) = run(false);
         let published = run.apply(scene(Rgb::new(255, 0, 0), 1.0), Instant::now());
 
+        assert_eq!(published.drove_color, vec!["bulb".to_owned()]);
         assert!(published.drove_brightness.is_empty());
         let commands: Vec<Command> = receiver.try_iter().collect();
         assert!(
@@ -283,6 +301,7 @@ mod tests {
             now + Duration::from_millis(700),
         );
 
+        assert!(published.drove_color.is_empty());
         assert_eq!(published.drove_brightness, vec!["bulb".to_owned()]);
         let commands: Vec<Command> = receiver.try_iter().collect();
         assert!(

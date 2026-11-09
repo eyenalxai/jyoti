@@ -133,40 +133,42 @@ fn picker_row(app: &App, k: &Kit, layers: &mut Vec<El>) -> El {
         |app: &mut App| app.bulb_menu_open = !app.bulb_menu_open,
     );
     let single = matches!(app.selection, Some(Selection::Bulb(_)));
-    let menu =
-        Menu::new("bulb-actions")
-            .trigger(trigger)
-            .open(app.bulb_menu_open)
-            .on_close(|app: &mut App| app.bulb_menu_open = false)
-            .item(MenuItem::new("Refresh").icon(&REFRESH).on_select_tx(
-                |app: &mut App, tx: &mut Tx| {
+    let menu = Menu::new("bulb-actions")
+        .trigger(trigger)
+        .open(app.bulb_menu_open)
+        .on_close(|app: &mut App| app.bulb_menu_open = false)
+        .item(
+            MenuItem::new("Refresh")
+                .icon(&REFRESH)
+                .disabled(!app.sync.controls().manual)
+                .on_select_tx(|app: &mut App, tx: &mut Tx| {
                     app.bulb_menu_open = false;
                     app.refresh_all(tx);
-                },
-            ))
-            .item(
-                MenuItem::new("Edit bulb")
-                    .icon(&EDIT)
-                    .disabled(!single)
-                    .on_select(|app: &mut App| {
-                        app.bulb_menu_open = false;
-                        app.edit_selected();
-                    }),
-            )
-            .separator()
-            .item(
-                MenuItem::new("Remove bulb")
-                    .icon(&TRASH)
-                    .danger(true)
-                    .disabled(!single)
-                    .on_select(|app: &mut App| {
-                        app.bulb_menu_open = false;
-                        if let Some(Selection::Bulb(id)) = app.selection.clone() {
-                            app.open_remove(&id);
-                        }
-                    }),
-            )
-            .build(k, layers);
+                }),
+        )
+        .item(
+            MenuItem::new("Edit bulb")
+                .icon(&EDIT)
+                .disabled(!single)
+                .on_select(|app: &mut App| {
+                    app.bulb_menu_open = false;
+                    app.edit_selected();
+                }),
+        )
+        .separator()
+        .item(
+            MenuItem::new("Remove bulb")
+                .icon(&TRASH)
+                .danger(true)
+                .disabled(!single)
+                .on_select(|app: &mut App| {
+                    app.bulb_menu_open = false;
+                    if let Some(Selection::Bulb(id)) = app.selection.clone() {
+                        app.open_remove(&id);
+                    }
+                }),
+        )
+        .build(k, layers);
 
     row()
         .w_full()
