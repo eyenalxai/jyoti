@@ -1,7 +1,7 @@
 use std::time::{Duration, Instant};
 
 const FLASH_WINDOW: usize = 3;
-const FLASH_HOLD: Duration = Duration::from_secs(2);
+pub(crate) const FLASH_HOLD: Duration = Duration::from_secs(2);
 const FLASH_PEAK_TO_PEAK: u8 = 25;
 
 #[derive(Clone, Debug)]
@@ -24,6 +24,10 @@ impl Default for FlashGuard {
 impl FlashGuard {
     pub fn is_flashing(&self, now: Instant) -> bool {
         self.held_until.is_some_and(|until| now < until)
+    }
+
+    pub fn held_until(&self) -> Option<Instant> {
+        self.held_until
     }
 
     pub fn guard(&mut self, target: u8, now: Instant) -> bool {

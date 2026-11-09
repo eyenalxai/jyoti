@@ -5,7 +5,7 @@ use rune::{Align, Color, Cursor, Drag, El, Icon, Phase, Spring, Tx, col, el, row
 use rune_kit::{Kit, StateColors};
 
 use crate::app::App;
-use crate::screen::sync::SyncStatus;
+use crate::app::sync::run::RunPhase;
 use crate::ui::theme;
 
 /// Side padding of a screen page.
@@ -79,12 +79,12 @@ pub static LOCK: Icon = Icon {
     body: r#"<rect x="3.8" y="7" width="8.4" height="6.2" rx="1.6" stroke="currentColor" stroke-width="1.2" fill="none"/><path d="M6 7V5.4a2 2 0 0 1 4 0V7" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" fill="none"/>"#,
 };
 
-pub fn sync_status_tone(k: &Kit, status: &SyncStatus) -> Color {
+pub fn sync_status_tone(k: &Kit, status: &RunPhase) -> Color {
     match status {
-        SyncStatus::Running | SyncStatus::Starting => k.c.success.icon,
-        SyncStatus::Paused | SyncStatus::Stopping => k.c.warning.icon,
-        SyncStatus::Error(_) => k.c.danger.icon,
-        SyncStatus::Idle => k.c.text_faint,
+        RunPhase::Running(_) | RunPhase::Starting(_) => k.c.success.icon,
+        RunPhase::Paused(_) | RunPhase::Stopping(_) => k.c.warning.icon,
+        RunPhase::Failed { .. } => k.c.danger.icon,
+        RunPhase::Idle => k.c.text_faint,
     }
 }
 

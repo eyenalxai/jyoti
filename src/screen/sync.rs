@@ -11,48 +11,6 @@ use crate::screen::intensity::intensify;
 use crate::screen::monitor::Scene;
 use crate::screen::reducer::{DerivedColor, lab_for_color, should_publish};
 
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub enum SyncStatus {
-    #[default]
-    Idle,
-    Starting,
-    Running,
-    Paused,
-    Stopping,
-    Error(String),
-}
-
-impl SyncStatus {
-    pub fn label(&self) -> String {
-        match self {
-            SyncStatus::Idle => "Idle".to_owned(),
-            SyncStatus::Starting => "Starting".to_owned(),
-            SyncStatus::Running => "Running".to_owned(),
-            SyncStatus::Paused => "Paused".to_owned(),
-            SyncStatus::Stopping => "Stopping".to_owned(),
-            SyncStatus::Error(message) => format!("Error: {message}"),
-        }
-    }
-
-    pub fn is_running(&self) -> bool {
-        matches!(
-            self,
-            SyncStatus::Starting | SyncStatus::Running | SyncStatus::Paused
-        )
-    }
-
-    pub fn is_active(&self) -> bool {
-        matches!(
-            self,
-            SyncStatus::Starting | SyncStatus::Running | SyncStatus::Paused | SyncStatus::Error(_)
-        )
-    }
-
-    pub fn is_busy(&self) -> bool {
-        self.is_active() || matches!(self, SyncStatus::Stopping)
-    }
-}
-
 #[derive(Clone, Debug)]
 pub struct SyncTarget {
     pub id: String,
@@ -72,7 +30,7 @@ pub struct SyncFrame {
     pub scene: Scene,
     pub output: Rgb,
     pub brightness: u8,
-    pub flashing: bool,
+    pub flash_until: Option<Instant>,
     pub drove_brightness: Vec<String>,
 }
 
@@ -121,6 +79,11 @@ impl SyncRun {
         let output = intensify(scene.color, self.config.intensity);
         let brightness_target = sync_brightness_for(scene.brightness, self.config.gain);
         let flashing = self.flash.guard(brightness_target, now);
+        let flash_until = if flashing {
+            self.flash.held_until()
+        } else {
+            None
+        };
         let lab = lab_for_color(output);
         let republish = std::mem::take(&mut self.republish);
         let publish_color = republish
@@ -163,7 +126,7 @@ impl SyncRun {
             scene,
             output,
             brightness: self.brightness,
-            flashing,
+            flash_until,
             drove_brightness: drove,
         }
     }
@@ -268,7 +231,7 @@ mod tests {
         );
 
         assert!(receiver.try_iter().next().is_none());
-        assert!(!published.flashing);
+        assert!(published.flash_until.is_none());
     }
 
     #[test]
@@ -351,7 +314,7 @@ mod tests {
             now + Duration::from_millis(100),
         );
 
-        assert!(published.flashing);
+        assert!(published.flash_until.is_some());
         assert_eq!(published.brightness, 100);
         let commands: Vec<Command> = receiver.try_iter().collect();
         assert!(

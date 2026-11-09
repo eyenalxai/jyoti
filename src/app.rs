@@ -2,7 +2,7 @@ mod actions;
 mod color;
 mod selection;
 pub(crate) mod state;
-mod sync;
+pub(crate) mod sync;
 
 use std::collections::HashMap;
 use std::sync::mpsc::{self, Receiver, Sender};
@@ -21,7 +21,6 @@ use crate::bulb::store::{Appearance, BulbStore, PreferencesStore};
 use crate::bulb::worker::{Command, WorkerEvent};
 use crate::config::AppConfig;
 use crate::screen::capture::{ScreenCommand, ScreenHandle};
-use crate::screen::sync::SyncStatus;
 
 pub struct App {
     pub config: AppConfig,
@@ -233,13 +232,6 @@ impl App {
         }
 
         if self.sync.status.is_running() {
-            if self.sync.status == SyncStatus::Running
-                && let Some(last) = self.sync.last_scene_at
-                && last.elapsed() > Duration::from_secs(5)
-                && !self.sync.stale
-            {
-                self.sync.stale = true;
-            }
             if self.sync.last_probe.elapsed() > Duration::from_secs(5) {
                 self.probe_unreachable();
                 self.sync.last_probe = now;

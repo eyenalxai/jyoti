@@ -17,7 +17,7 @@ use crate::screen::intensity::{intensify, normalize_sync_intensity};
 
 impl App {
     fn ensure_sync_stopped(&mut self, action: &str) -> bool {
-        if self.sync.status.is_busy() {
+        if !self.sync.controls().manual {
             self.notify(
                 format!("Stop screen sync before you {action}."),
                 ToastKind::Info,
@@ -176,7 +176,7 @@ impl App {
     }
 
     pub(crate) fn set_mode_white(&mut self) {
-        if self.sync.status.is_running() {
+        if !self.sync.controls().manual {
             self.notify(
                 "Screen sync owns colour and temperature while it runs.",
                 ToastKind::Info,
@@ -199,7 +199,7 @@ impl App {
     }
 
     pub(crate) fn set_mode_color(&mut self) {
-        if self.sync.status.is_running() {
+        if !self.sync.controls().manual {
             self.notify(
                 "Screen sync owns colour and temperature while it runs.",
                 ToastKind::Info,
@@ -222,7 +222,7 @@ impl App {
     }
 
     pub(crate) fn set_brightness(&mut self, value: u8) {
-        if self.sync.status.is_busy() {
+        if !self.sync.controls().manual {
             return;
         }
         let ids = self.selected_ids();
@@ -244,7 +244,7 @@ impl App {
     }
 
     pub(crate) fn set_temperature(&mut self, value: u16) {
-        if self.sync.status.is_busy() {
+        if !self.sync.controls().manual {
             return;
         }
         let ids = self.selected_ids();
@@ -641,7 +641,9 @@ impl App {
     pub(crate) fn shutdown(&mut self) {
         self.leave_color();
         if self.sync.status.is_active() {
-            self.begin_restore();
+            self.stop_sync();
+        }
+        if self.sync.stop != StopPhase::Idle {
             let stop_deadline = Instant::now() + Duration::from_millis(2_000);
             while Instant::now() < stop_deadline
                 && matches!(self.sync.stop, StopPhase::Waiting { .. })

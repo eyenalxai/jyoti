@@ -23,7 +23,11 @@ const GRID_HEIGHT: usize = 36;
 #[derive(Clone, Debug)]
 pub enum ScreenCommand {
     ListMonitors,
-    Start { monitor: String, config: SyncConfig },
+    Start {
+        generation: u64,
+        monitor: String,
+        config: SyncConfig,
+    },
     Configure(SyncConfig),
     Pause,
     Resume,
@@ -37,8 +41,8 @@ pub enum ScreenCommand {
 pub enum ScreenEvent {
     Monitors(Vec<MonitorInfo>),
     Scene(Scene),
-    Started,
-    Stopped { drove: Vec<String> },
+    Started { generation: u64 },
+    Stopped { generation: u64, drove: Vec<String> },
     Error(String),
     Fatal(String),
 }
@@ -105,6 +109,7 @@ fn run(
     let mut running = false;
     let mut paused = false;
     let mut run: Option<SyncRun> = None;
+    let mut run_generation: Option<u64> = None;
     let mut selected = backend.first_monitor();
     let mut reducer = ReducerState::default();
     let mut last_capture = Instant::now() - TICK;
@@ -127,15 +132,20 @@ fn run(
                 let _ = events.send(ScreenEvent::Monitors(backend.monitors()));
                 waker();
             }
-            Some(ScreenCommand::Start { monitor, config }) => {
+            Some(ScreenCommand::Start {
+                generation,
+                monitor,
+                config,
+            }) => {
                 selected = Some(monitor);
                 run = Some(SyncRun::new(config));
+                run_generation = Some(generation);
                 if let Ok(mut slot) = latest.lock() {
                     *slot = None;
                 }
                 running = true;
                 paused = false;
-                let _ = events.send(ScreenEvent::Started);
+                let _ = events.send(ScreenEvent::Started { generation });
                 waker();
                 capture(
                     &mut backend,
@@ -167,8 +177,9 @@ fn run(
             Some(ScreenCommand::Stop) => {
                 running = false;
                 paused = false;
+                let generation = run_generation.take().unwrap_or(0);
                 let drove = finish_run(&mut run);
-                let _ = events.send(ScreenEvent::Stopped { drove });
+                let _ = events.send(ScreenEvent::Stopped { generation, drove });
                 waker();
             }
             Some(ScreenCommand::CaptureOnce) => {
@@ -183,8 +194,9 @@ fn run(
                 );
             }
             Some(ScreenCommand::Shutdown) => {
+                let generation = run_generation.take().unwrap_or(0);
                 let drove = finish_run(&mut run);
-                let _ = events.send(ScreenEvent::Stopped { drove });
+                let _ = events.send(ScreenEvent::Stopped { generation, drove });
                 break;
             }
             None => {

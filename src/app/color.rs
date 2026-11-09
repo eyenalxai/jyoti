@@ -10,7 +10,7 @@ use crate::screen::sync::{RestoreControl, restore_control};
 impl App {
     pub(crate) fn open_color(&mut self) {
         self.close_overlays();
-        if self.sync.status.is_busy() {
+        if !self.sync.controls().manual {
             self.notify(
                 "Screen sync owns colour and temperature while it runs.",
                 ToastKind::Info,

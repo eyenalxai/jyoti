@@ -1,11 +1,13 @@
+use std::time::Instant;
+
 use rune::{Color, El, ScrollSpec, col, row, text};
 use rune_kit::{Button, ButtonVariant, ControlSize, Kit, Menu, MenuItem};
 
 use crate::app::App;
+use crate::app::sync::run::RunPhase;
 use crate::bulb::model::Rgb;
 use crate::screen::gain::{SYNC_GAIN_MAX, SYNC_GAIN_MIN};
 use crate::screen::intensity::intensify;
-use crate::screen::sync::SyncStatus;
 use crate::ui::theme;
 use crate::ui::widget::{
     ALERT, PAGE_PAD, SLIDER_WIDTH, SYNC, SliderSpec, dot, dropdown_trigger, frame_age,
@@ -16,10 +18,9 @@ use crate::ui::widget::{
 const STAGE_HEIGHT: f32 = 190.0;
 
 pub fn view(app: &App, k: &Kit, layers: &mut Vec<El>) -> El {
+    let controls = app.sync.controls();
     let active = app.sync.status.is_active();
-    let running = app.sync.status.is_running();
-    let paused = app.sync.status == SyncStatus::Paused;
-    let stopping = app.sync.status == SyncStatus::Stopping;
+    let paused = controls.resume;
 
     let start = Button::new("Start sync")
         .variant(if app.sync.monitors.is_empty() {
@@ -28,16 +29,16 @@ pub fn view(app: &App, k: &Kit, layers: &mut Vec<El>) -> El {
             ButtonVariant::Contrast
         })
         .control_size(ControlSize::Large)
-        .disabled(active || stopping || app.sync.monitors.is_empty())
+        .disabled(!controls.start || app.sync.monitors.is_empty())
         .on_press(|app: &mut App| app.start_sync())
         .build(k)
         .h(40.0);
     let pause = Button::new(if paused { "Resume" } else { "Pause" })
         .variant(ButtonVariant::Outline)
         .control_size(ControlSize::Large)
-        .disabled(!running || stopping)
+        .disabled(!(controls.pause || controls.resume))
         .on_press(|app: &mut App| {
-            if app.sync.status == SyncStatus::Paused {
+            if app.sync.controls().resume {
                 app.resume_sync();
             } else {
                 app.pause_sync();
@@ -48,7 +49,7 @@ pub fn view(app: &App, k: &Kit, layers: &mut Vec<El>) -> El {
     let stop = Button::new("Stop and restore")
         .variant(ButtonVariant::Danger)
         .control_size(ControlSize::Large)
-        .disabled(!active)
+        .disabled(!controls.stop)
         .on_press(|app: &mut App| app.stop_sync())
         .build(k)
         .h(40.0);
@@ -101,7 +102,7 @@ fn capture_stage(app: &App, k: &Kit) -> El {
     };
     let status = &app.sync.status;
     let status_word = match status {
-        SyncStatus::Error(_) => "Error".to_owned(),
+        RunPhase::Failed { .. } => "Error".to_owned(),
         _ => status.label(),
     };
     let status_ink = sync_status_ink(status);
@@ -191,14 +192,15 @@ fn capture_stage(app: &App, k: &Kit) -> El {
 
 fn capture_panel(app: &App, k: &Kit, layers: &mut Vec<El>) -> El {
     let mut body = col().w_full().child(monitor_row(app, k, layers));
-    if app.sync.stale {
+    let now = Instant::now();
+    if app.sync.stale_at(now) {
         body = body.child(hairline(k)).child(padded_notice(
             k,
             &SYNC,
             "The last frame is older than five seconds. Capture recovers on the next good frame.",
             k.c.warning,
         ));
-    } else if app.sync.flashing {
+    } else if app.sync.flashing_at(now) {
         body = body.child(hairline(k)).child(padded_notice(
             k,
             &SYNC,
@@ -211,7 +213,7 @@ fn capture_panel(app: &App, k: &Kit, layers: &mut Vec<El>) -> El {
         .capture_error
         .clone()
         .or_else(|| match &app.sync.status {
-            SyncStatus::Error(message) => Some(message.clone()),
+            RunPhase::Failed { message, .. } => Some(message.clone()),
             _ => None,
         });
     if let Some(error) = &error {
@@ -426,11 +428,11 @@ fn padded_notice(
         .child(notice(k, icon, message, state))
 }
 
-fn sync_status_ink(status: &SyncStatus) -> Color {
+fn sync_status_ink(status: &RunPhase) -> Color {
     match status {
-        SyncStatus::Running | SyncStatus::Starting => theme::positive_on_plate(),
-        SyncStatus::Paused | SyncStatus::Stopping => theme::warning_on_plate(),
-        SyncStatus::Error(_) => theme::danger_on_plate(),
-        SyncStatus::Idle => theme::quiet_on_plate(),
+        RunPhase::Running(_) | RunPhase::Starting(_) => theme::positive_on_plate(),
+        RunPhase::Paused(_) | RunPhase::Stopping(_) => theme::warning_on_plate(),
+        RunPhase::Failed { .. } => theme::danger_on_plate(),
+        RunPhase::Idle => theme::quiet_on_plate(),
     }
 }
