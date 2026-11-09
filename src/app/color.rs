@@ -84,6 +84,7 @@ impl App {
                 state.mode = ColorMode::Color;
                 state.color = Some(color);
             }
+            self.edits.touch(&id);
             self.dashboard.pending_color.insert(id, color);
         }
         self.mark_pending();
@@ -102,6 +103,7 @@ impl App {
                 continue;
             };
             self.states.insert(id.clone(), previous.clone());
+            self.edits.touch(&id);
             match restore_control(&previous) {
                 Some(RestoreControl::Color(color)) => {
                     self.send(&id, Command::SetColor(color));

@@ -43,7 +43,8 @@ const SCENES: &[(&str, SceneFn)] = &[
     ("empty", |app| {
         app.bulbs.clear();
         app.states.clear();
-        app.errors.clear();
+        app.health.clear();
+        app.edits.clear();
         app.selection = None;
         app.toasts.clear();
         app.screen = Screen::Dashboard;

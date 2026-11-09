@@ -11,15 +11,16 @@ use std::time::{Duration, Instant};
 use rune::{Tx, Waker};
 
 use crate::app::state::{
-    ColorState, Dashboard, FormState, Navigation, Screen, SyncState, Toast, ToastKind,
+    ColorState, Dashboard, FormState, LocalEdits, Navigation, Screen, SyncState, Toast, ToastKind,
     nav_direction, toast_duration,
 };
 use crate::app::sync::restore::StopPhase;
+use crate::bulb::health::HealthSet;
 use crate::bulb::keyring::KeyringStore;
 use crate::bulb::model::{Bulb, BulbState, ColorMode, Rgb};
 use crate::bulb::selection::{Selection, resolve_selection};
 use crate::bulb::store::{Appearance, BulbStore, PreferencesStore};
-use crate::bulb::worker::{Command, WorkerEvent};
+use crate::bulb::worker::{WorkerEvent, WorkerHandle};
 use crate::config::AppConfig;
 use crate::screen::capture::{ScreenCommand, ScreenHandle};
 
@@ -30,7 +31,8 @@ pub struct App {
     pub keyring: KeyringStore,
     pub bulbs: Vec<Bulb>,
     pub states: HashMap<String, BulbState>,
-    pub errors: HashMap<String, String>,
+    pub health: HealthSet,
+    pub edits: LocalEdits,
     pub selection: Option<Selection>,
     pub screen: Screen,
     pub navigation: Navigation,
@@ -41,7 +43,7 @@ pub struct App {
     pub sync: SyncState,
     pub toasts: Vec<Toast>,
     pub next_toast: u64,
-    pub workers: HashMap<String, Sender<Command>>,
+    pub workers: HashMap<String, WorkerHandle>,
     pub worker_events: Receiver<WorkerEvent>,
     pub worker_sender: Sender<WorkerEvent>,
     pub screen_handle: Option<ScreenHandle>,
@@ -94,14 +96,15 @@ impl App {
             },
             ..SyncState::default()
         };
-        Self {
+        let mut app = Self {
             config,
             store,
             preferences_store,
             keyring,
             bulbs,
             states,
-            errors: HashMap::new(),
+            health: HealthSet::default(),
+            edits: LocalEdits::default(),
             selection,
             screen: Screen::Dashboard,
             navigation: Navigation::default(),
@@ -129,7 +132,15 @@ impl App {
             startup_error,
             demo,
             capture_once,
+        };
+        if demo {
+            let ids: Vec<String> = app.states.keys().cloned().collect();
+            for id in ids {
+                app.health
+                    .apply(&id, crate::bulb::health::HealthEvent::State);
+            }
         }
+        app
     }
 
     pub fn start(&mut self, waker: Waker) {
@@ -272,7 +283,7 @@ impl App {
     }
 
     pub fn aggregate(&self) -> crate::bulb::aggregate::AggregateState {
-        crate::bulb::aggregate::aggregate_state(&self.bulbs, &self.states, &self.errors)
+        crate::bulb::aggregate::aggregate_state(&self.bulbs, &self.states, &self.health)
     }
 
     pub fn selected_ids(&self) -> Vec<String> {

@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use crate::bulb::health::HealthSet;
 use crate::bulb::model::{Bulb, BulbState, ColorMode, Rgb};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -53,7 +54,7 @@ pub fn light_quality_of(mode: ColorMode) -> LightQuality {
 pub fn aggregate_state(
     bulbs: &[Bulb],
     states: &HashMap<String, BulbState>,
-    errors: &HashMap<String, String>,
+    health: &HealthSet,
 ) -> AggregateState {
     let mut powers = Vec::new();
     let mut qualities = Vec::new();
@@ -61,15 +62,14 @@ pub fn aggregate_state(
     let mut temperatures = Vec::new();
     let mut colors = Vec::new();
     let mut reachable = 0usize;
-    let mut failed = 0usize;
 
     for bulb in bulbs {
         let Some(state) = states.get(&bulb.id) else {
-            if errors.contains_key(&bulb.id) {
-                failed += 1;
-            }
             continue;
         };
+        if health.unreachable(&bulb.id) {
+            continue;
+        }
         reachable += 1;
         let quality = light_quality_of(state.mode);
         if quality != LightQuality::Unknown {
@@ -92,7 +92,10 @@ pub fn aggregate_state(
     AggregateState {
         total: bulbs.len(),
         reachable,
-        failed,
+        failed: bulbs
+            .iter()
+            .filter(|bulb| health.unreachable(&bulb.id))
+            .count(),
         power: power_of(&powers),
         quality: quality_of(&qualities),
         brightness: span_of(&brightness),
@@ -155,6 +158,7 @@ fn color_of(values: &[Rgb]) -> Option<AggregateColor> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::bulb::health::{HealthEvent, HealthSet};
     use crate::bulb::model::{Bulb, BulbState, ColorMode, Rgb};
     use std::collections::HashMap;
 
@@ -192,7 +196,7 @@ mod tests {
             },
         );
 
-        let aggregate = aggregate_state(&bulbs, &states, &HashMap::new());
+        let aggregate = aggregate_state(&bulbs, &states, &HealthSet::default());
         assert_eq!(aggregate.power, AggregatePower::Mixed);
         assert_eq!(aggregate.quality, LightQuality::Mixed);
         assert_eq!(aggregate.brightness, Some(ValueSpan { low: 40, high: 80 }));
@@ -203,5 +207,26 @@ mod tests {
                 high: 4_000
             })
         );
+    }
+
+    #[test]
+    fn the_stage_count_matches_the_picker_health() {
+        let bulbs = vec![bulb("a", "A"), bulb("b", "B"), bulb("c", "C")];
+        let mut states = HashMap::new();
+        states.insert("a".to_owned(), BulbState::default());
+        states.insert("c".to_owned(), BulbState::default());
+        let mut health = HealthSet::default();
+        health.apply("b", HealthEvent::Error("no answer".to_owned()));
+        health.apply("c", HealthEvent::Error("no answer".to_owned()));
+
+        let aggregate = aggregate_state(&bulbs, &states, &health);
+
+        let picker = bulbs
+            .iter()
+            .filter(|bulb| health.unreachable(&bulb.id))
+            .count();
+        assert_eq!(aggregate.failed, picker);
+        assert_eq!(aggregate.failed, 2);
+        assert_eq!(aggregate.reachable, 1);
     }
 }
