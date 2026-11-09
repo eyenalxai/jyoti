@@ -1,11 +1,8 @@
 mod stage;
 
-use std::time::Duration;
-
-use rune::{Color, El, ScrollSpec, Tx, col, row, text};
+use rune::{Color, Edge, El, ScrollSpec, Spring, SpringPair, Transition, Tx, col, row, text};
 use rune_kit::{
-    Button, ButtonVariant, ControlSize, IconButton, IconButtonVariant, Kit, Menu, MenuItem,
-    SegmentedControl, Switch,
+    Button, ButtonVariant, ControlSize, IconButton, IconButtonVariant, Kit, Menu, MenuItem, Switch,
 };
 
 use crate::app::App;
@@ -16,11 +13,12 @@ use crate::bulb::model::{
 };
 use crate::bulb::selection::Selection;
 use crate::screen::color::kelvin_to_rgb;
+use crate::ui::color;
 use crate::ui::theme;
 use crate::ui::widget::{
     ALERT, BULB, EDIT, MORE, PAGE_PAD, PLUS, REFRESH, SLIDER_WIDTH, SliderSpec, TRASH, dim_when,
-    dot, dropdown_trigger, error_text, gradient_slider, hairline, notice, rgb_color, slider,
-    surface, swatch,
+    dot, dropdown_trigger, error_text, gradient_slider, hairline, notice, rgb_color,
+    segmented_switch, slider, surface, swatch,
 };
 
 const STAGE_HEIGHT: f32 = 202.0;
@@ -251,18 +249,34 @@ fn control_deck(app: &App, k: &Kit) -> El {
     }
 
     deck = deck.child(brightness_block(k, &aggregate, &state, all, sync_owned));
-    deck = deck
-        .child(hairline(k))
-        .child(mode_block(k, white, colour, sync_owned));
-    if white {
-        deck = deck
-            .child(hairline(k))
-            .child(temperature_block(k, &aggregate, &state, all, sync_owned));
-    }
-    if colour {
-        deck = deck
-            .child(hairline(k))
-            .child(colour_block(k, &aggregate, &state, all, sync_owned));
+    deck =
+        deck.child(hairline(k))
+            .child(mode_block(k, white, colour, sync_owned || app.color.open));
+    if white || colour || app.color.open {
+        let (key, edge, block) = if white && !app.color.open {
+            (
+                "tuning-white",
+                Edge::Leading,
+                temperature_block(k, &aggregate, &state, all, sync_owned),
+            )
+        } else {
+            (
+                "tuning-colour",
+                Edge::Trailing,
+                colour_block(app, k, &aggregate, &state, all, sync_owned),
+            )
+        };
+        deck = deck.child(
+            col()
+                .key(key)
+                .w_full()
+                .transition(Transition::move_edge(edge).springs(SpringPair::new(
+                    Spring::new(0.3, 0.06),
+                    Spring::new(0.24, 0.03),
+                )))
+                .child(hairline(k))
+                .child(block),
+        );
     }
     if mixed {
         deck = deck.child(hairline(k)).child(
@@ -374,18 +388,20 @@ fn mode_block(k: &Kit, white: bool, colour: bool, disabled: bool) -> El {
     } else {
         None
     };
-    let control = SegmentedControl::new(&["White", "Colour"], selected)
-        .label("Light mode")
-        .width(None)
-        .on_pick(|app: &mut App, index, tx: &mut Tx| {
+    let control = segmented_switch(
+        k,
+        "mode",
+        "Light mode",
+        &["White", "Colour"],
+        selected,
+        |app, index, _tx| {
             if index == 0 {
                 app.set_mode_white();
             } else {
                 app.set_mode_color();
             }
-            tx.wake_after(Duration::ZERO);
-        })
-        .build(k);
+        },
+    );
     let block = row()
         .w_full()
         .gap(14.0)
@@ -495,13 +511,17 @@ fn temperature_block(
 }
 
 fn colour_block(
+    app: &App,
     k: &Kit,
     aggregate: &AggregateState,
     state: &BulbState,
     all: bool,
     disabled: bool,
 ) -> El {
-    let (color, mixed) = if all {
+    let editing = app.color.open;
+    let (color, mixed) = if editing {
+        (Some(app.color.preview), false)
+    } else if all {
         match aggregate.color {
             Some(crate::bulb::aggregate::AggregateColor::Equal(color)) => (Some(color), false),
             Some(crate::bulb::aggregate::AggregateColor::Mixed) => (None, true),
@@ -526,23 +546,65 @@ fn colour_block(
         .control_size(ControlSize::Regular)
         .icon(&EDIT)
         .disabled(disabled)
-        .on_press(|app: &mut App| app.open_color())
+        .on_press_tx(|app: &mut App, tx: &mut Tx| {
+            app.open_color();
+            if app.color.open {
+                tx.scroll_key_to("colour-editor", 0.0);
+            }
+            tx.instant();
+        })
         .build(k)
+        .key("choose-colour")
+        .h(40.0);
+    let cancel = Button::new("Cancel")
+        .variant(ButtonVariant::Outline)
+        .control_size(ControlSize::Regular)
+        .on_press_tx(|app: &mut App, tx: &mut Tx| {
+            app.cancel_color();
+            tx.instant();
+        })
+        .build(k)
+        .key("cancel-colour")
+        .h(40.0);
+    let keep = Button::new("Keep colour")
+        .variant(ButtonVariant::Contrast)
+        .control_size(ControlSize::Regular)
+        .on_press_tx(|app: &mut App, tx: &mut Tx| {
+            app.commit_color();
+            tx.instant();
+        })
+        .build(k)
+        .key("keep-colour")
         .h(40.0);
     let label_style = if color.is_some() {
         theme::code(14.0, 500.0)
     } else {
         k.ty.ui_medium
     };
-    let block = row()
+    let mut header = row()
         .w_full()
-        .gap(10.0)
+        .gap(8.0)
         .px(16.0)
         .py(10.0)
         .center_y()
         .child(swatch(k, fill, 30.0))
-        .child(text(label).font(label_style).color(k.c.text_base).grow(1.0))
-        .child(choose);
+        .child(
+            text(label)
+                .font(label_style)
+                .color(k.c.text_base)
+                .grow(1.0)
+                .min_w(0.0)
+                .truncate(),
+        );
+    header = if editing {
+        header.child(cancel).child(keep)
+    } else {
+        header.child(choose)
+    };
+    let mut block = col().w_full().key("colour-editor").child(header);
+    if editing {
+        block = block.child(color::editor(app, k));
+    }
     dim_when(block, disabled)
 }
 

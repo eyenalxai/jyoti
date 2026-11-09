@@ -11,25 +11,25 @@ impl App {
 
     pub(crate) fn leave_color(&mut self) {
         self.close_overlays();
-        if self.screen == Screen::Color {
+        if self.color.open {
             self.cancel_color();
         }
     }
 
     pub(crate) fn open_overview(&mut self) {
         self.leave_color();
-        self.screen = Screen::Dashboard;
+        self.set_screen(Screen::Dashboard);
     }
 
     pub(crate) fn select_all(&mut self) {
         self.leave_color();
         self.selection = Some(Selection::All);
-        self.screen = Screen::Dashboard;
+        self.set_screen(Screen::Dashboard);
     }
 
     pub(crate) fn select_bulb(&mut self, id: &str) {
         self.leave_color();
         self.selection = Some(Selection::Bulb(id.to_owned()));
-        self.screen = Screen::Dashboard;
+        self.set_screen(Screen::Dashboard);
     }
 }

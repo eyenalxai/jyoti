@@ -35,12 +35,21 @@ generic kit:
   control; every action stays on a visible pointer control.
 - **One deck.** Power, brightness, mode and warmth or colour sit in one panel of
   hairline-separated rows. A screen sync run dims the rows it owns and leaves
-  power available.
-- **Quiet navigation.** The three sections are text tabs marked by a brass rule
-  under the active label. The filled accent pill is gone.
+  power available. The mode row is inert while the colour editor is open.
+- **Quiet navigation.** The three sections are text tabs; the active label and
+  its rule take the brass accent. The filled accent pill is gone.
+- **Motion.** Section changes push only the content below the tab bar; the tabs
+  stay put, and a form or the remove confirmation appears in that same content
+  area with a Back control. The colour editor expands inside the Control deck
+  without moving the page. White and Colour swap their tuning rows sideways.
+  Layout and control changes use springs; the appearance switch and the colour
+  editor land at once.
+  White/Colour and appearance share an app-specific choice wrapper over kit
+  tokens because the kit segmented control has no gap between choices.
 - **Shared surfaces.** Sync uses the same stage and nameplate for its captured
   colour. Settings uses group captions over one surface per group. Forms use one
-  surface with a footer; Colour uses a paint-chip preview over the tuning deck.
+  surface with a footer; Colour expands inside the Control deck with a paint-chip
+  preview and its tuning rows, with Cancel and Keep attached to the colour row.
   Decorative badges and duplicate panel headers are removed.
 - **Accessibility.** Live figures use tabular numerals. Focus rings are neutral
   ink, not the accent. Stage text sits on the nameplate or uses contrast-aware

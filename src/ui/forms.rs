@@ -126,15 +126,7 @@ pub fn form_view(app: &App, k: &Kit) -> El {
                 .child(reveal),
         );
 
-    let form = surface(
-        k,
-        col()
-            .w_full()
-            .padding(14.0)
-            .child(fields)
-            .child(row().w_full().py(12.0).child(hairline(k)))
-            .child(row().w_full().justify_end().child(save)),
-    );
+    let form = surface(k, col().w_full().padding(14.0).child(fields));
 
     let viewport = col()
         .key("bulb-form")
@@ -147,8 +139,17 @@ pub fn form_view(app: &App, k: &Kit) -> El {
             stick_bottom: false,
         });
     let scroll = k.scroll_bar(viewport).grow(1.0).min_h(0.0);
+    let footer = col()
+        .w_full()
+        .child(hairline(k))
+        .child(row().w_full().px(14.0).py(10.0).justify_end().child(save));
 
-    col().w_full().h_full().min_h(0.0).child(scroll)
+    col()
+        .w_full()
+        .h_full()
+        .min_h(0.0)
+        .child(scroll)
+        .child(footer)
 }
 
 pub fn remove_view(app: &App, k: &Kit) -> El {

@@ -18,7 +18,7 @@ tab bar and the active screen. Views are plain Rust functions over an app state.
 The Rune dependency is pinned to a `dev` rev; the app does not fork it.
 
 There is one main window. Screen sync, settings, add, edit, remove and the
-colour picker are pages in that window, not separate windows or a tray panel.
+colour editor are views in that window, not separate windows or a tray panel.
 
 ## Alternatives
 

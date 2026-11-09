@@ -11,7 +11,7 @@ use std::time::Instant;
 use rune::{AppSpec, Tx, Waker};
 
 use crate::app::App;
-use crate::app::state::{Screen, ToastKind};
+use crate::app::state::{FormMode, Screen, ToastKind};
 use crate::bulb::model::Rgb;
 use crate::screen::monitor::{MonitorInfo, Scene};
 use crate::screen::sync::SyncStatus;
@@ -48,13 +48,22 @@ const SCENES: &[(&str, SceneFn)] = &[
         app.toasts.clear();
         app.screen = Screen::Dashboard;
     }),
-    ("form", |app| app.open_add()),
+    ("form", |app| {
+        app.open_add();
+        app.show_now(Screen::Form(FormMode::Add));
+    }),
     ("edit", |app| {
         if let Some(id) = app.bulbs.first().map(|bulb| bulb.id.clone()) {
             app.open_edit(&id);
+            app.show_now(Screen::Form(FormMode::Edit(id)));
         }
     }),
-    ("color", |app| app.open_color()),
+    ("color", |app| {
+        for state in app.states.values_mut() {
+            state.mode = crate::bulb::model::ColorMode::Color;
+        }
+        app.open_color();
+    }),
     ("color-control", |app| {
         app.screen = Screen::Dashboard;
         for state in app.states.values_mut() {
@@ -65,6 +74,7 @@ const SCENES: &[(&str, SceneFn)] = &[
     ("remove", |app| {
         if let Some(id) = app.bulbs.first().map(|bulb| bulb.id.clone()) {
             app.open_remove(&id);
+            app.show_now(Screen::Remove(id));
         }
     }),
     ("sync-live", |app| app.screen = Screen::Sync),

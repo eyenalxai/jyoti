@@ -1,33 +1,18 @@
 use std::time::Duration;
 
-use rune::{Color, El, ScrollSpec, Tx, col, row, text};
-use rune_kit::{Button, ButtonVariant, ControlSize, IconButton, IconButtonVariant, Kit, TextInput};
+use rune::{Color, El, Tx, col, row, text};
+use rune_kit::{Button, ButtonVariant, ControlSize, Kit, TextInput};
 
 use crate::app::App;
 use crate::screen::color::{Hsb, hsb_to_rgb};
 use crate::ui::theme;
 use crate::ui::widget::{
-    ALERT, BACK, SLIDER_WIDTH, SliderSpec, gradient_slider, hairline, notice, rgb_color,
-    subpage_header, surface,
+    ALERT, SLIDER_WIDTH, SliderSpec, gradient_slider, hairline, notice, rgb_color,
 };
 
-pub fn view(app: &App, k: &Kit) -> El {
+pub fn editor(app: &App, k: &Kit) -> El {
     let preview = app.color.preview;
     let ink = theme::ink_on(rgb_color(preview));
-    let back = IconButton::new(&BACK)
-        .variant(IconButtonVariant::GhostMuted)
-        .control_size(ControlSize::ExtraLarge)
-        .help("Back")
-        .on_press(|app: &mut App| app.back())
-        .build(k)
-        .size(40.0, 40.0)
-        .radius(k.radius.md);
-    let done = Button::new("Keep colour")
-        .variant(ButtonVariant::Contrast)
-        .control_size(ControlSize::Large)
-        .on_press(|app: &mut App| app.commit_color())
-        .build(k)
-        .h(40.0);
     let hex = TextInput::new(&app.color.hex)
         .label("Hex colour")
         .placeholder("#FF8A00")
@@ -187,43 +172,14 @@ pub fn view(app: &App, k: &Kit) -> El {
             },
         ));
 
-    let body = surface(
-        k,
+    col().w_full().child(hairline(k)).child(
         col()
             .w_full()
-            .padding(14.0)
+            .padding(16.0)
             .gap(12.0)
             .child(chip)
             .child(tune),
-    );
-
-    let viewport = col()
-        .key("colour")
-        .w_full()
-        .padding(14.0)
-        .gap(12.0)
-        .child(subpage_header(
-            k,
-            "Colour",
-            "Live preview. Back restores the previous light.",
-            back,
-        ))
-        .child(body)
-        .scroll(ScrollSpec {
-            stick_bottom: false,
-        });
-    let scroll = k.scroll_bar(viewport).grow(1.0).min_h(0.0);
-    let footer = col()
-        .w_full()
-        .child(hairline(k))
-        .child(row().w_full().px(14.0).py(10.0).justify_end().child(done));
-
-    col()
-        .w_full()
-        .h_full()
-        .min_h(0.0)
-        .child(scroll)
-        .child(footer)
+    )
 }
 
 fn tune_block(

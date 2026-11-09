@@ -1,7 +1,7 @@
 use rune::TextEdit;
 
 use crate::app::App;
-use crate::app::state::{ColorState, Screen, ToastKind};
+use crate::app::state::{ColorState, ToastKind};
 use crate::bulb::model::{ColorMode, Rgb};
 use crate::bulb::worker::Command;
 use crate::screen::color::{Hsb, hsb_to_rgb, rgb_to_hsb};
@@ -21,6 +21,7 @@ impl App {
         if targets.is_empty() {
             return;
         }
+        self.flush_pending();
         let first = targets
             .iter()
             .find_map(|id| self.states.get(id).and_then(|state| state.color))
@@ -36,6 +37,7 @@ impl App {
             })
             .collect();
         self.color = ColorState {
+            open: true,
             targets,
             hue: hsb.hue,
             saturation: hsb.saturation,
@@ -45,7 +47,6 @@ impl App {
             error: None,
             revert,
         };
-        self.screen = Screen::Color;
     }
 
     pub(crate) fn update_color_from_hsb(&mut self) {
@@ -111,7 +112,7 @@ impl App {
                 None => {}
             }
         }
-        self.screen = Screen::Dashboard;
+        self.color.open = false;
     }
 
     pub(crate) fn commit_color(&mut self) {
@@ -119,6 +120,6 @@ impl App {
         if self.color.error.is_some() {
             return;
         }
-        self.screen = Screen::Dashboard;
+        self.color.open = false;
     }
 }

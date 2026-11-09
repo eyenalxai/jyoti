@@ -19,7 +19,6 @@ pub enum SyncStatus {
     Running,
     Paused,
     Stopping,
-    Restored,
     Error(String),
 }
 
@@ -31,7 +30,6 @@ impl SyncStatus {
             SyncStatus::Running => "Running".to_owned(),
             SyncStatus::Paused => "Paused".to_owned(),
             SyncStatus::Stopping => "Stopping".to_owned(),
-            SyncStatus::Restored => "Restored".to_owned(),
             SyncStatus::Error(message) => format!("Error: {message}"),
         }
     }
@@ -366,5 +364,28 @@ mod tests {
                 .iter()
                 .any(|command| matches!(command, Command::SetBrightness(_)))
         );
+    }
+
+    #[test]
+    fn restore_report_names_the_bulbs_that_did_not_return() {
+        let report = RestoreReport {
+            restored: 2,
+            not_restored: vec!["Shelf lamp".to_owned()],
+            total: 3,
+        };
+        assert_eq!(
+            report.message(),
+            "Restored 2 of 3 bulbs. Not restored: Shelf lamp."
+        );
+    }
+
+    #[test]
+    fn a_clean_restore_counts_every_bulb() {
+        let report = RestoreReport {
+            restored: 3,
+            not_restored: Vec::new(),
+            total: 3,
+        };
+        assert_eq!(report.message(), "Restored 3 of 3 bulbs.");
     }
 }

@@ -11,13 +11,13 @@ use std::time::{Duration, Instant};
 use rune::{Tx, Waker};
 
 use crate::app::state::{
-    ColorState, Dashboard, FormState, Screen, StopPhase, SyncState, Toast, ToastKind,
-    toast_duration,
+    ColorState, Dashboard, FormState, Navigation, Screen, StopPhase, SyncState, Toast, ToastKind,
+    nav_direction, toast_duration,
 };
 use crate::bulb::keyring::KeyringStore;
 use crate::bulb::model::{Bulb, BulbState, ColorMode, Rgb};
 use crate::bulb::selection::{Selection, resolve_selection};
-use crate::bulb::store::{BulbStore, PreferencesStore};
+use crate::bulb::store::{Appearance, BulbStore, PreferencesStore};
 use crate::bulb::worker::{Command, WorkerEvent};
 use crate::config::AppConfig;
 use crate::screen::capture::{ScreenCommand, ScreenHandle};
@@ -33,6 +33,8 @@ pub struct App {
     pub errors: HashMap<String, String>,
     pub selection: Option<Selection>,
     pub screen: Screen,
+    pub navigation: Navigation,
+    pub appearance: Appearance,
     pub dashboard: Dashboard,
     pub form: FormState,
     pub color: ColorState,
@@ -102,6 +104,12 @@ impl App {
             errors: HashMap::new(),
             selection,
             screen: Screen::Dashboard,
+            navigation: Navigation::default(),
+            appearance: if demo {
+                Appearance::System
+            } else {
+                preferences.appearance
+            },
             dashboard: Dashboard::default(),
             form: FormState::default(),
             color: ColorState::default(),
@@ -173,6 +181,24 @@ impl App {
         }
 
         let now = Instant::now();
+        if let Some((screen, due)) = self.navigation.pending.take() {
+            if now >= due {
+                self.screen = screen;
+                self.navigation.entering_until = Some(now + Duration::from_millis(16));
+                changed = true;
+            } else {
+                self.navigation.pending = Some((screen, due));
+                tx.wake_after(due - now);
+                changed = true;
+            }
+        }
+        if self
+            .navigation
+            .entering_until
+            .is_some_and(|until| now >= until)
+        {
+            self.navigation.entering_until = None;
+        }
         if let Some(due) = self.dashboard.due_at {
             if now >= due {
                 self.flush_pending();
@@ -274,6 +300,35 @@ impl App {
     pub fn selected_state(&self) -> Option<&BulbState> {
         self.selected_bulb()
             .and_then(|bulb| self.states.get(&bulb.id))
+    }
+
+    pub(crate) fn show_now(&mut self, screen: Screen) {
+        self.navigation.pending = None;
+        self.navigation.entering_until = None;
+        self.screen = screen;
+    }
+
+    pub(crate) fn set_screen(&mut self, screen: Screen) {
+        self.navigation.direction = nav_direction(&self.screen, &screen);
+        if screen == self.screen {
+            self.navigation.pending = None;
+            return;
+        }
+        // Let the screen being left render once with the new direction, so its
+        // exit uses that direction rather than the one it entered with.
+        self.navigation.pending = Some((screen, Instant::now() + Duration::from_millis(16)));
+        if let Some(waker) = &self.waker {
+            waker();
+        }
+    }
+
+    pub(crate) fn set_appearance(&mut self, appearance: Appearance, tx: &mut Tx) {
+        if self.appearance == appearance {
+            return;
+        }
+        self.appearance = appearance;
+        self.schedule_preferences();
+        tx.instant();
     }
 }
 

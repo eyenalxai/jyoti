@@ -27,8 +27,8 @@ version. It never holds a token.
 ## Preferences file
 
 `$XDG_CONFIG_HOME/jyoti/prefs.json`, next to the config file. It holds
-preferences that survive launches, currently the sync brightness gain and colour
-intensity. It never holds a token.
+preferences that survive launches: the sync brightness gain, colour intensity
+and appearance. It never holds a token.
 
 ## Token
 
@@ -104,8 +104,8 @@ the two light modes.
 
 ## Packed colour
 
-The `siid 2 / piid 4` property as one packed 24-bit RGB integer. The picker
-edits hue, saturation and brightness and accepts a six-digit hex value. Every
+The `siid 2 / piid 4` property as one packed 24-bit RGB integer. The colour
+editor edits hue, saturation and brightness and accepts a six-digit hex value. Every
 value it can produce is an sRGB colour, so the swatch is exactly what is sent.
 
 ## Colour intensity
@@ -113,7 +113,7 @@ value it can produce is an sRGB colour, so the swatch is exactly what is sent.
 The saturation boost applied to the derived screen colour before it is sent,
 from 0% natural to 100% full saturation. Hue and value stay put, so a light red
 becomes a vivid red without changing the colour family. It is adjusted on Sync
-and remembered in the preferences file. Manual colours use the picker’s
+and remembered in the preferences file. Manual colours use the editor’s
 Saturation slider instead.
 
 ## Mode
@@ -171,7 +171,8 @@ brightness.
 
 The panel under the light stage on Control: power, brightness, mode and warmth
 or colour in hairline-separated rows. During a sync run the rows sync owns are
-dimmed and power stays available.
+dimmed and power stays available. The mode row is inert while the colour editor
+is open.
 
 ## Bulb selector
 
@@ -179,12 +180,19 @@ The dropdown at the top of Control. It lists All bulbs and every configured
 bulb, with the selected choice shown in the trigger. Selecting a choice changes
 the light stage and control deck; there is no second bulb list.
 
+## Appearance
+
+The window’s light or dark treatment: Light, Dark or System. System follows the
+desktop. It is chosen in Settings and remembered in the preferences file.
+
 ## Tabs
 
 The three section buttons under the window title: Control, Sync and Settings.
-They are the only navigation. The active section is marked by a brass rule under
-its label. A form, the colour picker and the remove confirmation replace the tabs
-and carry a Back control.
+They are the only navigation. The active section’s label and rule take the brass
+accent. A form and the remove confirmation sit below the tabs and carry a Back
+control. The colour editor expands inside the Control deck and has no Back
+control. Only the content below the tab bar moves between screens; the tabs stay
+put.
 
 ## Toast
 
@@ -212,15 +220,15 @@ scene instead of replaying it.
 ## Sync status
 
 The run state on the Sync screen: the stage carries the status word, the frame
-age and the output colour, the toolbar repeats the status on every screen, and
-the restore report carries the outcome after a stop. A stale frame or a flashing
-scene adds its own notice under the stage.
+age and the output colour, and the toolbar repeats the status on every screen. A
+stop returns the status to Idle and reports its outcome in a toast. A stale frame
+or a flashing scene adds its own notice under the stage.
 
 ## Sync page
 
 The screen opened from the Sync tab. It owns start/stop, pause, the captured
-monitor, the gain, colour intensity and the restore report. It is the only place
-the sync controls live.
+monitor, the gain and colour intensity. It is the only place the sync controls
+live; the restore outcome arrives as a toast.
 
 ## Captured monitor
 
@@ -286,14 +294,14 @@ the run is allowed with the warning.
 
 ## Restore report
 
-The summary shown after a run stops: how many bulbs restored, and which could
-not. A bulb with no snapshot, no restore value or a failed confirmed send is
-named.
+The toast after a run stops: how many bulbs restored, and which could not. A bulb
+with no snapshot, no restore value or a failed confirmed send is named.
 
 ## Revert
 
-Leaving the colour page with Back restores the colour and mode each
-target had when the page opened. Done keeps the current colour.
+Cancelling the colour editor with Cancel restores the colour and mode each
+target had when the editor opened. Keeping the colour closes the editor and
+keeps the current colour.
 
 ## miIO session
 

@@ -25,16 +25,17 @@ screen:
   brightness, mode and warmth or colour, and an overflow menu for refresh, edit
   and remove.
 - **Sync** owns capture status, monitor selection, start/pause/stop, brightness
-  gain, colour intensity and the restore report.
+  gain and colour intensity. A stop reports its restore outcome in a toast.
 - **Settings** owns appearance, storage and about.
 
 The bulb selector is a dropdown menu with one row per bulb; there is no sidebar
 and no bulb table. The active section uses a tinted accent pill so it reads
 against the page rather than blending into it.
 A missing bulb set shows one compact empty panel with one Add action. Add, edit,
-remove, refresh, colour and screen sync each have one entry point. Forms, the
-colour picker and remove confirmation replace the tabs and carry a Back control.
-The colour picker is a live preview with hue, saturation and brightness
+remove, refresh, colour and screen sync each have one entry point. Forms and the
+remove confirmation sit below the tabs and carry a Back control. The colour
+editor expands inside the Control deck; it is not a page and has no Back
+control. The colour editor is a live preview with hue, saturation and brightness
 gradients, not a channel form.
 
 The readable scale starts at 13 points for captions and 14 for control text.
