@@ -38,12 +38,12 @@ generic kit:
   power available.
 - **Quiet navigation.** The three sections are text tabs marked by a brass rule
   under the active label. The filled accent pill is gone.
-- **Motion.** Section changes push horizontally in tab order and take the tab bar
-  with them when a subpage opens. White and Colour swap their tuning rows
-  sideways. Layout and control changes use springs; the appearance switch lands
-  at once. The white/colour choice is an app-specific two-choice wrapper over
-  kit tokens because the kit segmented control has no gap between choices; the
-  appearance selector uses the kit control.
+- **Motion.** Section changes push only the content below the tab bar; the tabs
+  stay put, and a subpage appears in that same content area with a Back control.
+  White and Colour swap their tuning rows sideways. Layout and control changes
+  use springs; the appearance switch lands at once. White/Colour and appearance
+  share an app-specific choice wrapper over kit tokens because the kit segmented
+  control has no gap between choices.
 - **Shared surfaces.** Sync uses the same stage and nameplate for its captured
   colour. Settings uses group captions over one surface per group. Forms use one
   surface with a footer; Colour uses a paint-chip preview over the tuning deck.

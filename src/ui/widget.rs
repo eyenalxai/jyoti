@@ -136,7 +136,7 @@ pub fn dim_when(e: El, disabled: bool) -> El {
 
 /// Mutually exclusive choices behind one control, separated so they read as
 /// distinct choices rather than one split label. The kit's segmented control has
-/// no gap between choices; the light mode needs that separation.
+/// no gap between choices; the mode and appearance controls need that separation.
 pub fn segmented_switch(
     k: &Kit,
     key: &str,
@@ -157,8 +157,7 @@ pub fn segmented_switch(
         .gap(6.0)
         .padding(2.0)
         .radius(k.radius.md)
-        .fill(k.c.layer_01)
-        .border(1.0, k.c.border_base);
+        .fill(k.c.layer_01);
     for (index, label) in labels.iter().enumerate() {
         let on = selected == Some(index);
         let pick = Rc::clone(&pick);
@@ -183,11 +182,7 @@ pub fn segmented_switch(
                     .a11y_hidden(),
             );
         if on {
-            segment = segment.fill(k.c.bg_base).box_shadow(rune::Shadow {
-                spread: 0.5,
-                color: k.c.border_strong,
-                ..Default::default()
-            });
+            segment = k.elevate(segment.fill(k.c.bg_base), &k.elevation.knob);
         } else {
             segment = segment.hover(k.c.hover).press(k.c.pressed);
         }

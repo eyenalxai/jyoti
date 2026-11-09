@@ -15,15 +15,6 @@ pub fn view(app: &App, cx: &mut rune::Cx<App>, k: &Kit, main: El) -> El {
     if let Some(status) = sync_status(app, k) {
         toolbar = toolbar.trailing(status);
     }
-    let content = match &app.screen {
-        Screen::Dashboard | Screen::Sync | Screen::Settings => col()
-            .w_full()
-            .h_full()
-            .min_h(0.0)
-            .child(nav(app, k))
-            .child(main),
-        Screen::Form(_) | Screen::Remove(_) | Screen::Color => main,
-    };
     let edge = match app.navigation.direction {
         NavDirection::Forward => Edge::Trailing,
         NavDirection::Backward => Edge::Leading,
@@ -32,15 +23,20 @@ pub fn view(app: &App, cx: &mut rune::Cx<App>, k: &Kit, main: El) -> El {
     let mut screen = col()
         .key(format!("screen-{}", app.screen.element_key()))
         .w_full()
-        .h_full()
+        .grow(1.0)
         .min_h(0.0)
-        .fill(k.c.page)
+        .fill(k.c.bg_base)
         .motion(Spring::new(0.34, 0.06))
         .transition(push(edge));
     if entering {
         screen = screen.instant_changes();
     }
-    let content = screen.child(content);
+    let content = col()
+        .w_full()
+        .h_full()
+        .min_h(0.0)
+        .child(nav(app, k))
+        .child(screen.child(main));
     let body = col().w_full().h_full().min_h(0.0).items_center().child(
         col()
             .w_full()
@@ -96,10 +92,9 @@ fn sync_status(app: &App, k: &Kit) -> Option<El> {
 
 fn nav(app: &App, k: &Kit) -> El {
     let selected = match &app.screen {
-        Screen::Dashboard => Some(0),
+        Screen::Dashboard | Screen::Form(_) | Screen::Remove(_) | Screen::Color => Some(0),
         Screen::Sync => Some(1),
         Screen::Settings => Some(2),
-        Screen::Form(_) | Screen::Remove(_) | Screen::Color => None,
     };
     let labels = ["Control", "Sync", "Settings"];
     let mut tabs = row()
