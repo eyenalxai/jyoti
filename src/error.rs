@@ -18,6 +18,14 @@ pub enum StoreError {
     },
     #[error("{path} has two bulbs with the same ID. Remove one entry and add it again.")]
     DuplicateId { path: PathBuf },
+    #[error("{path} has two bulbs named {name}. Rename or remove one entry, then refresh.")]
+    DuplicateName { path: PathBuf, name: String },
+    #[error("{path} has two bulbs at {address}. Remove one entry, then refresh.")]
+    DuplicateAddress { path: PathBuf, address: String },
+    #[error(
+        "{path} contains a token. Tokens live in the OS keyring; remove the token field, then refresh."
+    )]
+    TokenKey { path: PathBuf },
     #[error("{message}")]
     Invalid { path: PathBuf, message: String },
     #[error("Could not write {path}. Check its permissions.")]

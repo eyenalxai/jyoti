@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+use std::fmt::{self, Display, Formatter};
 use std::net::IpAddr;
 use std::str::FromStr;
 
@@ -33,6 +35,78 @@ pub struct BulbFile {
 
 impl BulbFile {
     pub const VERSION: u8 = 1;
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum BulbListIssue {
+    InvalidId { id: String },
+    MissingNameOrAddress { id: String },
+    DuplicateId,
+    DuplicateName { name: String },
+    DuplicateAddress { address: String },
+}
+
+impl Display for BulbListIssue {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            BulbListIssue::InvalidId { id } => write!(
+                formatter,
+                "contains a bulb with the invalid ID {id}. Fix or remove it, then refresh."
+            ),
+            BulbListIssue::MissingNameOrAddress { id } => write!(
+                formatter,
+                "contains the bulb {id} with no name or address. Fix or remove it, then refresh."
+            ),
+            BulbListIssue::DuplicateId => formatter
+                .write_str("has two bulbs with the same ID. Remove one entry and add it again."),
+            BulbListIssue::DuplicateName { name } => write!(
+                formatter,
+                "has two bulbs named {name}. Rename or remove one entry, then refresh."
+            ),
+            BulbListIssue::DuplicateAddress { address } => write!(
+                formatter,
+                "has two bulbs at {address}. Remove one entry, then refresh."
+            ),
+        }
+    }
+}
+
+pub fn validate_bulbs(bulbs: &[Bulb]) -> Result<(), BulbListIssue> {
+    let mut ids = HashSet::new();
+    let mut names = HashSet::new();
+    let mut addresses = HashSet::new();
+
+    for bulb in bulbs {
+        if uuid::Uuid::parse_str(&bulb.id).is_err() {
+            return Err(BulbListIssue::InvalidId {
+                id: bulb.id.clone(),
+            });
+        }
+
+        let name = bulb.name.trim();
+        let address = bulb.address.trim();
+        if name.is_empty() || address.is_empty() {
+            return Err(BulbListIssue::MissingNameOrAddress {
+                id: bulb.id.clone(),
+            });
+        }
+
+        if !ids.insert(bulb.id.clone()) {
+            return Err(BulbListIssue::DuplicateId);
+        }
+        if !names.insert(name.to_ascii_lowercase()) {
+            return Err(BulbListIssue::DuplicateName {
+                name: name.to_owned(),
+            });
+        }
+        if !addresses.insert(address.to_owned()) {
+            return Err(BulbListIssue::DuplicateAddress {
+                address: address.to_owned(),
+            });
+        }
+    }
+
+    Ok(())
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -281,5 +355,45 @@ mod tests {
         assert!(issues.iter().any(|issue| issue.field == BulbField::Name));
         assert!(issues.iter().any(|issue| issue.field == BulbField::Address));
         assert!(issues.iter().any(|issue| issue.field == BulbField::Token));
+    }
+
+    fn bulb(id: &str, name: &str, address: &str) -> Bulb {
+        Bulb {
+            id: id.to_owned(),
+            name: name.to_owned(),
+            address: address.to_owned(),
+            model: None,
+        }
+    }
+
+    #[test]
+    fn a_bulb_list_keeps_names_and_addresses_distinct() {
+        let desk = bulb(
+            "00000000-0000-4000-8000-000000000001",
+            "Desk lamp",
+            "192.168.1.42",
+        );
+        assert!(validate_bulbs(std::slice::from_ref(&desk)).is_ok());
+
+        let mut same_name = bulb(
+            "00000000-0000-4000-8000-000000000002",
+            " desk LAMP ",
+            "192.168.1.43",
+        );
+        assert_eq!(
+            validate_bulbs(&[desk.clone(), same_name.clone()]),
+            Err(BulbListIssue::DuplicateName {
+                name: "desk LAMP".to_owned()
+            })
+        );
+
+        same_name.name = "Shelf lamp".to_owned();
+        same_name.address = " 192.168.1.42 ".to_owned();
+        assert_eq!(
+            validate_bulbs(&[desk.clone(), same_name]),
+            Err(BulbListIssue::DuplicateAddress {
+                address: "192.168.1.42".to_owned()
+            })
+        );
     }
 }

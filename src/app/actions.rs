@@ -8,9 +8,10 @@ use crate::app::sync::restore::{RESTORE_WINDOW, StopPhase};
 use crate::bulb::aggregate::AggregatePower;
 use crate::bulb::health::HealthEvent;
 use crate::bulb::model::{
-    Bulb, BulbField, BulbState, ColorMode, NEUTRAL_TEMPERATURE, Rgb, new_id, trim_model,
-    validate_draft,
+    Bulb, BulbField, BulbListIssue, BulbState, ColorMode, NEUTRAL_TEMPERATURE, Rgb, new_id,
+    trim_model, validate_draft,
 };
+use crate::bulb::registry::RegistryError;
 use crate::bulb::selection::{Selection, resolve_selection, selection_after_add};
 use crate::bulb::worker::{Command, WorkerEvent, WorkerExit};
 use crate::screen::capture::ScreenCommand;
@@ -39,7 +40,7 @@ impl App {
         };
         let handle = crate::bulb::worker::spawn(
             bulb.clone(),
-            self.keyring.clone(),
+            self.registry.tokens().clone(),
             self.config.clone(),
             self.worker_sender.clone(),
             waker,
@@ -138,7 +139,7 @@ impl App {
         if !self.ensure_sync_stopped("refresh the bulb list") {
             return;
         }
-        match self.store.load() {
+        match self.registry.load() {
             Ok(bulbs) => {
                 self.startup_error = None;
                 let ids: Vec<String> = self.workers.keys().cloned().collect();
@@ -422,97 +423,76 @@ impl App {
             return;
         }
 
-        if self
-            .bulbs
-            .iter()
-            .any(|bulb| Some(&bulb.id) != editing.as_ref() && bulb.name.eq_ignore_ascii_case(&name))
-        {
-            self.form.errors.insert(
-                BulbField::Name,
-                format!("A bulb named {name} already exists."),
-            );
-            return;
-        }
-        if self
-            .bulbs
-            .iter()
-            .any(|bulb| Some(&bulb.id) != editing.as_ref() && bulb.address == address)
-        {
-            self.form.errors.insert(
-                BulbField::Address,
-                format!("A bulb at {address} already exists."),
-            );
-            return;
-        }
-
         match editing {
             None => {
-                let id = new_id();
-                if let Err(error) = self.keyring.set(&id, &token) {
-                    self.notify(error.to_string(), ToastKind::Error);
-                    return;
-                }
-                let added_name = name.clone();
                 let bulb = Bulb {
-                    id: id.clone(),
+                    id: new_id(),
                     name,
                     address,
                     model: trim_model(&model),
                 };
-                let mut bulbs = self.bulbs.clone();
-                bulbs.push(bulb.clone());
-                if let Err(error) = self.store.save(&bulbs) {
-                    let _ = self.keyring.remove(&id);
-                    self.notify(error.to_string(), ToastKind::Error);
-                    return;
-                }
+                let bulbs = match self.registry.add(&self.bulbs, &bulb, &token) {
+                    Ok(bulbs) => bulbs,
+                    Err(RegistryError::Invalid(BulbListIssue::DuplicateName { .. })) => {
+                        self.form.errors.insert(
+                            BulbField::Name,
+                            format!("A bulb named {} already exists.", bulb.name),
+                        );
+                        return;
+                    }
+                    Err(RegistryError::Invalid(BulbListIssue::DuplicateAddress { .. })) => {
+                        self.form.errors.insert(
+                            BulbField::Address,
+                            format!("A bulb at {} already exists.", bulb.address),
+                        );
+                        return;
+                    }
+                    Err(error) => {
+                        self.notify(error.to_string(), ToastKind::Error);
+                        return;
+                    }
+                };
                 let before = self.bulbs.len();
+                let id = bulb.id.clone();
                 self.bulbs = bulbs;
                 self.selection = Some(selection_after_add(before, &id, self.selection.as_ref()));
                 self.spawn_worker(&bulb);
                 self.set_screen(Screen::Dashboard);
-                self.notify(format!("Added {added_name}."), ToastKind::Success);
+                self.notify(format!("Added {}.", bulb.name), ToastKind::Success);
             }
             Some(id) => {
-                let Some(index) = self.bulbs.iter().position(|bulb| bulb.id == id) else {
+                if !self.bulbs.iter().any(|bulb| bulb.id == id) {
                     self.notify("That bulb is no longer in the list.", ToastKind::Error);
-                    return;
-                };
-                let previous_token = if token.is_empty() {
-                    None
-                } else {
-                    self.keyring.get(&id).ok().flatten()
-                };
-                if !token.is_empty()
-                    && let Err(error) = self.keyring.set(&id, &token)
-                {
-                    self.notify(error.to_string(), ToastKind::Error);
                     return;
                 }
                 let bulb = Bulb {
-                    id: id.clone(),
+                    id,
                     name,
                     address,
                     model: trim_model(&model),
                 };
-                let mut bulbs = self.bulbs.clone();
-                if let Some(slot) = bulbs.get_mut(index) {
-                    *slot = bulb.clone();
-                }
-                if let Err(error) = self.store.save(&bulbs) {
-                    if !token.is_empty() {
-                        match previous_token {
-                            Some(previous) => {
-                                let _ = self.keyring.set(&id, &previous);
-                            }
-                            None => {
-                                let _ = self.keyring.remove(&id);
-                            }
-                        }
+                let new_token = (!token.is_empty()).then_some(token.as_str());
+                let bulbs = match self.registry.update(&self.bulbs, &bulb, new_token) {
+                    Ok(bulbs) => bulbs,
+                    Err(RegistryError::Invalid(BulbListIssue::DuplicateName { .. })) => {
+                        self.form.errors.insert(
+                            BulbField::Name,
+                            format!("A bulb named {} already exists.", bulb.name),
+                        );
+                        return;
                     }
-                    self.notify(error.to_string(), ToastKind::Error);
-                    return;
-                }
+                    Err(RegistryError::Invalid(BulbListIssue::DuplicateAddress { .. })) => {
+                        self.form.errors.insert(
+                            BulbField::Address,
+                            format!("A bulb at {} already exists.", bulb.address),
+                        );
+                        return;
+                    }
+                    Err(error) => {
+                        self.notify(error.to_string(), ToastKind::Error);
+                        return;
+                    }
+                };
                 self.bulbs = bulbs;
                 self.spawn_worker(&bulb);
                 self.set_screen(Screen::Dashboard);
@@ -546,24 +526,13 @@ impl App {
             self.set_screen(Screen::Dashboard);
             return;
         };
-        let remaining: Vec<Bulb> = self
-            .bulbs
-            .iter()
-            .filter(|bulb| bulb.id != id)
-            .cloned()
-            .collect();
-        let previous_token = self.keyring.get(&id).ok().flatten();
-        if let Err(error) = self.keyring.remove(&id) {
-            self.notify(error.to_string(), ToastKind::Error);
-            return;
-        }
-        if let Err(error) = self.store.save(&remaining) {
-            if let Some(previous) = previous_token {
-                let _ = self.keyring.set(&id, &previous);
+        let remaining = match self.registry.remove(&self.bulbs, &id) {
+            Ok(bulbs) => bulbs,
+            Err(error) => {
+                self.notify(error.to_string(), ToastKind::Error);
+                return;
             }
-            self.notify(error.to_string(), ToastKind::Error);
-            return;
-        }
+        };
         self.bulbs = remaining;
         self.states.remove(&id);
         self.health.remove(&id);

@@ -4,9 +4,8 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 use tempfile::NamedTempFile;
-use uuid::Uuid;
 
-use crate::bulb::model::{Bulb, BulbFile};
+use crate::bulb::model::{Bulb, BulbFile, BulbListIssue, validate_bulbs};
 use crate::error::StoreError;
 use crate::screen::gain::{SYNC_GAIN_DEFAULT, normalize_sync_gain};
 use crate::screen::intensity::{SYNC_INTENSITY_DEFAULT, normalize_sync_intensity};
@@ -27,10 +26,17 @@ impl BulbStore {
             return Ok(Vec::new());
         };
 
-        let file: BulbFile = serde_json::from_str(&text).map_err(|source| StoreError::Decode {
-            path: self.path.clone(),
-            source,
-        })?;
+        let value: serde_json::Value =
+            serde_json::from_str(&text).map_err(|source| StoreError::Decode {
+                path: self.path.clone(),
+                source,
+            })?;
+        reject_token_key(&value, &self.path)?;
+        let file: BulbFile =
+            serde_json::from_value(value).map_err(|source| StoreError::Decode {
+                path: self.path.clone(),
+                source,
+            })?;
 
         if file.version != BulbFile::VERSION {
             return Err(StoreError::Invalid {
@@ -44,32 +50,7 @@ impl BulbStore {
             });
         }
 
-        let mut ids = std::collections::HashSet::new();
-        for bulb in &file.bulbs {
-            if Uuid::parse_str(&bulb.id).is_err() {
-                return Err(StoreError::Invalid {
-                    path: self.path.clone(),
-                    message: format!(
-                        "{} contains a bulb with an invalid ID. Fix or remove it, then refresh.",
-                        self.path.display()
-                    ),
-                });
-            }
-            if bulb.name.trim().is_empty() || bulb.address.trim().is_empty() {
-                return Err(StoreError::Invalid {
-                    path: self.path.clone(),
-                    message: format!(
-                        "{} contains a bulb with no name or address. Fix or remove it, then refresh.",
-                        self.path.display()
-                    ),
-                });
-            }
-            if !ids.insert(bulb.id.clone()) {
-                return Err(StoreError::DuplicateId {
-                    path: self.path.clone(),
-                });
-            }
-        }
+        validate_bulbs(&file.bulbs).map_err(|issue| store_issue(&self.path, issue))?;
 
         Ok(file.bulbs)
     }
@@ -192,6 +173,44 @@ impl PreferencesStore {
     }
 }
 
+fn reject_token_key(value: &serde_json::Value, path: &Path) -> Result<(), StoreError> {
+    if value.get("token").is_some() {
+        return Err(StoreError::TokenKey {
+            path: path.to_path_buf(),
+        });
+    }
+    if let Some(bulbs) = value.get("bulbs").and_then(serde_json::Value::as_array) {
+        for bulb in bulbs {
+            if bulb.get("token").is_some() {
+                return Err(StoreError::TokenKey {
+                    path: path.to_path_buf(),
+                });
+            }
+        }
+    }
+    Ok(())
+}
+
+fn store_issue(path: &Path, issue: BulbListIssue) -> StoreError {
+    match issue {
+        BulbListIssue::DuplicateId => StoreError::DuplicateId {
+            path: path.to_path_buf(),
+        },
+        BulbListIssue::DuplicateName { name } => StoreError::DuplicateName {
+            path: path.to_path_buf(),
+            name,
+        },
+        BulbListIssue::DuplicateAddress { address } => StoreError::DuplicateAddress {
+            path: path.to_path_buf(),
+            address,
+        },
+        issue => StoreError::Invalid {
+            path: path.to_path_buf(),
+            message: format!("{} {issue}", path.display()),
+        },
+    }
+}
+
 fn read_text(path: &Path) -> Result<Option<String>, StoreError> {
     match fs::read_to_string(path) {
         Ok(text) => Ok(Some(text)),
@@ -270,6 +289,64 @@ mod tests {
             let metadata = std::fs::metadata(&path)?;
             assert_eq!(metadata.permissions().mode() & 0o777, 0o600);
         }
+        Ok(())
+    }
+
+    #[test]
+    fn a_file_with_a_token_is_rejected() -> Result<(), Box<dyn std::error::Error>> {
+        let directory = tempfile::tempdir()?;
+        let path = directory.path().join("bulbs.json");
+        let store = BulbStore::new(path.clone());
+        std::fs::write(
+            &path,
+            r#"{"version":1,"bulbs":[{"id":"00000000-0000-4000-8000-000000000001","name":"Desk lamp","address":"192.168.1.42","token":"0123456789abcdef0123456789abcdef"}]}"#,
+        )?;
+        assert!(matches!(store.load(), Err(StoreError::TokenKey { .. })));
+
+        std::fs::write(
+            &path,
+            r#"{"version":1,"bulbs":[],"token":"0123456789abcdef0123456789abcdef"}"#,
+        )?;
+        assert!(matches!(store.load(), Err(StoreError::TokenKey { .. })));
+        Ok(())
+    }
+
+    #[test]
+    fn a_file_with_duplicate_names_or_addresses_is_rejected()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let directory = tempfile::tempdir()?;
+        let path = directory.path().join("bulbs.json");
+        let store = BulbStore::new(path.clone());
+        std::fs::write(
+            &path,
+            r#"{"version":1,"bulbs":[{"id":"00000000-0000-4000-8000-000000000001","name":"Desk lamp","address":"192.168.1.42"},{"id":"00000000-0000-4000-8000-000000000002","name":"Desk LAMP","address":"192.168.1.43"}]}"#,
+        )?;
+        assert!(matches!(
+            store.load(),
+            Err(StoreError::DuplicateName { .. })
+        ));
+
+        std::fs::write(
+            &path,
+            r#"{"version":1,"bulbs":[{"id":"00000000-0000-4000-8000-000000000001","name":"Desk lamp","address":"192.168.1.42"},{"id":"00000000-0000-4000-8000-000000000002","name":"Shelf lamp","address":"192.168.1.42"}]}"#,
+        )?;
+        assert!(matches!(
+            store.load(),
+            Err(StoreError::DuplicateAddress { .. })
+        ));
+        Ok(())
+    }
+
+    #[test]
+    fn a_file_with_a_duplicate_id_is_rejected() -> Result<(), Box<dyn std::error::Error>> {
+        let directory = tempfile::tempdir()?;
+        let path = directory.path().join("bulbs.json");
+        let store = BulbStore::new(path.clone());
+        std::fs::write(
+            &path,
+            r#"{"version":1,"bulbs":[{"id":"00000000-0000-4000-8000-000000000001","name":"Desk lamp","address":"192.168.1.42"},{"id":"00000000-0000-4000-8000-000000000001","name":"Shelf lamp","address":"192.168.1.43"}]}"#,
+        )?;
+        assert!(matches!(store.load(), Err(StoreError::DuplicateId { .. })));
         Ok(())
     }
 

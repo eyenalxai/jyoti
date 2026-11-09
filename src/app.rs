@@ -18,6 +18,7 @@ use crate::app::sync::restore::StopPhase;
 use crate::bulb::health::HealthSet;
 use crate::bulb::keyring::KeyringStore;
 use crate::bulb::model::{Bulb, BulbState, ColorMode, Rgb};
+use crate::bulb::registry::BulbRegistry;
 use crate::bulb::selection::{Selection, resolve_selection};
 use crate::bulb::store::{Appearance, BulbStore, PreferencesStore};
 use crate::bulb::worker::{WorkerEvent, WorkerHandle};
@@ -26,9 +27,8 @@ use crate::screen::capture::{ScreenCommand, ScreenHandle};
 
 pub struct App {
     pub config: AppConfig,
-    pub store: BulbStore,
+    pub registry: BulbRegistry<BulbStore, KeyringStore>,
     pub preferences_store: PreferencesStore,
-    pub keyring: KeyringStore,
     pub bulbs: Vec<Bulb>,
     pub states: HashMap<String, BulbState>,
     pub health: HealthSet,
@@ -61,9 +61,11 @@ pub struct App {
 impl App {
     pub fn new() -> Self {
         let config = AppConfig::from_env();
-        let store = BulbStore::new(config.config_path.clone());
+        let registry = BulbRegistry::new(
+            BulbStore::new(config.config_path.clone()),
+            KeyringStore::new(config.keyring_service.clone()),
+        );
         let preferences_store = PreferencesStore::new(config.preferences_path.clone());
-        let keyring = KeyringStore::new(config.keyring_service.clone());
         let preferences = preferences_store.load();
         let (worker_sender, worker_events) = mpsc::channel();
 
@@ -76,7 +78,7 @@ impl App {
         let (bulbs, startup_error) = if demo {
             (demo_bulbs(), None)
         } else {
-            match store.load() {
+            match registry.load() {
                 Ok(bulbs) => (bulbs, None),
                 Err(error) => (Vec::new(), Some(error.to_string())),
             }
@@ -98,9 +100,8 @@ impl App {
         };
         let mut app = Self {
             config,
-            store,
+            registry,
             preferences_store,
-            keyring,
             bulbs,
             states,
             health: HealthSet::default(),
