@@ -1,7 +1,7 @@
 use rune::TextEdit;
 
 use crate::app::App;
-use crate::app::state::{ColorState, ToastKind};
+use crate::app::state::{ColorEditor, ToastKind};
 use crate::app::sync::restore::{RestoreControl, restore_control};
 use crate::bulb::model::{ColorMode, Rgb};
 use crate::bulb::worker::Command;
@@ -26,8 +26,7 @@ impl App {
             .iter()
             .find_map(|id| self.states.get(id).and_then(|state| state.color))
             .unwrap_or(Rgb::WHITE);
-        let hsb = rgb_to_hsb(first);
-        let revert = targets
+        let pre_open = targets
             .iter()
             .filter_map(|id| {
                 self.states
@@ -36,49 +35,69 @@ impl App {
                     .map(|state| (id.clone(), state))
             })
             .collect();
-        self.color = ColorState {
-            open: true,
-            targets,
-            hue: hsb.hue,
-            saturation: hsb.saturation,
-            value: hsb.value,
-            hex: TextEdit::new(first.hex()),
-            preview: first,
-            error: None,
-            revert,
-        };
+        self.color = ColorEditor::open(targets, first, pre_open);
     }
 
     pub(crate) fn update_color_from_hsb(&mut self) {
+        let Some(session) = self.color.session_mut() else {
+            return;
+        };
         let hsb = Hsb {
-            hue: self.color.hue,
-            saturation: self.color.saturation,
-            value: self.color.value,
+            hue: session.hue,
+            saturation: session.saturation,
+            value: session.value,
         };
         let color = hsb_to_rgb(hsb);
-        self.color.preview = color;
-        self.color.hex = TextEdit::new(color.hex());
-        self.color.error = None;
+        session.preview = color;
+        session.hex = TextEdit::new(color.hex());
+        session.error = None;
         self.apply_color_targets(color);
     }
 
     pub(crate) fn update_color_from_hex(&mut self) {
-        let value = self.color.hex.text.clone();
+        let Some(session) = self.color.session_mut() else {
+            return;
+        };
+        let value = session.hex.text.clone();
         let Some(color) = Rgb::parse_hex(&value) else {
-            self.color.error = Some("Use a six-digit hex colour, for example #FF8A00.".to_owned());
+            session.error = Some("Use a six-digit hex colour, for example #FF8A00.".to_owned());
             return;
         };
         let hsb = rgb_to_hsb(color);
-        self.color.hue = hsb.hue;
-        self.color.saturation = hsb.saturation;
-        self.color.value = hsb.value;
-        self.color.preview = color;
-        self.color.error = None;
+        session.hue = hsb.hue;
+        session.saturation = hsb.saturation;
+        session.value = hsb.value;
+        session.preview = color;
+        session.error = None;
         self.apply_color_targets(color);
     }
 
+    pub(crate) fn set_color_hue(&mut self, hue: f32) {
+        if let Some(session) = self.color.session_mut() {
+            session.hue = hue;
+        }
+        self.update_color_from_hsb();
+    }
+
+    pub(crate) fn set_color_saturation(&mut self, saturation: f32) {
+        if let Some(session) = self.color.session_mut() {
+            session.saturation = saturation;
+        }
+        self.update_color_from_hsb();
+    }
+
+    pub(crate) fn set_color_value(&mut self, value: f32) {
+        if let Some(session) = self.color.session_mut() {
+            session.value = value;
+        }
+        self.update_color_from_hsb();
+    }
+
     fn apply_color_targets(&mut self, color: Rgb) {
-        let targets = self.color.targets.clone();
+        let Some(session) = self.color.session() else {
+            return;
+        };
+        let targets = session.targets.clone();
         for id in targets {
             if let Some(state) = self.states.get_mut(&id) {
                 state.mode = ColorMode::Color;
@@ -91,17 +110,15 @@ impl App {
     }
 
     pub(crate) fn cancel_color(&mut self) {
-        let targets = self.color.targets.clone();
-        let revert = self.color.revert.clone();
-        for id in &targets {
+        let Some(session) = self.color.take() else {
+            return;
+        };
+        for id in &session.targets {
             self.dashboard.pending_color.remove(id);
             self.dashboard.pending_temperature.remove(id);
             self.dashboard.pending_brightness.remove(id);
         }
-        for id in targets {
-            let Some(previous) = revert.get(&id).cloned() else {
-                continue;
-            };
+        for (id, previous) in session.cancel() {
             self.states.insert(id.clone(), previous.clone());
             self.edits.touch(&id);
             match restore_control(&previous) {
@@ -114,14 +131,17 @@ impl App {
                 None => {}
             }
         }
-        self.color.open = false;
     }
 
     pub(crate) fn commit_color(&mut self) {
         self.update_color_from_hex();
-        if self.color.error.is_some() {
+        if self
+            .color
+            .session()
+            .is_some_and(|session| session.error.is_some())
+        {
             return;
         }
-        self.color.open = false;
+        self.color.close();
     }
 }

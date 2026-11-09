@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use std::time::Instant;
 
 use crate::app::App;
-use crate::app::state::ToastKind;
+use crate::app::state::{Overlay, ToastKind};
 use crate::app::sync::restore::{RESTORE_WINDOW, RestorePlan, RestoreRequest, StopPhase};
 use crate::app::sync::run::RunEvent;
 use crate::bulb::health::HealthSet;
@@ -18,7 +18,7 @@ use crate::screen::sync::{SyncConfig, SyncFrame, SyncTarget};
 
 impl App {
     pub(crate) fn start_sync(&mut self) {
-        self.monitor_picker_open = false;
+        self.close_overlay(Overlay::MonitorPicker);
         if !self.sync.controls().start {
             return;
         }
@@ -213,7 +213,7 @@ impl App {
     }
 
     pub(crate) fn select_monitor(&mut self, name: String) {
-        self.monitor_picker_open = false;
+        self.close_overlay(Overlay::MonitorPicker);
         self.sync.selected_monitor = Some(name.clone());
         if self.sync.status.is_running()
             && let Some(handle) = &self.screen_handle

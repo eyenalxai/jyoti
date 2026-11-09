@@ -4,6 +4,7 @@ use rune::{Color, El, Tx, col, row, text};
 use rune_kit::{Button, ButtonVariant, ControlSize, Kit, TextInput};
 
 use crate::app::App;
+use crate::app::state::ColorSession;
 use crate::screen::color::{Hsb, hsb_to_rgb};
 use crate::ui::theme;
 use crate::ui::widget::{ALERT, SliderSpec, gradient_slider, hairline, notice, rgb_color};
@@ -11,12 +12,12 @@ use crate::ui::widget::{ALERT, SliderSpec, gradient_slider, hairline, notice, rg
 const POPOVER_WIDTH: f32 = 320.0;
 const POPOVER_SLIDER_WIDTH: f32 = 272.0;
 
-pub fn popover(app: &App, k: &Kit) -> El {
-    let hex = TextInput::new(&app.color.hex)
+pub fn popover(session: &ColorSession, k: &Kit) -> El {
+    let hex = TextInput::new(&session.hex)
         .label("Hex colour")
         .placeholder("#FF8A00")
         .width(None)
-        .on_edit(|app: &mut App| &mut app.color.hex)
+        .on_edit(|app: &mut App| app.color.hex_mut())
         .on_submit(|app: &mut App, tx: &mut Tx| {
             app.update_color_from_hex();
             tx.wake_after(Duration::from_millis(160));
@@ -66,8 +67,8 @@ pub fn popover(app: &App, k: &Kit) -> El {
         .child(
             text(format!(
                 "Applying to {} {}",
-                app.color.targets.len(),
-                if app.color.targets.len() == 1 {
+                session.targets.len(),
+                if session.targets.len() == 1 {
                     "bulb"
                 } else {
                     "bulbs"
@@ -85,13 +86,13 @@ pub fn popover(app: &App, k: &Kit) -> El {
                 .child(row().grow(1.0).min_w(0.0).child(hex))
                 .child(apply),
         );
-    if let Some(error) = &app.color.error {
+    if let Some(error) = &session.error {
         body = body.child(notice(k, &ALERT, error, k.c.danger));
     }
     let hsb = Hsb {
-        hue: app.color.hue,
-        saturation: app.color.saturation,
-        value: app.color.value,
+        hue: session.hue,
+        saturation: session.saturation,
+        value: session.value,
     };
     let hue_stops = (0..=6)
         .map(|step| {
@@ -140,12 +141,11 @@ pub fn popover(app: &App, k: &Kit) -> El {
                 step: 1.0 / 360.0,
                 width: POPOVER_SLIDER_WIDTH,
             },
-            format!("{:.0}°", app.color.hue),
-            app.color.hue / 360.0,
+            format!("{:.0}°", session.hue),
+            session.hue / 360.0,
             hue_stops,
             |app: &mut App, fraction| {
-                app.color.hue = fraction * 360.0;
-                app.update_color_from_hsb();
+                app.set_color_hue(fraction * 360.0);
             },
         ))
         .child(tune_block(
@@ -156,12 +156,11 @@ pub fn popover(app: &App, k: &Kit) -> El {
                 step: 1.0 / 100.0,
                 width: POPOVER_SLIDER_WIDTH,
             },
-            format!("{:.0}%", app.color.saturation),
-            app.color.saturation / 100.0,
+            format!("{:.0}%", session.saturation),
+            session.saturation / 100.0,
             saturation_stops,
             |app: &mut App, fraction| {
-                app.color.saturation = fraction * 100.0;
-                app.update_color_from_hsb();
+                app.set_color_saturation(fraction * 100.0);
             },
         ))
         .child(tune_block(
@@ -172,12 +171,11 @@ pub fn popover(app: &App, k: &Kit) -> El {
                 step: 1.0 / 100.0,
                 width: POPOVER_SLIDER_WIDTH,
             },
-            format!("{:.0}%", app.color.value),
-            app.color.value / 100.0,
+            format!("{:.0}%", session.value),
+            session.value / 100.0,
             brightness_stops,
             |app: &mut App, fraction| {
-                app.color.value = fraction * 100.0;
-                app.update_color_from_hsb();
+                app.set_color_value(fraction * 100.0);
             },
         ));
 

@@ -13,8 +13,8 @@ use rune::{Tx, Waker};
 
 use crate::app::selected::{SelectedLight, selected_light};
 use crate::app::state::{
-    ColorState, Dashboard, FormState, LocalEdits, Navigation, Screen, SyncState, Toast, ToastKind,
-    nav_direction, toast_duration,
+    ColorEditor, Dashboard, FormState, LocalEdits, Navigation, Overlay, Screen, SyncState, Toast,
+    ToastKind, nav_direction, toast_duration,
 };
 use crate::app::sync::restore::StopPhase;
 use crate::bulb::health::HealthSet;
@@ -41,7 +41,7 @@ pub struct App {
     pub appearance: Appearance,
     pub dashboard: Dashboard,
     pub form: FormState,
-    pub color: ColorState,
+    pub color: ColorEditor,
     pub sync: SyncState,
     pub toasts: Vec<Toast>,
     pub next_toast: u64,
@@ -51,9 +51,7 @@ pub struct App {
     pub screen_handle: Option<ScreenHandle>,
     pub waker: Option<Waker>,
     pub preferences_due: Option<Instant>,
-    pub bulb_picker_open: bool,
-    pub bulb_menu_open: bool,
-    pub monitor_picker_open: bool,
+    pub overlay: Overlay,
     pub started: bool,
     pub startup_error: Option<String>,
     pub demo: bool,
@@ -118,7 +116,7 @@ impl App {
             },
             dashboard: Dashboard::default(),
             form: FormState::default(),
-            color: ColorState::default(),
+            color: ColorEditor::default(),
             sync,
             toasts: Vec::new(),
             next_toast: 1,
@@ -128,9 +126,7 @@ impl App {
             screen_handle: None,
             waker: None,
             preferences_due: None,
-            bulb_picker_open: false,
-            bulb_menu_open: false,
-            monitor_picker_open: false,
+            overlay: Overlay::None,
             started: false,
             startup_error,
             demo,

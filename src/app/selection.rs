@@ -1,17 +1,23 @@
 use crate::app::App;
-use crate::app::state::Screen;
+use crate::app::state::{Overlay, Screen};
 use crate::bulb::selection::Selection;
 
 impl App {
     pub(crate) fn close_overlays(&mut self) {
-        self.bulb_picker_open = false;
-        self.bulb_menu_open = false;
-        self.monitor_picker_open = false;
+        self.overlay = Overlay::None;
+    }
+
+    pub(crate) fn toggle_overlay(&mut self, overlay: Overlay) {
+        self.overlay = self.overlay.toggle(overlay);
+    }
+
+    pub(crate) fn close_overlay(&mut self, overlay: Overlay) {
+        self.overlay = self.overlay.close(overlay);
     }
 
     pub(crate) fn leave_color(&mut self) {
         self.close_overlays();
-        if self.color.open {
+        if self.color.is_open() {
             self.cancel_color();
         }
     }
