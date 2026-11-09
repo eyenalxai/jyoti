@@ -2,7 +2,8 @@ mod stage;
 
 use rune::{Color, Edge, El, ScrollSpec, Spring, SpringPair, Transition, Tx, col, row, text};
 use rune_kit::{
-    Button, ButtonVariant, ControlSize, IconButton, IconButtonVariant, Kit, Menu, MenuItem, Switch,
+    Button, ButtonVariant, ControlSize, IconButton, IconButtonVariant, Kit, Menu, MenuItem,
+    Placement, Popover, Switch,
 };
 
 use crate::app::App;
@@ -35,7 +36,7 @@ pub fn content(app: &App, k: &Kit, layers: &mut Vec<El>) -> El {
         .gap(9.0)
         .child(picker_row(app, k, layers))
         .child(stage::light_stage(app, k))
-        .child(control_deck(app, k))
+        .child(control_deck(app, k, layers))
         .scroll(ScrollSpec {
             stick_bottom: false,
         });
@@ -193,7 +194,7 @@ fn icon_button(
         .radius(k.radius.md)
 }
 
-fn control_deck(app: &App, k: &Kit) -> El {
+fn control_deck(app: &App, k: &Kit, layers: &mut Vec<El>) -> El {
     let all = matches!(app.selection, Some(Selection::All));
     let aggregate = app.aggregate();
     let state = app.single_state();
@@ -263,7 +264,7 @@ fn control_deck(app: &App, k: &Kit) -> El {
             (
                 "tuning-colour",
                 Edge::Trailing,
-                colour_block(app, k, &aggregate, &state, all, sync_owned),
+                colour_block(app, k, &aggregate, &state, all, sync_owned, layers),
             )
         };
         deck = deck.child(
@@ -517,6 +518,7 @@ fn colour_block(
     state: &BulbState,
     all: bool,
     disabled: bool,
+    layers: &mut Vec<El>,
 ) -> El {
     let editing = app.color.open;
     let (color, mixed) = if editing {
@@ -541,49 +543,43 @@ fn colour_block(
         Rgb::hex,
     );
     let fill = color.map_or(k.c.layer_03, rgb_color);
-    let choose = Button::new("Choose colour")
-        .variant(ButtonVariant::Outline)
-        .control_size(ControlSize::Regular)
-        .icon(&EDIT)
-        .disabled(disabled)
-        .on_press_tx(|app: &mut App, tx: &mut Tx| {
-            app.open_color();
-            if app.color.open {
-                tx.scroll_key_to("colour-editor", 0.0);
-            }
-            tx.instant();
-        })
-        .build(k)
-        .key("choose-colour")
-        .h(40.0);
-    let cancel = Button::new("Cancel")
-        .variant(ButtonVariant::Outline)
-        .control_size(ControlSize::Regular)
-        .on_press_tx(|app: &mut App, tx: &mut Tx| {
-            app.cancel_color();
-            tx.instant();
-        })
-        .build(k)
-        .key("cancel-colour")
-        .h(40.0);
-    let keep = Button::new("Keep colour")
-        .variant(ButtonVariant::Contrast)
-        .control_size(ControlSize::Regular)
-        .on_press_tx(|app: &mut App, tx: &mut Tx| {
-            app.commit_color();
-            tx.instant();
-        })
-        .build(k)
-        .key("keep-colour")
-        .h(40.0);
+    let choose = Button::new(if editing {
+        "Editing colour"
+    } else {
+        "Choose colour"
+    })
+    .variant(if editing {
+        ButtonVariant::Ghost
+    } else {
+        ButtonVariant::Outline
+    })
+    .control_size(ControlSize::Regular)
+    .icon(&EDIT)
+    .disabled(disabled)
+    .on_press(|app: &mut App| app.open_color())
+    .build(k)
+    .key("choose-colour")
+    .h(40.0);
     let label_style = if color.is_some() {
         theme::code(14.0, 500.0)
     } else {
         k.ty.ui_medium
     };
-    let mut header = row()
+    let mut popover = Popover::new("colour-popover")
+        .trigger(choose)
+        .open(editing)
+        .padding(0.0)
+        .placement(Placement::TopEnd)
+        .gutter(8.0)
+        .label("Colour editor");
+    if editing {
+        popover = popover.child(color::popover(app, k));
+    }
+    let trigger = popover.build(k, layers);
+
+    let trigger_row = row()
         .w_full()
-        .gap(8.0)
+        .gap(10.0)
         .px(16.0)
         .py(10.0)
         .center_y()
@@ -595,17 +591,9 @@ fn colour_block(
                 .grow(1.0)
                 .min_w(0.0)
                 .truncate(),
-        );
-    header = if editing {
-        header.child(cancel).child(keep)
-    } else {
-        header.child(choose)
-    };
-    let mut block = col().w_full().key("colour-editor").child(header);
-    if editing {
-        block = block.child(color::editor(app, k));
-    }
-    dim_when(block, disabled)
+        )
+        .child(trigger);
+    dim_when(trigger_row, disabled)
 }
 
 fn selection_label(app: &App) -> String {

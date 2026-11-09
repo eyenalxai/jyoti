@@ -6,13 +6,12 @@ use rune_kit::{Button, ButtonVariant, ControlSize, Kit, TextInput};
 use crate::app::App;
 use crate::screen::color::{Hsb, hsb_to_rgb};
 use crate::ui::theme;
-use crate::ui::widget::{
-    ALERT, SLIDER_WIDTH, SliderSpec, gradient_slider, hairline, notice, rgb_color,
-};
+use crate::ui::widget::{ALERT, SliderSpec, gradient_slider, hairline, notice, rgb_color};
 
-pub fn editor(app: &App, k: &Kit) -> El {
-    let preview = app.color.preview;
-    let ink = theme::ink_on(rgb_color(preview));
+const POPOVER_WIDTH: f32 = 320.0;
+const POPOVER_SLIDER_WIDTH: f32 = 272.0;
+
+pub fn popover(app: &App, k: &Kit) -> El {
     let hex = TextInput::new(&app.color.hex)
         .label("Hex colour")
         .placeholder("#FF8A00")
@@ -29,33 +28,44 @@ pub fn editor(app: &App, k: &Kit) -> El {
         .on_press(|app: &mut App| app.update_color_from_hex())
         .build(k)
         .h(40.0);
+    let cancel = Button::new("Cancel")
+        .variant(ButtonVariant::Outline)
+        .control_size(ControlSize::Regular)
+        .on_press(|app: &mut App| app.cancel_color())
+        .build(k)
+        .key("cancel-colour")
+        .h(40.0);
+    let keep = Button::new("Keep colour")
+        .variant(ButtonVariant::Contrast)
+        .control_size(ControlSize::Regular)
+        .on_press(|app: &mut App| app.commit_color())
+        .build(k)
+        .key("keep-colour")
+        .h(40.0);
 
-    let chip = col()
+    let header = row()
         .w_full()
-        .h(190.0)
-        .justify_end()
-        .gap(2.0)
-        .padding(16.0)
-        .radius(k.radius.md)
-        .clip_soft(k.radius.md)
-        .fill(rgb_color(preview))
-        .linear_gradient(
-            std::f32::consts::PI,
-            [
-                (0.0, k.c.white.alpha(0.2)),
-                (0.55, k.c.white.alpha(0.0)),
-                (1.0, theme::ink().alpha(0.1)),
-            ],
-        )
-        .border(1.0, theme::ink().alpha(0.08))
+        .gap(8.0)
+        .center_y()
         .child(
-            text(preview.hex())
-                .font(theme::code(30.0, 500.0))
-                .color(ink),
+            text("Colour".to_owned())
+                .font(k.ty.body_medium)
+                .color(k.c.text_base)
+                .grow(1.0)
+                .min_w(0.0)
+                .truncate(),
         )
+        .child(cancel)
+        .child(keep);
+
+    let mut body = col()
+        .w(POPOVER_WIDTH)
+        .padding(12.0)
+        .gap(8.0)
+        .child(header)
         .child(
             text(format!(
-                "Live preview · applying to {} {}",
+                "Applying to {} {}",
                 app.color.targets.len(),
                 if app.color.targets.len() == 1 {
                     "bulb"
@@ -64,19 +74,19 @@ pub fn editor(app: &App, k: &Kit) -> El {
                 }
             ))
             .font(k.ty.small)
-            .color(ink.alpha(0.72)),
+            .color(k.c.text_muted),
+        )
+        .child(hairline(k))
+        .child(
+            row()
+                .w_full()
+                .gap(8.0)
+                .center_y()
+                .child(row().grow(1.0).min_w(0.0).child(hex))
+                .child(apply),
         );
-
-    let mut tune = col().w_full().gap(9.0).child(
-        row()
-            .w_full()
-            .gap(8.0)
-            .center_y()
-            .child(row().grow(1.0).min_w(0.0).child(hex))
-            .child(apply),
-    );
     if let Some(error) = &app.color.error {
-        tune = tune.child(notice(k, &ALERT, error, k.c.danger));
+        body = body.child(notice(k, &ALERT, error, k.c.danger));
     }
     let hsb = Hsb {
         hue: app.color.hue,
@@ -121,15 +131,14 @@ pub fn editor(app: &App, k: &Kit) -> El {
             })),
         ),
     ];
-    let tune = tune
-        .child(hairline(k))
+    body = body
         .child(tune_block(
             k,
             SliderSpec {
                 label: "Hue",
                 key: "hue",
                 step: 1.0 / 360.0,
-                width: SLIDER_WIDTH,
+                width: POPOVER_SLIDER_WIDTH,
             },
             format!("{:.0}°", app.color.hue),
             app.color.hue / 360.0,
@@ -145,7 +154,7 @@ pub fn editor(app: &App, k: &Kit) -> El {
                 label: "Saturation",
                 key: "saturation",
                 step: 1.0 / 100.0,
-                width: SLIDER_WIDTH,
+                width: POPOVER_SLIDER_WIDTH,
             },
             format!("{:.0}%", app.color.saturation),
             app.color.saturation / 100.0,
@@ -161,7 +170,7 @@ pub fn editor(app: &App, k: &Kit) -> El {
                 label: "Brightness",
                 key: "value",
                 step: 1.0 / 100.0,
-                width: SLIDER_WIDTH,
+                width: POPOVER_SLIDER_WIDTH,
             },
             format!("{:.0}%", app.color.value),
             app.color.value / 100.0,
@@ -172,14 +181,8 @@ pub fn editor(app: &App, k: &Kit) -> El {
             },
         ));
 
-    col().w_full().child(hairline(k)).child(
-        col()
-            .w_full()
-            .padding(16.0)
-            .gap(12.0)
-            .child(chip)
-            .child(tune),
-    )
+    body.role("none")
+        .modal(true, |app: &mut App| app.cancel_color())
 }
 
 fn tune_block(

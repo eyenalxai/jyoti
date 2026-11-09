@@ -171,8 +171,8 @@ brightness.
 
 The panel under the light stage on Control: power, brightness, mode and warmth
 or colour in hairline-separated rows. During a sync run the rows sync owns are
-dimmed and power stays available. The mode row is inert while the colour editor
-is open.
+dimmed and power stays available. The colour popover is modal; the page behind
+it is inert while it is open.
 
 ## Bulb selector
 
@@ -190,9 +190,9 @@ desktop. It is chosen in Settings and remembered in the preferences file.
 The three section buttons under the window title: Control, Sync and Settings.
 They are the only navigation. The active section’s label and rule take the brass
 accent. A form and the remove confirmation sit below the tabs and carry a Back
-control. The colour editor expands inside the Control deck and has no Back
-control. Only the content below the tab bar moves between screens; the tabs stay
-put.
+control. The colour editor opens as a popover anchored to the colour row’s
+trigger button and has no Back control. Only the content below the tab bar
+moves between screens; the tabs stay put.
 
 ## Toast
 
@@ -299,9 +299,9 @@ with no snapshot, no restore value or a failed confirmed send is named.
 
 ## Revert
 
-Cancelling the colour editor with Cancel restores the colour and mode each
-target had when the editor opened. Keeping the colour closes the editor and
-keeps the current colour.
+Cancelling the colour editor with Cancel, Escape or a press outside the popover
+restores the colour and mode each target had when the editor opened. Keeping the
+colour closes the editor and keeps the current colour.
 
 ## miIO session
 

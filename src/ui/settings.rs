@@ -61,23 +61,12 @@ pub fn view(app: &App, k: &Kit) -> El {
                 row()
                     .gap(6.0)
                     .center_y()
-                    .child(
-                        rune::icon(&LOCK, 14.0)
-                            .color(k.c.success.icon)
-                            .a11y_hidden(),
-                    )
+                    .child(rune::icon(&LOCK, 14.0).color(k.c.icon_muted).a11y_hidden())
                     .child(
                         text("OS keyring".to_owned())
                             .font(k.ty.small_medium)
-                            .color(k.c.success.fg),
+                            .color(k.c.text_muted),
                     ),
-            ))
-            .child(hairline(k))
-            .child(path_row(
-                k,
-                "Keyring service",
-                "The account prefix for every token.",
-                &app.config.keyring_service,
             )),
     );
 
