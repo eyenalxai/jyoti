@@ -55,7 +55,15 @@ pub struct Navigation {
 }
 
 pub fn nav_direction(from: &Screen, to: &Screen) -> NavDirection {
-    if to.rank() < from.rank() {
+    if matches!(from, Screen::Form(_) | Screen::Remove(_) | Screen::Color) {
+        if matches!(to, Screen::Dashboard) {
+            NavDirection::Backward
+        } else {
+            NavDirection::Forward
+        }
+    } else if matches!(to, Screen::Form(_) | Screen::Remove(_) | Screen::Color) {
+        NavDirection::Forward
+    } else if to.rank() < from.rank() {
         NavDirection::Backward
     } else {
         NavDirection::Forward
@@ -246,6 +254,20 @@ mod tests {
         assert_eq!(
             nav_direction(&Screen::Settings, &Screen::Color),
             NavDirection::Forward
+        );
+    }
+
+    #[test]
+    fn leaving_a_subpage_follows_the_tab_order() {
+        let form = Screen::Form(FormMode::Add);
+        assert_eq!(nav_direction(&form, &Screen::Sync), NavDirection::Forward);
+        assert_eq!(
+            nav_direction(&form, &Screen::Settings),
+            NavDirection::Forward
+        );
+        assert_eq!(
+            nav_direction(&form, &Screen::Dashboard),
+            NavDirection::Backward
         );
     }
 }
