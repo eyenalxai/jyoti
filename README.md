@@ -45,10 +45,11 @@ the light is the only surface that carries a full colour. Every token lives in
   age and output brightness; capture and output controls sit beneath it.
 - **Type** — Fraunces for names and page titles, Inter for the interface and
   tabular figures, IBM Plex Mono for data. No role sets text below 12 points.
-- **Motion** — spring-based throughout. Section changes push horizontally in tab
-  order, a subpage pushes the tab bar out with the page it replaces, and the
-  White/Colour tuning rows swap sideways instead of cross-fading. There is no
-  page-load animation, and every action stays reachable from a pointer.
+- **Motion** — spring-based throughout. Section changes push the content below
+  the tab bar horizontally in tab order; the tabs stay put. A subpage appears in
+  that same content area, and the White/Colour tuning rows swap sideways instead
+  of cross-fading. There is no page-load animation, and every action stays
+  reachable from a pointer.
 
 ## Requirements
 

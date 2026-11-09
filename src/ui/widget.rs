@@ -157,8 +157,7 @@ pub fn segmented_switch(
         .gap(6.0)
         .padding(2.0)
         .radius(k.radius.md)
-        .fill(k.c.layer_01)
-        .border(1.0, k.c.border_base);
+        .fill(k.c.layer_01);
     for (index, label) in labels.iter().enumerate() {
         let on = selected == Some(index);
         let pick = Rc::clone(&pick);
@@ -183,11 +182,9 @@ pub fn segmented_switch(
                     .a11y_hidden(),
             );
         if on {
-            segment = segment.fill(k.c.bg_base).box_shadow(rune::Shadow {
-                spread: 0.5,
-                color: k.c.border_strong,
-                ..Default::default()
-            });
+            segment = segment
+                .fill(k.c.bg_base)
+                .shadow(1.0, 2.0, k.c.black.alpha(0.12));
         } else {
             segment = segment.hover(k.c.hover).press(k.c.pressed);
         }
