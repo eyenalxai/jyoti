@@ -131,11 +131,11 @@ pub struct ColorSession {
     pub hex: TextEdit,
     pub preview: Rgb,
     pub error: Option<String>,
-    pre_open: HashMap<String, BulbState>,
+    pre_open: HashMap<String, Option<BulbState>>,
 }
 
 impl ColorSession {
-    fn new(targets: Vec<String>, color: Rgb, pre_open: HashMap<String, BulbState>) -> Self {
+    fn new(targets: Vec<String>, color: Rgb, pre_open: HashMap<String, Option<BulbState>>) -> Self {
         let hsb = rgb_to_hsb(color);
         Self {
             targets,
@@ -149,14 +149,22 @@ impl ColorSession {
         }
     }
 
-    pub fn cancel(self) -> HashMap<String, BulbState> {
+    pub fn into_pre_open(self) -> HashMap<String, Option<BulbState>> {
         self.pre_open
     }
 }
 
 impl ColorEditor {
-    pub fn open(targets: Vec<String>, color: Rgb, pre_open: HashMap<String, BulbState>) -> Self {
+    pub fn open(
+        targets: Vec<String>,
+        color: Rgb,
+        pre_open: HashMap<String, Option<BulbState>>,
+    ) -> Self {
         Self::Open(Box::new(ColorSession::new(targets, color, pre_open)))
+    }
+
+    fn closed() -> Self {
+        Self::Closed(Box::new(TextEdit::new("")))
     }
 
     pub fn is_open(&self) -> bool {
@@ -187,20 +195,22 @@ impl ColorEditor {
     }
 
     pub fn take(&mut self) -> Option<ColorSession> {
-        match std::mem::replace(self, Self::Closed(Box::new(TextEdit::new("")))) {
+        match std::mem::take(self) {
             Self::Open(session) => Some(*session),
             Self::Closed(_) => None,
         }
     }
 
-    pub fn close(&mut self) {
-        *self = Self::Closed(Box::new(TextEdit::new("")));
+    pub fn commit(&mut self) -> Option<Rgb> {
+        let color = self.session()?.preview;
+        *self = Self::closed();
+        Some(color)
     }
 }
 
 impl Default for ColorEditor {
     fn default() -> Self {
-        Self::Closed(Box::new(TextEdit::new("")))
+        Self::closed()
     }
 }
 
@@ -481,10 +491,10 @@ mod tests {
         }
     }
 
-    fn pre_open() -> HashMap<String, BulbState> {
+    fn pre_open() -> HashMap<String, Option<BulbState>> {
         HashMap::from([
-            ("desk".to_owned(), state(Rgb::new(10, 20, 30))),
-            ("shelf".to_owned(), state(Rgb::new(40, 50, 60))),
+            ("desk".to_owned(), Some(state(Rgb::new(10, 20, 30)))),
+            ("shelf".to_owned(), None),
         ])
     }
 
@@ -531,22 +541,25 @@ mod tests {
         assert_eq!(session.preview, Rgb::new(255, 128, 0));
         assert_eq!(session.hex.text, "#FF8000");
 
-        let cancelled = editor.take().ok_or("the editor should be open")?.cancel();
+        let cancelled = editor
+            .take()
+            .ok_or("the editor should be open")?
+            .into_pre_open();
         assert_eq!(cancelled, before);
         assert!(!editor.is_open());
         Ok(())
     }
 
     #[test]
-    fn closing_keeps_the_preview_and_drops_the_pre_open_values() {
+    fn committing_returns_the_preview_and_closes() -> Result<(), Box<dyn std::error::Error>> {
         let mut editor =
             ColorEditor::open(vec!["desk".to_owned()], Rgb::new(255, 128, 0), pre_open());
-        let preview = editor.session().map(|session| session.preview);
 
-        editor.close();
+        let preview = editor.commit().ok_or("the editor should commit")?;
 
-        assert_eq!(preview, Some(Rgb::new(255, 128, 0)));
+        assert_eq!(preview, Rgb::new(255, 128, 0));
         assert!(!editor.is_open());
         assert!(editor.take().is_none());
+        Ok(())
     }
 }

@@ -477,11 +477,11 @@ fn colour_block(
     disabled: bool,
     layers: &mut Vec<El>,
 ) -> El {
-    let editing = app.color.is_open();
-    let (color, mixed) = if let Some(session) = app.color.session() {
-        (Some(session.preview), false)
-    } else {
-        (view.color_value(), view.color_mixed())
+    let session = app.color.session();
+    let editing = session.is_some();
+    let (color, mixed) = match session {
+        Some(session) => (Some(session.preview), false),
+        None => (view.color_value(), view.color_mixed()),
     };
     let label = color.map_or_else(
         || {

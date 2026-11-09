@@ -28,12 +28,7 @@ impl App {
             .unwrap_or(Rgb::WHITE);
         let pre_open = targets
             .iter()
-            .filter_map(|id| {
-                self.states
-                    .get(id)
-                    .cloned()
-                    .map(|state| (id.clone(), state))
-            })
+            .map(|id| (id.clone(), self.states.get(id).cloned()))
             .collect();
         self.color = ColorEditor::open(targets, first, pre_open);
     }
@@ -118,7 +113,10 @@ impl App {
             self.dashboard.pending_temperature.remove(id);
             self.dashboard.pending_brightness.remove(id);
         }
-        for (id, previous) in session.cancel() {
+        for (id, previous) in session.into_pre_open() {
+            let Some(previous) = previous else {
+                continue;
+            };
             self.states.insert(id.clone(), previous.clone());
             self.edits.touch(&id);
             match restore_control(&previous) {
@@ -142,6 +140,6 @@ impl App {
         {
             return;
         }
-        self.color.close();
+        let _ = self.color.commit();
     }
 }
