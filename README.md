@@ -18,7 +18,8 @@ non-secret metadata is written to disk.
 - Selects **All bulbs** on first load when two or more bulbs exist.
 - Keeps every action on a visible pointer control. A transient toast reports a
   bulb that does not answer.
-- Follows the desktop’s light or dark appearance.
+- Follows the desktop’s light or dark appearance, with a Light, Dark or System
+  preference in Settings.
 - Uses the Lamplight window: a light stage that carries the selected colour, one
   control deck, quiet underline tabs, warm paper in light and espresso in dark.
 - Sets names and page titles in Fraunces, the interface in Inter and addresses,
@@ -44,8 +45,10 @@ the light is the only surface that carries a full colour. Every token lives in
   age and output brightness; capture and output controls sit beneath it.
 - **Type** — Fraunces for names and page titles, Inter for the interface and
   tabular figures, IBM Plex Mono for data. No role sets text below 12 points.
-- **Motion** — only the kit’s control springs and overlay transitions. There is
-  no page-load animation, and every action stays reachable from a pointer.
+- **Motion** — spring-based throughout. Section changes push horizontally in tab
+  order, a subpage pushes the tab bar out with the page it replaces, and the
+  White/Colour tuning rows swap sideways instead of cross-fading. There is no
+  page-load animation, and every action stays reachable from a pointer.
 
 ## Requirements
 
@@ -92,7 +95,8 @@ cargo run -- --demo --scene dashboard --snap dashboard.png
 - Metadata: `$XDG_CONFIG_HOME/jyoti/bulbs.json`, falling back to
   `~/.config/jyoti/bulbs.json`.
 - Preferences: `$XDG_CONFIG_HOME/jyoti/prefs.json`, next to the metadata. It
-  holds the sync brightness gain and colour intensity.
+  holds the sync brightness gain, colour intensity and the Light/Dark/System
+  appearance preference.
 - Tokens: one OS keyring entry per bulb under the `jyoti` service, keyed by the
   bulb’s stable ID. They never enter the config file, a log line or an error
   message. Legacy `secret-tool` entries are read and migrated on first use.
@@ -127,7 +131,7 @@ the CPU reducer.
   brightness only to bulbs known to be on.
 - Stop restores each bulb’s pre-sync colour or temperature and the brightness
   sync drove, with confirmed sends bounded to about two seconds. A bulb that
-  cannot be restored is named in the report.
+  cannot be restored is named in the toast, and the run returns to idle.
 - A bulb that misses sends is marked unreachable, probed with a hello every five
   seconds and rejoins when it answers.
 

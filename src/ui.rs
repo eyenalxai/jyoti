@@ -15,7 +15,7 @@ use crate::app::App;
 use crate::app::state::Screen;
 
 pub fn view(app: &App, cx: &mut Cx<App>) -> El {
-    let k: &Kit = theme::kit(cx.system_dark());
+    let k: &Kit = theme::kit(app.appearance.dark(cx.system_dark()));
     let mut layers = Vec::new();
     let page = match &app.screen {
         Screen::Dashboard => dashboard::content(app, k, &mut layers),

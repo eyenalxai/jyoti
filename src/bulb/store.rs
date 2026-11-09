@@ -87,10 +87,46 @@ impl BulbStore {
     }
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Appearance {
+    #[default]
+    System,
+    Light,
+    Dark,
+}
+
+impl Appearance {
+    pub fn dark(self, system_dark: bool) -> bool {
+        match self {
+            Appearance::System => system_dark,
+            Appearance::Light => false,
+            Appearance::Dark => true,
+        }
+    }
+
+    pub fn index(self) -> usize {
+        match self {
+            Appearance::Light => 0,
+            Appearance::Dark => 1,
+            Appearance::System => 2,
+        }
+    }
+
+    pub fn from_index(index: usize) -> Self {
+        match index {
+            0 => Appearance::Light,
+            1 => Appearance::Dark,
+            _ => Appearance::System,
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Preferences {
     pub sync_gain: f32,
     pub colour_intensity: f32,
+    pub appearance: Appearance,
 }
 
 impl Default for Preferences {
@@ -98,6 +134,7 @@ impl Default for Preferences {
         Self {
             sync_gain: SYNC_GAIN_DEFAULT,
             colour_intensity: SYNC_INTENSITY_DEFAULT,
+            appearance: Appearance::System,
         }
     }
 }
@@ -114,6 +151,8 @@ struct PreferencesFile {
     sync_gain: f32,
     #[serde(rename = "colourIntensity", default)]
     colour_intensity: f32,
+    #[serde(default)]
+    appearance: Appearance,
 }
 
 impl PreferencesStore {
@@ -134,6 +173,7 @@ impl PreferencesStore {
         Preferences {
             sync_gain: normalize_sync_gain(file.sync_gain),
             colour_intensity: normalize_sync_intensity(file.colour_intensity),
+            appearance: file.appearance,
         }
     }
 
@@ -142,6 +182,7 @@ impl PreferencesStore {
             version: 1,
             sync_gain: normalize_sync_gain(preferences.sync_gain),
             colour_intensity: normalize_sync_intensity(preferences.colour_intensity),
+            appearance: preferences.appearance,
         };
         let text = serde_json::to_string_pretty(&file).map_err(|source| StoreError::Decode {
             path: self.path.clone(),
@@ -241,9 +282,11 @@ mod tests {
         store.save(Preferences {
             sync_gain: 1.5,
             colour_intensity: 60.0,
+            appearance: Appearance::Dark,
         })?;
         assert_eq!(store.load().sync_gain, 1.5);
         assert_eq!(store.load().colour_intensity, 60.0);
+        assert_eq!(store.load().appearance, Appearance::Dark);
 
         std::fs::write(&path, "{ broken")?;
         assert_eq!(store.load(), Preferences::default());
@@ -259,6 +302,32 @@ mod tests {
         let preferences = store.load();
         assert_eq!(preferences.sync_gain, 1.3);
         assert_eq!(preferences.colour_intensity, 0.0);
+        assert_eq!(preferences.appearance, Appearance::System);
+        Ok(())
+    }
+
+    #[test]
+    fn appearance_maps_between_indices_and_the_system_flag() {
+        assert!(Appearance::Dark.dark(false));
+        assert!(!Appearance::Light.dark(true));
+        assert!(Appearance::System.dark(true));
+        assert!(!Appearance::System.dark(false));
+        for appearance in [Appearance::Light, Appearance::Dark, Appearance::System] {
+            assert_eq!(Appearance::from_index(appearance.index()), appearance);
+        }
+        assert_eq!(Appearance::from_index(9), Appearance::System);
+    }
+
+    #[test]
+    fn unknown_appearance_falls_back_to_the_defaults() -> Result<(), Box<dyn std::error::Error>> {
+        let directory = tempfile::tempdir()?;
+        let path = directory.path().join("prefs.json");
+        let store = PreferencesStore::new(path.clone());
+        std::fs::write(
+            &path,
+            r#"{"version":1,"syncGain":1.3,"appearance":"sepia"}"#,
+        )?;
+        assert_eq!(store.load(), Preferences::default());
         Ok(())
     }
 }

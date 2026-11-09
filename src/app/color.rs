@@ -45,7 +45,7 @@ impl App {
             error: None,
             revert,
         };
-        self.screen = Screen::Color;
+        self.set_screen(Screen::Color);
     }
 
     pub(crate) fn update_color_from_hsb(&mut self) {
@@ -111,7 +111,7 @@ impl App {
                 None => {}
             }
         }
-        self.screen = Screen::Dashboard;
+        self.set_screen(Screen::Dashboard);
     }
 
     pub(crate) fn commit_color(&mut self) {
@@ -119,6 +119,6 @@ impl App {
         if self.color.error.is_some() {
             return;
         }
-        self.screen = Screen::Dashboard;
+        self.set_screen(Screen::Dashboard);
     }
 }

@@ -68,6 +68,11 @@ pub static CHECK: Icon = Icon {
     view: 16.0,
     body: r#"<path d="M3.2 8.4 6.4 11.6 12.8 5.2" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" fill="none"/>"#,
 };
+pub static COPY: Icon = Icon {
+    name: "jyoti-copy",
+    view: 16.0,
+    body: r#"<rect x="5.6" y="3.2" width="7.2" height="9.2" rx="1.4" stroke="currentColor" stroke-width="1.1" fill="none"/><path d="M3.6 5.6v6.1a1.6 1.6 0 0 0 1.6 1.6h5.2" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" fill="none"/>"#,
+};
 pub static LOCK: Icon = Icon {
     name: "jyoti-lock",
     view: 16.0,
@@ -79,7 +84,6 @@ pub fn sync_status_tone(k: &Kit, status: &SyncStatus) -> Color {
         SyncStatus::Running | SyncStatus::Starting => k.c.success.icon,
         SyncStatus::Paused | SyncStatus::Stopping => k.c.warning.icon,
         SyncStatus::Error(_) => k.c.danger.icon,
-        SyncStatus::Restored => k.c.info.icon,
         SyncStatus::Idle => k.c.text_faint,
     }
 }
@@ -130,6 +134,68 @@ pub fn dim_when(e: El, disabled: bool) -> El {
     }
 }
 
+/// Mutually exclusive choices behind one control, separated so they read as
+/// distinct choices rather than one split label. The kit's segmented control has
+/// no gap between choices; the light mode needs that separation.
+pub fn segmented_switch(
+    k: &Kit,
+    key: &str,
+    label: &str,
+    labels: &[&str],
+    selected: Option<usize>,
+    on_pick: impl Fn(&mut App, usize, &mut Tx) + 'static,
+) -> El {
+    let pick = Rc::new(on_pick);
+    let count = labels.len();
+    let mut root = row()
+        .key(key)
+        .role("radiogroup")
+        .label(label.to_owned())
+        .focus_group()
+        .w_full()
+        .h(32.0)
+        .gap(6.0)
+        .padding(2.0)
+        .radius(k.radius.md)
+        .fill(k.c.layer_01)
+        .border(1.0, k.c.border_base);
+    for (index, label) in labels.iter().enumerate() {
+        let on = selected == Some(index);
+        let pick = Rc::clone(&pick);
+        let mut segment = row()
+            .key(format!("{key}-{index}"))
+            .role("radio")
+            .label((*label).to_owned())
+            .position_in_set(index + 1, count)
+            .focusable(true)
+            .focus_selected(on)
+            .focus_ring(2.0, 1.0, k.c.border_focus)
+            .grow(1.0)
+            .h(28.0)
+            .center()
+            .radius(k.radius.sm)
+            .motion(Spring::new(0.25, 0.1))
+            .on_press_tx(move |app: &mut App, tx: &mut Tx| pick(app, index, tx))
+            .child(
+                text((*label).to_owned())
+                    .font(k.ty.ui_medium)
+                    .color(if on { k.c.text_base } else { k.c.text_muted })
+                    .a11y_hidden(),
+            );
+        if on {
+            segment = segment.fill(k.c.bg_base).box_shadow(rune::Shadow {
+                spread: 0.5,
+                color: k.c.border_strong,
+                ..Default::default()
+            });
+        } else {
+            segment = segment.hover(k.c.hover).press(k.c.pressed);
+        }
+        root = root.child(segment);
+    }
+    root
+}
+
 /// A raised surface. One family for every panel: the page shows the paper, the
 /// panel catches the light.
 pub fn surface(k: &Kit, body: El) -> El {
@@ -159,7 +225,7 @@ pub fn group(k: &Kit, caption: &str, body: El) -> El {
         .w_full()
         .min_w(0.0)
         .gap(7.0)
-        .child(row().w_full().px(2.0).child(label(k, caption)))
+        .child(row().w_full().child(label(k, caption)))
         .child(surface(k, body))
 }
 
@@ -499,8 +565,11 @@ pub fn frame_age(at: Option<Instant>) -> String {
     let Some(at) = at else {
         return "—".to_owned();
     };
-    let elapsed = at.elapsed();
-    if elapsed < Duration::from_secs(1) {
+    format_frame_age(at.elapsed())
+}
+
+fn format_frame_age(elapsed: Duration) -> String {
+    if elapsed < Duration::from_secs(10) {
         format!("{} ms", elapsed.as_millis())
     } else {
         format!("{:.1} s", elapsed.as_secs_f32())
@@ -519,4 +588,19 @@ pub fn error_text(k: &Kit, message: &str) -> El {
         .font(k.ty.small)
         .color(k.c.danger.icon)
         .wrap()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::format_frame_age;
+    use std::time::Duration;
+
+    #[test]
+    fn frame_age_switches_to_seconds_after_ten() {
+        assert_eq!(format_frame_age(Duration::from_millis(0)), "0 ms");
+        assert_eq!(format_frame_age(Duration::from_millis(163)), "163 ms");
+        assert_eq!(format_frame_age(Duration::from_millis(9_999)), "9999 ms");
+        assert_eq!(format_frame_age(Duration::from_millis(10_000)), "10.0 s");
+        assert_eq!(format_frame_age(Duration::from_millis(12_340)), "12.3 s");
+    }
 }

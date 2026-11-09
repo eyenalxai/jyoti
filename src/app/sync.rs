@@ -178,15 +178,12 @@ impl App {
         }
         self.sync.pending_restore.clear();
         self.sync.restore_deadline = None;
-        self.sync.status = SyncStatus::Restored;
-        let message = self
-            .sync
-            .restore_report
+        self.sync.status = SyncStatus::Idle;
+        let report = self.sync.restore_report.take();
+        let message = report
             .as_ref()
             .map_or_else(|| "Screen sync stopped.".to_owned(), RestoreReport::message);
-        let kind = if self
-            .sync
-            .restore_report
+        let kind = if report
             .as_ref()
             .is_some_and(|report| report.not_restored.is_empty())
         {

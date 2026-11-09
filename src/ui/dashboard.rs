@@ -1,11 +1,8 @@
 mod stage;
 
-use std::time::Duration;
-
-use rune::{Color, El, ScrollSpec, Tx, col, row, text};
+use rune::{Color, Edge, El, ScrollSpec, Spring, SpringPair, Transition, Tx, col, row, text};
 use rune_kit::{
-    Button, ButtonVariant, ControlSize, IconButton, IconButtonVariant, Kit, Menu, MenuItem,
-    SegmentedControl, Switch,
+    Button, ButtonVariant, ControlSize, IconButton, IconButtonVariant, Kit, Menu, MenuItem, Switch,
 };
 
 use crate::app::App;
@@ -19,8 +16,8 @@ use crate::screen::color::kelvin_to_rgb;
 use crate::ui::theme;
 use crate::ui::widget::{
     ALERT, BULB, EDIT, MORE, PAGE_PAD, PLUS, REFRESH, SLIDER_WIDTH, SliderSpec, TRASH, dim_when,
-    dot, dropdown_trigger, error_text, gradient_slider, hairline, notice, rgb_color, slider,
-    surface, swatch,
+    dot, dropdown_trigger, error_text, gradient_slider, hairline, notice, rgb_color,
+    segmented_switch, slider, surface, swatch,
 };
 
 const STAGE_HEIGHT: f32 = 202.0;
@@ -254,15 +251,31 @@ fn control_deck(app: &App, k: &Kit) -> El {
     deck = deck
         .child(hairline(k))
         .child(mode_block(k, white, colour, sync_owned));
-    if white {
-        deck = deck
-            .child(hairline(k))
-            .child(temperature_block(k, &aggregate, &state, all, sync_owned));
-    }
-    if colour {
-        deck = deck
-            .child(hairline(k))
-            .child(colour_block(k, &aggregate, &state, all, sync_owned));
+    if white || colour {
+        let (key, edge, block) = if white {
+            (
+                "tuning-white",
+                Edge::Leading,
+                temperature_block(k, &aggregate, &state, all, sync_owned),
+            )
+        } else {
+            (
+                "tuning-colour",
+                Edge::Trailing,
+                colour_block(k, &aggregate, &state, all, sync_owned),
+            )
+        };
+        deck = deck.child(
+            col()
+                .key(key)
+                .w_full()
+                .transition(Transition::move_edge(edge).springs(SpringPair::new(
+                    Spring::new(0.3, 0.06),
+                    Spring::new(0.24, 0.03),
+                )))
+                .child(hairline(k))
+                .child(block),
+        );
     }
     if mixed {
         deck = deck.child(hairline(k)).child(
@@ -374,18 +387,20 @@ fn mode_block(k: &Kit, white: bool, colour: bool, disabled: bool) -> El {
     } else {
         None
     };
-    let control = SegmentedControl::new(&["White", "Colour"], selected)
-        .label("Light mode")
-        .width(None)
-        .on_pick(|app: &mut App, index, tx: &mut Tx| {
+    let control = segmented_switch(
+        k,
+        "mode",
+        "Light mode",
+        &["White", "Colour"],
+        selected,
+        |app, index, _tx| {
             if index == 0 {
                 app.set_mode_white();
             } else {
                 app.set_mode_color();
             }
-            tx.wake_after(Duration::ZERO);
-        })
-        .build(k);
+        },
+    );
     let block = row()
         .w_full()
         .gap(14.0)

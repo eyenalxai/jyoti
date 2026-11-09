@@ -1,11 +1,11 @@
-use rune::{Color, El, col, row, text};
+use rune::{Color, Edge, El, Spring, SpringPair, Transition, col, row, text};
 use rune_kit::Kit;
 use rune_kit::shell::{Page, Toolbar};
 
 use crate::app::App;
-use crate::app::state::Screen;
+use crate::app::state::{NavDirection, Screen};
 use crate::ui::theme;
-use crate::ui::widget::{FLAME, dot, sync_status_tone};
+use crate::ui::widget::{FLAME, PAGE_PAD, dot, sync_status_tone};
 
 const CONTENT_MAX_WIDTH: f32 = 484.0;
 const TAB_HEIGHT: f32 = 40.0;
@@ -24,6 +24,23 @@ pub fn view(app: &App, cx: &mut rune::Cx<App>, k: &Kit, main: El) -> El {
             .child(main),
         Screen::Form(_) | Screen::Remove(_) | Screen::Color => main,
     };
+    let edge = match app.navigation.direction {
+        NavDirection::Forward => Edge::Trailing,
+        NavDirection::Backward => Edge::Leading,
+    };
+    let entering = app.navigation.pending.is_some() || app.navigation.entering_until.is_some();
+    let mut screen = col()
+        .key(format!("screen-{}", app.screen.element_key()))
+        .w_full()
+        .h_full()
+        .min_h(0.0)
+        .fill(k.c.page)
+        .motion(Spring::new(0.34, 0.06))
+        .transition(push(edge));
+    if entering {
+        screen = screen.instant_changes();
+    }
+    let content = screen.child(content);
     let body = col().w_full().h_full().min_h(0.0).items_center().child(
         col()
             .w_full()
@@ -37,6 +54,16 @@ pub fn view(app: &App, cx: &mut rune::Cx<App>, k: &Kit, main: El) -> El {
         .titlebar_inset(cx.titlebar_inset())
         .frame_inset(8.0)
         .build(k)
+}
+
+/// A page push that travels as one surface. The kit's push fades the incoming
+/// page in; a section change should arrive whole and slide. An exiting page
+/// still fades, because presence always fades a removal.
+fn push(edge: Edge) -> Transition {
+    let mut transition = Transition::push(edge);
+    transition.insertion.opacity = 1.0;
+    transition.springs = SpringPair::new(Spring::new(0.34, 0.07), Spring::new(0.27, 0.03));
+    transition
 }
 
 fn brand(k: &Kit) -> El {
@@ -131,5 +158,5 @@ fn nav(app: &App, k: &Kit) -> El {
         );
         tabs = tabs.child(tab);
     }
-    col().w_full().px(16.0).pt(3.0).pb(2.0).child(tabs)
+    col().w_full().px(PAGE_PAD).pt(3.0).pb(2.0).child(tabs)
 }
