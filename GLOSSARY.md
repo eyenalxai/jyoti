@@ -190,8 +190,8 @@ desktop. It is chosen in Settings and remembered in the preferences file.
 The three section buttons under the window title: Control, Sync and Settings.
 They are the only navigation. The active section’s label and rule take the brass
 accent. A form and the remove confirmation sit below the tabs and carry a Back
-control. The colour editor expands inside the Control deck and has no Back
-control. Only the content below the tab bar moves between screens; the tabs stay
+control. The colour editor opens as a popover anchored to the colour row and has
+no Back control. Only the content below the tab bar moves between screens; the tabs stay
 put.
 
 ## Toast
@@ -299,8 +299,8 @@ with no snapshot, no restore value or a failed confirmed send is named.
 
 ## Revert
 
-Cancelling the colour editor with Cancel restores the colour and mode each
-target had when the editor opened. Keeping the colour closes the editor and
+Cancelling the colour editor with Cancel or a press outside the popover restores
+the colour and mode each target had when the editor opened. Keeping the colour closes the editor and
 keeps the current colour.
 
 ## miIO session

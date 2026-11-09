@@ -300,32 +300,6 @@ pub fn wordmark() -> TextStyle {
         .tracking(0.1)
 }
 
-/// Ink or cream for text over a colour. Mid-tones are where neither tinted
-/// neutral reaches 4.5:1, so there the function falls back to pure black or
-/// white: legibility wins over the warm cast.
-pub fn ink_on(background: Color) -> Color {
-    let ink = pal(INK);
-    let cream = pal(CREAM);
-    let ink_ratio = contrast(ink, background);
-    let cream_ratio = contrast(cream, background);
-    if ink_ratio >= cream_ratio {
-        if ink_ratio >= 4.5 { ink } else { Color::BLACK }
-    } else if cream_ratio >= 4.5 {
-        cream
-    } else {
-        Color::WHITE
-    }
-}
-
-fn contrast(a: Color, b: Color) -> f32 {
-    let (high, low) = if a.luminance() > b.luminance() {
-        (a.luminance(), b.luminance())
-    } else {
-        (b.luminance(), a.luminance())
-    };
-    (high + 0.05) / (low + 0.05)
-}
-
 pub fn ink() -> Color {
     pal(INK)
 }
@@ -360,25 +334,6 @@ fn pal((l, c, h): (f32, f32, f32)) -> Color {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn stage_ink_keeps_contrast() {
-        for background in [
-            Color::WHITE,
-            Color::BLACK,
-            oklch(0.86, 0.07, 80.0),
-            oklch(0.64, 0.14, 45.0),
-            oklch(0.52, 0.16, 250.0),
-        ] {
-            let ink = ink_on(background);
-            let ratio = contrast(ink, background);
-            assert!(
-                ratio >= 4.4,
-                "ink {ratio:.2} on luminance {:.2}",
-                background.luminance()
-            );
-        }
-    }
 
     #[test]
     fn displays_use_the_serif_and_numbers_are_tabular() {

@@ -71,13 +71,6 @@ pub fn view(app: &App, k: &Kit) -> El {
                             .font(k.ty.small_medium)
                             .color(k.c.success.fg),
                     ),
-            ))
-            .child(hairline(k))
-            .child(path_row(
-                k,
-                "Keyring service",
-                "The account prefix for every token.",
-                &app.config.keyring_service,
             )),
     );
 

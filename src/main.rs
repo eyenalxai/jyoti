@@ -59,10 +59,10 @@ const SCENES: &[(&str, SceneFn)] = &[
         }
     }),
     ("color", |app| {
+        app.screen = Screen::Dashboard;
         for state in app.states.values_mut() {
             state.mode = crate::bulb::model::ColorMode::Color;
         }
-        app.open_color();
     }),
     ("color-control", |app| {
         app.screen = Screen::Dashboard;

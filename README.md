@@ -45,13 +45,13 @@ the light is the only surface that carries a full colour. Every token lives in
   age and output brightness; capture and output controls sit beneath it.
 - **Type** — Fraunces for names and page titles, Inter for the interface and
   tabular figures, IBM Plex Mono for data. No role sets text below 12 points.
-- **Motion** — spring-based throughout, except the appearance switch and the
-  colour editor, which land at once. Section changes push the content below the
-  tab bar horizontally in tab order; the tabs stay put. A form or the remove
-  confirmation appears in that same content area. The colour editor expands
-  inside the Control deck and never moves the page. The White/Colour tuning rows
-  swap sideways instead of cross-fading. There is no page-load animation, and
-  every action stays reachable from a pointer.
+- **Motion** — spring-based throughout, except the appearance switch, which
+  lands at once. Section changes push the content below the tab bar horizontally
+  in tab order; the tabs stay put. A form or the remove confirmation appears in
+  that same content area. The colour editor opens as a popover beside its row and
+  never moves the page. The White/Colour tuning rows swap sideways instead of
+  cross-fading. There is no page-load animation, and every action stays reachable
+  from a pointer.
 
 ## Requirements
 
@@ -151,7 +151,7 @@ src/
   app/
     state.rs           screen, form, colour, toast and sync state
     selection.rs       bulb selection, overlay state, colour editor exit
-    color.rs           colour preview and the inline editor
+    color.rs           colour popover controls
     actions.rs         bulb CRUD, controls, forms and toasts
     sync.rs            sync run, scene application and restore
   bulb/
