@@ -3,10 +3,12 @@ use std::time::{Duration, Instant};
 
 use rune::TextEdit;
 
-use crate::app::sync::run::{Controls, RunPhase, STALE_AFTER};
+use crate::app::sync::run::{Controls, RunEvent, RunPhase, RunRejection};
 use crate::bulb::model::{BulbField, BulbState, Rgb};
 use crate::screen::monitor::{MonitorInfo, Scene};
 use crate::screen::sync::RestoreReport;
+
+pub const STALE_AFTER: Duration = Duration::from_secs(5);
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Screen {
@@ -164,6 +166,7 @@ pub struct SyncState {
     pub next_generation: u64,
     pub monitors: Vec<MonitorInfo>,
     pub capture_error: Option<String>,
+    pub capture_failed: bool,
     pub selected_monitor: Option<String>,
     pub gain: f32,
     pub colour_intensity: f32,
@@ -189,6 +192,7 @@ impl Default for SyncState {
             next_generation: 1,
             monitors: Vec::new(),
             capture_error: None,
+            capture_failed: false,
             selected_monitor: None,
             gain: crate::screen::gain::SYNC_GAIN_DEFAULT,
             colour_intensity: crate::screen::intensity::SYNC_INTENSITY_DEFAULT,
@@ -210,6 +214,11 @@ impl Default for SyncState {
 }
 
 impl SyncState {
+    pub fn apply(&mut self, event: RunEvent) -> Result<(), RunRejection> {
+        self.status = self.status.transition(event)?;
+        Ok(())
+    }
+
     pub fn controls(&self) -> Controls {
         self.status.controls()
     }
@@ -237,8 +246,8 @@ pub fn toast_duration(kind: ToastKind) -> Duration {
 mod tests {
     use std::time::{Duration, Instant};
 
-    use super::{FormMode, NavDirection, Screen, SyncState, nav_direction};
-    use crate::app::sync::run::{RunPhase, STALE_AFTER};
+    use super::{FormMode, NavDirection, STALE_AFTER, Screen, SyncState, nav_direction};
+    use crate::app::sync::run::RunPhase;
     use crate::screen::flash::FLASH_HOLD;
 
     #[test]

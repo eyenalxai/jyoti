@@ -1,5 +1,6 @@
 use std::ffi::c_void;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -51,6 +52,7 @@ pub struct ScreenHandle {
     pub commands: Sender<ScreenCommand>,
     pub events: Receiver<ScreenEvent>,
     pub latest: Arc<Mutex<Option<SyncFrame>>>,
+    stopping: Arc<AtomicBool>,
     join: Option<thread::JoinHandle<()>>,
 }
 
@@ -68,23 +70,30 @@ impl ScreenHandle {
         let (commands, inbox) = mpsc::channel::<ScreenCommand>();
         let (outbox, events) = mpsc::channel::<ScreenEvent>();
         let latest = Arc::new(Mutex::new(None));
+        let stopping = Arc::new(AtomicBool::new(false));
         let thread_latest = Arc::clone(&latest);
+        let thread_stopping = Arc::clone(&stopping);
         let join = thread::Builder::new()
             .name("jyoti-screen".to_owned())
             .spawn(move || {
-                run(inbox, outbox, waker, thread_latest);
+                run(inbox, outbox, waker, thread_latest, thread_stopping);
             })
             .ok();
         Self {
             commands,
             events,
             latest,
+            stopping,
             join,
         }
     }
 
     pub fn send(&self, command: ScreenCommand) -> bool {
         self.commands.send(command).is_ok()
+    }
+
+    pub fn halt(&self) {
+        self.stopping.store(true, Ordering::SeqCst);
     }
 }
 
@@ -93,6 +102,7 @@ fn run(
     events: Sender<ScreenEvent>,
     waker: Waker,
     latest: Arc<Mutex<Option<SyncFrame>>>,
+    stopping: Arc<AtomicBool>,
 ) {
     let mut backend = match Backend::connect() {
         Ok(backend) => backend,
@@ -140,6 +150,7 @@ fn run(
                 selected = Some(monitor);
                 run = Some(SyncRun::new(config));
                 run_generation = Some(generation);
+                stopping.store(false, Ordering::SeqCst);
                 if let Ok(mut slot) = latest.lock() {
                     *slot = None;
                 }
@@ -153,7 +164,7 @@ fn run(
                     &events,
                     &waker,
                     &mut reducer,
-                    run.as_mut(),
+                    run.as_mut().map(|run| (run, stopping.as_ref())),
                     &latest,
                 );
                 last_capture = Instant::now();
@@ -209,7 +220,7 @@ fn run(
                     &events,
                     &waker,
                     &mut reducer,
-                    run.as_mut(),
+                    run.as_mut().map(|run| (run, stopping.as_ref())),
                     &latest,
                 );
                 last_capture = Instant::now();
@@ -230,7 +241,7 @@ fn capture(
     events: &Sender<ScreenEvent>,
     waker: &Waker,
     reducer: &mut ReducerState,
-    run: Option<&mut SyncRun>,
+    run: Option<(&mut SyncRun, &AtomicBool)>,
     latest: &Arc<Mutex<Option<SyncFrame>>>,
 ) {
     let Some(name) = selected else {
@@ -242,10 +253,12 @@ fn capture(
     match capture.capture(name, reducer) {
         Ok(scene) => {
             match run {
-                Some(run) => {
-                    let frame = run.apply(scene, Instant::now());
-                    if let Ok(mut slot) = latest.lock() {
-                        *slot = Some(frame);
+                Some((run, stopping)) => {
+                    if !stopping.load(Ordering::SeqCst) {
+                        let frame = run.apply(scene, Instant::now());
+                        if let Ok(mut slot) = latest.lock() {
+                            *slot = Some(frame);
+                        }
                     }
                 }
                 None => {

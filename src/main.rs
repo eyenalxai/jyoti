@@ -95,7 +95,7 @@ const SCENES: &[(&str, SceneFn)] = &[
             },
         ];
         app.sync.selected_monitor = Some("eDP-1".to_owned());
-        app.sync.status = RunPhase::Running(0);
+        app.sync.status = RunPhase::Running(1);
         app.sync.gain = 1.2;
         app.sync.colour_intensity = 35.0;
         app.sync.derived = Some(crate::screen::intensity::intensify(

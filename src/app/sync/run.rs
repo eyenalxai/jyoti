@@ -1,7 +1,3 @@
-use std::time::Duration;
-
-pub const STALE_AFTER: Duration = Duration::from_secs(5);
-
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub enum RunPhase {
     #[default]

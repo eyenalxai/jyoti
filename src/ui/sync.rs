@@ -19,7 +19,7 @@ const STAGE_HEIGHT: f32 = 190.0;
 
 pub fn view(app: &App, k: &Kit, layers: &mut Vec<El>) -> El {
     let controls = app.sync.controls();
-    let active = app.sync.status.is_active();
+    let active = controls.stop;
     let paused = controls.resume;
 
     let start = Button::new("Start sync")
