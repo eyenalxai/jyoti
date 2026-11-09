@@ -188,9 +188,9 @@ desktop. It is chosen in Settings and remembered in the preferences file.
 
 The three section buttons under the window title: Control, Sync and Settings.
 They are the only navigation. The active section is marked by a brass rule under
-its label. A form, the colour picker and the remove confirmation replace the tabs
-and carry a Back control. A section change moves horizontally; a subpage takes
-the tab bar with the page it replaces.
+its label. A form, the colour picker and the remove confirmation sit below the
+tabs and carry a Back control. Only the content below the tab bar moves between
+screens; the tabs stay put.
 
 ## Toast
 

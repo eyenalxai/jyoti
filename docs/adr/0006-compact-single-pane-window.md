@@ -33,8 +33,8 @@ and no bulb table. The active section uses a tinted accent pill so it reads
 against the page rather than blending into it.
 A missing bulb set shows one compact empty panel with one Add action. Add, edit,
 remove, refresh, colour and screen sync each have one entry point. Forms, the
-colour picker and remove confirmation replace the tabs and carry a Back control.
-The colour picker is a live preview with hue, saturation and brightness
+colour picker and remove confirmation sit below the tabs and carry a Back
+control. The colour picker is a live preview with hue, saturation and brightness
 gradients, not a channel form.
 
 The readable scale starts at 13 points for captions and 14 for control text.

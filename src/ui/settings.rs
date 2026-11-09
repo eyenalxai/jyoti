@@ -1,10 +1,12 @@
 use rune::{El, ScrollSpec, Tx, col, row, text};
-use rune_kit::{Kit, SegmentedControl};
+use rune_kit::Kit;
 
 use crate::app::App;
 use crate::app::state::ToastKind;
 use crate::bulb::store::Appearance;
-use crate::ui::widget::{COPY, LOCK, PAGE_PAD, fact_row, group, hairline, setting_row};
+use crate::ui::widget::{
+    COPY, LOCK, PAGE_PAD, fact_row, group, hairline, segmented_switch, setting_row,
+};
 
 pub fn view(app: &App, k: &Kit) -> El {
     let appearance = group(
@@ -14,15 +16,16 @@ pub fn view(app: &App, k: &Kit) -> El {
             .w_full()
             .gap(8.0)
             .padding(10.0)
-            .child(
-                SegmentedControl::new(&["Light", "Dark", "System"], Some(app.appearance.index()))
-                    .label("Theme")
-                    .width(None)
-                    .on_pick(|app: &mut App, index, tx: &mut Tx| {
-                        app.set_appearance(Appearance::from_index(index), tx);
-                    })
-                    .build(k),
-            )
+            .child(segmented_switch(
+                k,
+                "appearance",
+                "Theme",
+                &["Light", "Dark", "System"],
+                Some(app.appearance.index()),
+                |app: &mut App, index, tx| {
+                    app.set_appearance(Appearance::from_index(index), tx);
+                },
+            ))
             .child(
                 text("System follows the desktop.".to_owned())
                     .font(k.ty.small)
