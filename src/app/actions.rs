@@ -3,7 +3,8 @@ use std::time::{Duration, Instant};
 use rune::{TextEdit, Tx};
 
 use crate::app::App;
-use crate::app::state::{FormMode, FormState, Screen, StopPhase, Toast, ToastKind};
+use crate::app::state::{Dashboard, FormMode, FormState, Screen, Toast, ToastKind};
+use crate::app::sync::restore::StopPhase;
 use crate::bulb::aggregate::AggregatePower;
 use crate::bulb::model::{
     Bulb, BulbField, BulbState, ColorMode, NEUTRAL_TEMPERATURE, Rgb, new_id, trim_model,
@@ -274,18 +275,8 @@ impl App {
     }
 
     pub(crate) fn flush_pending(&mut self) {
-        self.dashboard.due_at = None;
-        let brightness = std::mem::take(&mut self.dashboard.pending_brightness);
-        for (id, value) in brightness {
-            self.send(&id, Command::SetBrightness(value));
-        }
-        let temperature = std::mem::take(&mut self.dashboard.pending_temperature);
-        for (id, value) in temperature {
-            self.send(&id, Command::SetTemperature(value));
-        }
-        let color = std::mem::take(&mut self.dashboard.pending_color);
-        for (id, value) in color {
-            self.send(&id, Command::SetColor(value));
+        for (id, command) in pending_commands(&mut self.dashboard) {
+            self.send(&id, command);
         }
     }
 
@@ -648,9 +639,7 @@ impl App {
         }
         if self.sync.stop != StopPhase::Idle {
             let stop_deadline = Instant::now() + Duration::from_millis(2_000);
-            while Instant::now() < stop_deadline
-                && matches!(self.sync.stop, StopPhase::Waiting { .. })
-            {
+            loop {
                 let mut events = Vec::new();
                 if let Some(handle) = &self.screen_handle {
                     while let Ok(event) = handle.events.try_recv() {
@@ -660,7 +649,9 @@ impl App {
                 for event in events {
                     self.handle_screen_event(event);
                 }
-                if !matches!(self.sync.stop, StopPhase::Waiting { .. }) {
+                if !matches!(self.sync.stop, StopPhase::Waiting { .. })
+                    || Instant::now() >= stop_deadline
+                {
                     break;
                 }
                 std::thread::sleep(Duration::from_millis(5));
@@ -672,9 +663,12 @@ impl App {
                 StopPhase::Restoring { deadline } => deadline,
                 StopPhase::Idle | StopPhase::Waiting { .. } => Instant::now(),
             };
-            while Instant::now() < restore_deadline && self.sync.restore.is_open() {
+            loop {
                 while let Ok(event) = self.worker_events.try_recv() {
                     let _ = self.handle_worker_event(event);
+                }
+                if !self.sync.restore.is_open() || Instant::now() >= restore_deadline {
+                    break;
                 }
                 std::thread::sleep(Duration::from_millis(20));
             }
@@ -691,5 +685,75 @@ impl App {
     pub(crate) fn single_state(&self) -> BulbState {
         let fallback = BulbState::default();
         self.selected_state().cloned().unwrap_or(fallback)
+    }
+}
+
+fn pending_commands(dashboard: &mut Dashboard) -> Vec<(String, Command)> {
+    dashboard.due_at = None;
+    let mut commands = Vec::new();
+    for (id, value) in std::mem::take(&mut dashboard.pending_brightness) {
+        commands.push((id, Command::SetBrightness(value)));
+    }
+    for (id, value) in std::mem::take(&mut dashboard.pending_temperature) {
+        commands.push((id, Command::SetTemperature(value)));
+    }
+    for (id, value) in std::mem::take(&mut dashboard.pending_color) {
+        commands.push((id, Command::SetColor(value)));
+    }
+    commands
+}
+
+#[cfg(test)]
+mod tests {
+    use std::time::{Duration, Instant};
+
+    use super::pending_commands;
+    use crate::app::state::Dashboard;
+    use crate::bulb::model::Rgb;
+    use crate::bulb::worker::Command;
+
+    #[test]
+    fn the_last_pending_control_values_become_commands() {
+        let mut dashboard = Dashboard::default();
+        dashboard.pending_brightness.insert("desk".to_owned(), 40);
+        dashboard
+            .pending_temperature
+            .insert("shelf".to_owned(), 3_000);
+        dashboard
+            .pending_color
+            .insert("ceiling".to_owned(), Rgb::new(1, 2, 3));
+        dashboard.due_at = Some(Instant::now() + Duration::from_millis(160));
+
+        let commands = pending_commands(&mut dashboard);
+
+        assert_eq!(commands.len(), 3);
+        let mut brightness = false;
+        let mut temperature = false;
+        let mut color = false;
+        for (id, command) in commands {
+            match command {
+                Command::SetBrightness(value) => {
+                    assert_eq!(id, "desk");
+                    assert_eq!(value, 40);
+                    brightness = true;
+                }
+                Command::SetTemperature(value) => {
+                    assert_eq!(id, "shelf");
+                    assert_eq!(value, 3_000);
+                    temperature = true;
+                }
+                Command::SetColor(value) => {
+                    assert_eq!(id, "ceiling");
+                    assert_eq!(value, Rgb::new(1, 2, 3));
+                    color = true;
+                }
+                _ => {}
+            }
+        }
+        assert!(brightness && temperature && color);
+        assert!(dashboard.due_at.is_none());
+        assert!(dashboard.pending_brightness.is_empty());
+        assert!(dashboard.pending_temperature.is_empty());
+        assert!(dashboard.pending_color.is_empty());
     }
 }

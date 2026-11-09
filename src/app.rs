@@ -11,9 +11,10 @@ use std::time::{Duration, Instant};
 use rune::{Tx, Waker};
 
 use crate::app::state::{
-    ColorState, Dashboard, FormState, Navigation, Screen, StopPhase, SyncState, Toast, ToastKind,
+    ColorState, Dashboard, FormState, Navigation, Screen, SyncState, Toast, ToastKind,
     nav_direction, toast_duration,
 };
+use crate::app::sync::restore::StopPhase;
 use crate::bulb::keyring::KeyringStore;
 use crate::bulb::model::{Bulb, BulbState, ColorMode, Rgb};
 use crate::bulb::selection::{Selection, resolve_selection};

@@ -6,8 +6,8 @@ use std::sync::mpsc::Sender;
 use std::time::{Duration, Instant};
 
 use crate::app::App;
-use crate::app::state::{StopPhase, ToastKind};
-use crate::app::sync::restore::{RestorePlan, RestoreRequest};
+use crate::app::state::ToastKind;
+use crate::app::sync::restore::{RestorePlan, RestoreRequest, StopPhase};
 use crate::app::sync::run::RunEvent;
 use crate::bulb::model::{Bulb, BulbState, Rgb};
 use crate::bulb::worker::Command;
@@ -138,8 +138,9 @@ impl App {
             until: Instant::now() + Duration::from_millis(2_000),
         };
 
+        let generation = self.sync.status.generation().unwrap_or(0);
         let sent = self.screen_handle.as_ref().is_some_and(|handle| {
-            handle.halt();
+            handle.halt(generation);
             handle.send(ScreenCommand::Stop)
         });
         if !sent {
@@ -180,7 +181,7 @@ impl App {
                         self.sync.restore.mark_failed(&id);
                     }
                 }
-                RestoreRequest::Missing { id } => self.sync.restore.mark_failed(&id),
+                RestoreRequest::MissingValue { id } => self.sync.restore.mark_failed(&id),
             }
         }
         if !self.sync.restore.is_open() && matches!(self.sync.stop, StopPhase::Restoring { .. }) {
@@ -194,7 +195,7 @@ impl App {
         }
         self.sync.stop = StopPhase::Idle;
         let _ = self.sync.apply(RunEvent::Restored);
-        let report = self.sync.restore.report();
+        let report = self.sync.restore.finish();
         let kind = if report.not_restored.is_empty() {
             ToastKind::Success
         } else {
@@ -251,13 +252,9 @@ impl App {
                 self.sync.capture_error = None;
                 let _ = self.sync.apply(RunEvent::Started(generation));
             }
-            ScreenEvent::Stopped {
-                generation,
-                drove_color,
-                drove_brightness,
-            } => {
+            ScreenEvent::Stopped { generation, drove } => {
                 if self.sync.apply(RunEvent::Stopped(generation)).is_ok() {
-                    self.sync.restore.record(&drove_color, &drove_brightness);
+                    self.sync.restore.record(&drove);
                     match self.sync.stop {
                         StopPhase::Waiting { .. } => self.start_restore(),
                         StopPhase::Restoring { deadline } => self.dispatch_restore(deadline),
@@ -303,13 +300,12 @@ impl App {
             output,
             brightness,
             flash_until,
-            drove_color,
-            drove_brightness,
+            drove,
         } = frame;
         if self.sync.apply(RunEvent::Frame).is_err() {
             return;
         }
-        self.sync.restore.record(&drove_color, &drove_brightness);
+        self.sync.restore.record(&drove);
         self.sync.capture_error = None;
         self.note_frame(scene, output);
         self.sync.brightness = brightness;

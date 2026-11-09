@@ -1,6 +1,6 @@
 use std::ffi::c_void;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -15,7 +15,7 @@ use wayland_client::Connection;
 use crate::screen::grid::prepare_frame;
 use crate::screen::monitor::{MonitorInfo, Scene};
 use crate::screen::reducer::{ReducerState, reduce_prepared};
-use crate::screen::sync::{SyncConfig, SyncFrame, SyncRun};
+use crate::screen::sync::{Drove, SyncConfig, SyncFrame, SyncRun};
 
 const TICK: Duration = Duration::from_millis(667);
 const GRID_WIDTH: usize = 64;
@@ -42,14 +42,8 @@ pub enum ScreenCommand {
 pub enum ScreenEvent {
     Monitors(Vec<MonitorInfo>),
     Scene(Scene),
-    Started {
-        generation: u64,
-    },
-    Stopped {
-        generation: u64,
-        drove_color: Vec<String>,
-        drove_brightness: Vec<String>,
-    },
+    Started { generation: u64 },
+    Stopped { generation: u64, drove: Drove },
     Error(String),
     Fatal(String),
 }
@@ -58,7 +52,7 @@ pub struct ScreenHandle {
     pub commands: Sender<ScreenCommand>,
     pub events: Receiver<ScreenEvent>,
     pub latest: Arc<Mutex<Option<SyncFrame>>>,
-    stopping: Arc<AtomicBool>,
+    stopping: Arc<AtomicU64>,
     join: Option<thread::JoinHandle<()>>,
 }
 
@@ -76,7 +70,7 @@ impl ScreenHandle {
         let (commands, inbox) = mpsc::channel::<ScreenCommand>();
         let (outbox, events) = mpsc::channel::<ScreenEvent>();
         let latest = Arc::new(Mutex::new(None));
-        let stopping = Arc::new(AtomicBool::new(false));
+        let stopping = Arc::new(AtomicU64::new(0));
         let thread_latest = Arc::clone(&latest);
         let thread_stopping = Arc::clone(&stopping);
         let join = thread::Builder::new()
@@ -98,8 +92,8 @@ impl ScreenHandle {
         self.commands.send(command).is_ok()
     }
 
-    pub fn halt(&self) {
-        self.stopping.store(true, Ordering::SeqCst);
+    pub fn halt(&self, generation: u64) {
+        self.stopping.store(generation, Ordering::SeqCst);
     }
 }
 
@@ -108,7 +102,7 @@ fn run(
     events: Sender<ScreenEvent>,
     waker: Waker,
     latest: Arc<Mutex<Option<SyncFrame>>>,
-    stopping: Arc<AtomicBool>,
+    stopping: Arc<AtomicU64>,
 ) {
     let mut backend = match Backend::connect() {
         Ok(backend) => backend,
@@ -156,7 +150,7 @@ fn run(
                 selected = Some(monitor);
                 run = Some(SyncRun::new(config));
                 run_generation = Some(generation);
-                stopping.store(false, Ordering::SeqCst);
+                stand_down_halt(stopping.as_ref(), generation);
                 if let Ok(mut slot) = latest.lock() {
                     *slot = None;
                 }
@@ -195,12 +189,8 @@ fn run(
                 running = false;
                 paused = false;
                 let generation = run_generation.take().unwrap_or(0);
-                let (drove_color, drove_brightness) = finish_run(&mut run);
-                let _ = events.send(ScreenEvent::Stopped {
-                    generation,
-                    drove_color,
-                    drove_brightness,
-                });
+                let drove = finish_run(&mut run);
+                let _ = events.send(ScreenEvent::Stopped { generation, drove });
                 waker();
             }
             Some(ScreenCommand::CaptureOnce) => {
@@ -216,12 +206,8 @@ fn run(
             }
             Some(ScreenCommand::Shutdown) => {
                 let generation = run_generation.take().unwrap_or(0);
-                let (drove_color, drove_brightness) = finish_run(&mut run);
-                let _ = events.send(ScreenEvent::Stopped {
-                    generation,
-                    drove_color,
-                    drove_brightness,
-                });
+                let drove = finish_run(&mut run);
+                let _ = events.send(ScreenEvent::Stopped { generation, drove });
                 break;
             }
             None => {
@@ -243,10 +229,18 @@ fn run(
     }
 }
 
-fn finish_run(run: &mut Option<SyncRun>) -> (Vec<String>, Vec<String>) {
-    run.take()
-        .map(|run| (run.drove_color(), run.drove_brightness()))
-        .unwrap_or_default()
+fn finish_run(run: &mut Option<SyncRun>) -> Drove {
+    run.take().map(|run| run.drove()).unwrap_or_default()
+}
+
+fn stand_down_halt(stopping: &AtomicU64, generation: u64) {
+    if stopping.load(Ordering::SeqCst) != generation {
+        stopping.store(0, Ordering::SeqCst);
+    }
+}
+
+fn is_halted(stopping: &AtomicU64) -> bool {
+    stopping.load(Ordering::SeqCst) != 0
 }
 
 fn capture(
@@ -255,7 +249,7 @@ fn capture(
     events: &Sender<ScreenEvent>,
     waker: &Waker,
     reducer: &mut ReducerState,
-    run: Option<(&mut SyncRun, &AtomicBool)>,
+    run: Option<(&mut SyncRun, &AtomicU64)>,
     latest: &Arc<Mutex<Option<SyncFrame>>>,
 ) {
     let Some(name) = selected else {
@@ -268,7 +262,7 @@ fn capture(
         Ok(scene) => {
             match run {
                 Some((run, stopping)) => {
-                    if !stopping.load(Ordering::SeqCst) {
+                    if !is_halted(stopping) {
                         let frame = run.apply(scene, Instant::now());
                         if let Ok(mut slot) = latest.lock() {
                             *slot = Some(frame);
@@ -604,5 +598,40 @@ impl Drop for Downsampler {
         let _ = EGL_INSTALCE.make_current(self._display, None, None, None);
         let _ = EGL_INSTALCE.destroy_surface(self._display, self._surface);
         let _ = EGL_INSTALCE.destroy_context(self._display, self._context);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    use super::{is_halted, stand_down_halt};
+
+    #[test]
+    fn a_start_does_not_clear_a_halt_for_the_same_generation() {
+        let stopping = AtomicU64::new(0);
+        stopping.store(7, Ordering::SeqCst);
+
+        stand_down_halt(&stopping, 7);
+
+        assert!(is_halted(&stopping));
+    }
+
+    #[test]
+    fn a_new_generation_clears_a_previous_halt() {
+        let stopping = AtomicU64::new(7);
+
+        stand_down_halt(&stopping, 8);
+
+        assert!(!is_halted(&stopping));
+    }
+
+    #[test]
+    fn a_fresh_handle_accepts_its_first_generation() {
+        let stopping = AtomicU64::new(0);
+
+        stand_down_halt(&stopping, 1);
+
+        assert!(!is_halted(&stopping));
     }
 }

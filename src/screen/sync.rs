@@ -25,14 +25,19 @@ pub struct SyncConfig {
     pub targets: Vec<SyncTarget>,
 }
 
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Drove {
+    pub color: Vec<String>,
+    pub brightness: Vec<String>,
+}
+
 #[derive(Clone, Debug)]
 pub struct SyncFrame {
     pub scene: Scene,
     pub output: Rgb,
     pub brightness: u8,
     pub flash_until: Option<Instant>,
-    pub drove_color: Vec<String>,
-    pub drove_brightness: Vec<String>,
+    pub drove: Drove,
 }
 
 pub struct SyncRun {
@@ -74,12 +79,11 @@ impl SyncRun {
         self.config = config;
     }
 
-    pub fn drove_color(&self) -> Vec<String> {
-        self.drove_color.iter().cloned().collect()
-    }
-
-    pub fn drove_brightness(&self) -> Vec<String> {
-        self.drove_brightness.iter().cloned().collect()
+    pub fn drove(&self) -> Drove {
+        Drove {
+            color: self.drove_color.iter().cloned().collect(),
+            brightness: self.drove_brightness.iter().cloned().collect(),
+        }
     }
 
     pub fn apply(&mut self, scene: Scene, now: Instant) -> SyncFrame {
@@ -140,8 +144,10 @@ impl SyncRun {
             output,
             brightness: self.brightness,
             flash_until,
-            drove_color,
-            drove_brightness,
+            drove: Drove {
+                color: drove_color,
+                brightness: drove_brightness,
+            },
         }
     }
 }
@@ -218,9 +224,9 @@ mod tests {
         let published = run.apply(scene(Rgb::new(255, 0, 0), 1.0), Instant::now());
 
         assert_eq!(published.brightness, 100);
-        assert_eq!(published.drove_color, vec!["bulb".to_owned()]);
-        assert_eq!(published.drove_brightness, vec!["bulb".to_owned()]);
-        assert_eq!(run.drove_color(), vec!["bulb".to_owned()]);
+        assert_eq!(published.drove.color, vec!["bulb".to_owned()]);
+        assert_eq!(published.drove.brightness, vec!["bulb".to_owned()]);
+        assert_eq!(run.drove().color, vec!["bulb".to_owned()]);
         let commands: Vec<Command> = receiver.try_iter().collect();
         assert!(
             commands
@@ -248,7 +254,7 @@ mod tests {
 
         assert!(receiver.try_iter().next().is_none());
         assert!(published.flash_until.is_none());
-        assert!(published.drove_color.is_empty());
+        assert!(published.drove.color.is_empty());
     }
 
     #[test]
@@ -256,8 +262,8 @@ mod tests {
         let (mut run, receiver) = run(false);
         let published = run.apply(scene(Rgb::new(255, 0, 0), 1.0), Instant::now());
 
-        assert_eq!(published.drove_color, vec!["bulb".to_owned()]);
-        assert!(published.drove_brightness.is_empty());
+        assert_eq!(published.drove.color, vec!["bulb".to_owned()]);
+        assert!(published.drove.brightness.is_empty());
         let commands: Vec<Command> = receiver.try_iter().collect();
         assert!(
             commands
@@ -301,8 +307,8 @@ mod tests {
             now + Duration::from_millis(700),
         );
 
-        assert!(published.drove_color.is_empty());
-        assert_eq!(published.drove_brightness, vec!["bulb".to_owned()]);
+        assert!(published.drove.color.is_empty());
+        assert_eq!(published.drove.brightness, vec!["bulb".to_owned()]);
         let commands: Vec<Command> = receiver.try_iter().collect();
         assert!(
             commands

@@ -3,7 +3,7 @@ use std::time::{Duration, Instant};
 
 use rune::TextEdit;
 
-use crate::app::sync::restore::RestorePlan;
+use crate::app::sync::restore::{RestorePlan, StopPhase};
 use crate::app::sync::run::{Controls, RunEvent, RunPhase, RunRejection};
 use crate::bulb::model::{BulbField, BulbState, Rgb};
 use crate::screen::monitor::{MonitorInfo, Scene};
@@ -147,18 +147,6 @@ pub struct Dashboard {
     pub pending_temperature: HashMap<String, u16>,
     pub pending_color: HashMap<String, Rgb>,
     pub due_at: Option<Instant>,
-}
-
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub enum StopPhase {
-    #[default]
-    Idle,
-    Waiting {
-        until: Instant,
-    },
-    Restoring {
-        deadline: Instant,
-    },
 }
 
 pub struct SyncState {
