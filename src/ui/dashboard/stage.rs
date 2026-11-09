@@ -8,7 +8,7 @@ use crate::screen::color::kelvin_to_rgb;
 use crate::ui::theme;
 use crate::ui::widget::{ALERT, BULB, PAGE_PAD, dot, nameplate, rgb_color, stage_surface};
 
-use super::{STAGE_HEIGHT, single_power};
+use super::{STAGE_HEIGHT, health_word, single_power};
 
 pub fn light_stage(app: &App, k: &Kit) -> El {
     let all = matches!(app.selection, Some(Selection::All));
@@ -126,7 +126,13 @@ pub fn light_stage(app: &App, k: &Kit) -> El {
     } else {
         format!("{brightness}")
     };
-    let (status_ink, status_word) = stage_status(power);
+    let (status_ink, status_word) = match app.selection.as_ref() {
+        Some(Selection::Bulb(id)) => match health_word(app.health.status(id)) {
+            Some(word) => (theme::warning_on_plate(), word),
+            None => stage_status(power),
+        },
+        _ => stage_status(power),
+    };
     let plate_ink = theme::ink();
     let plate_muted = plate_ink.alpha(0.62);
     let plate = nameplate(

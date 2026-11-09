@@ -8,6 +8,7 @@ use rune_kit::{
 
 use crate::app::App;
 use crate::bulb::aggregate::{AggregatePower, AggregateState, LightQuality, light_quality_of};
+use crate::bulb::health::HealthStatus;
 use crate::bulb::model::{
     BulbState, Rgb, TEMPERATURE_MAX, TEMPERATURE_MIN, brightness_from_fraction,
     fraction_of_brightness, fraction_of_temperature, temperature_from_fraction,
@@ -86,15 +87,16 @@ fn picker_row(app: &App, k: &Kit, layers: &mut Vec<El>) -> El {
     }
     for bulb in &app.bulbs {
         let state = app.states.get(&bulb.id);
-        let tone = if app.errors.contains_key(&bulb.id) || app.sync.unreachable.contains(&bulb.id) {
+        let health = app.health.status(&bulb.id);
+        let tone = if health.is_down() {
             k.c.danger.icon
         } else {
             power_tone(k, state.map_or(AggregatePower::Unknown, single_power))
         };
-        let power = if app.errors.contains_key(&bulb.id) {
-            "Error"
-        } else if app.sync.unreachable.contains(&bulb.id) {
-            "Unreachable"
+        let power = if let Some(word) = health_word(health) {
+            word
+        } else if health == HealthStatus::Connecting {
+            "Connecting"
         } else {
             match state.and_then(|state| state.power) {
                 Some(true) => "On",
@@ -301,14 +303,16 @@ fn control_deck(app: &App, k: &Kit, layers: &mut Vec<El>) -> El {
                 k.c.info,
             )));
     }
-    if let Some(error) = app
-        .selection
-        .as_ref()
-        .and_then(|selection| match selection {
-            Selection::Bulb(id) => app.errors.get(id).cloned(),
-            Selection::All => app.errors.values().next().cloned(),
-        })
-    {
+    let error = match app.selection.as_ref() {
+        Some(Selection::Bulb(id)) => app.health.message(id).map(str::to_owned),
+        Some(Selection::All) => app
+            .bulbs
+            .iter()
+            .find_map(|bulb| app.health.message(&bulb.id))
+            .map(str::to_owned),
+        None => None,
+    };
+    if let Some(error) = error {
         deck = deck.child(hairline(k)).child(
             row()
                 .w_full()
@@ -616,6 +620,10 @@ fn single_power(state: &BulbState) -> AggregatePower {
         Some(false) => AggregatePower::Off,
         None => AggregatePower::Unknown,
     }
+}
+
+pub(super) fn health_word(status: HealthStatus) -> Option<&'static str> {
+    status.is_down().then_some("Unreachable")
 }
 
 fn power_tone(k: &Kit, power: AggregatePower) -> Color {

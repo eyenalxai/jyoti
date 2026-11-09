@@ -6,12 +6,13 @@ use crate::app::App;
 use crate::app::state::{Dashboard, FormMode, FormState, Screen, Toast, ToastKind};
 use crate::app::sync::restore::{RESTORE_WINDOW, StopPhase};
 use crate::bulb::aggregate::AggregatePower;
+use crate::bulb::health::HealthEvent;
 use crate::bulb::model::{
     Bulb, BulbField, BulbState, ColorMode, NEUTRAL_TEMPERATURE, Rgb, new_id, trim_model,
     validate_draft,
 };
 use crate::bulb::selection::{Selection, resolve_selection, selection_after_add};
-use crate::bulb::worker::{Command, WorkerEvent};
+use crate::bulb::worker::{Command, WorkerEvent, WorkerExit};
 use crate::screen::capture::ScreenCommand;
 use crate::screen::gain::normalize_sync_gain;
 use crate::screen::intensity::{intensify, normalize_sync_intensity};
@@ -31,64 +32,80 @@ impl App {
 
     pub(crate) fn spawn_worker(&mut self, bulb: &Bulb) {
         if let Some(previous) = self.workers.remove(&bulb.id) {
-            let _ = previous.send(Command::Stop);
+            previous.stop();
         }
         let Some(waker) = self.waker.clone() else {
             return;
         };
-        let sender = crate::bulb::worker::spawn(
+        let handle = crate::bulb::worker::spawn(
             bulb.clone(),
             self.keyring.clone(),
             self.config.clone(),
             self.worker_sender.clone(),
             waker,
         );
-        self.workers.insert(bulb.id.clone(), sender);
-        self.errors.remove(&bulb.id);
+        self.health.remove(&bulb.id);
+        self.workers.insert(bulb.id.clone(), handle);
     }
 
     pub(crate) fn handle_worker_event(&mut self, event: WorkerEvent) -> bool {
+        let id = event.id();
+        let worker = event.worker();
+        if !self.bulbs.iter().any(|bulb| bulb.id == id) {
+            return false;
+        }
+        if !self
+            .workers
+            .get(id)
+            .is_some_and(|handle| handle.is_current(worker))
+        {
+            return false;
+        }
         let mut reconfigure = false;
         let changed = match event {
-            WorkerEvent::State { id, state } => {
-                let was_on = self.states.get(&id).and_then(|state| state.power) == Some(true);
-                let is_on = state.power == Some(true);
-                if self.sync.status.is_running()
-                    && let Some(bulb) = self.bulbs.iter().find(|bulb| bulb.id == id)
-                {
-                    reconfigure |= self.sync.restore.observe(&id, &bulb.name, &state);
-                }
-                self.states.insert(id.clone(), state);
-                self.errors.remove(&id);
-                self.sync.failures.remove(&id);
-                reconfigure |= was_on != is_on;
-                if self.sync.status.is_running() {
-                    reconfigure |= self.sync.unreachable.remove(&id);
-                }
-                true
-            }
-            WorkerEvent::Sent { id } => {
-                let changed = self.sync.unreachable.remove(&id);
-                reconfigure = changed;
-                let had_error = self.errors.remove(&id).is_some();
-                self.sync.failures.remove(&id);
-                changed || had_error
-            }
-            WorkerEvent::Error { id, error } => {
-                self.errors.insert(id.clone(), error.to_string());
-                if self.sync.status.is_running() {
-                    let failures = self.sync.failures.entry(id.clone()).or_insert(0);
-                    *failures = failures.saturating_add(1);
-                    if *failures >= 3 {
-                        reconfigure = self.sync.unreachable.insert(id.clone());
+            WorkerEvent::State {
+                id,
+                state,
+                observed_at,
+                ..
+            } => {
+                let health_changed = self.health.apply(&id, HealthEvent::State);
+                reconfigure |= health_changed;
+                if self.edits.accepts(&id, observed_at) {
+                    let was_on = self.states.get(&id).and_then(|state| state.power) == Some(true);
+                    let is_on = state.power == Some(true);
+                    if self.sync.status.is_running()
+                        && let Some(bulb) = self.bulbs.iter().find(|bulb| bulb.id == id)
+                    {
+                        reconfigure |= self.sync.restore.observe(&id, &bulb.name, &state);
                     }
+                    self.states.insert(id.clone(), state);
+                    reconfigure |= was_on != is_on;
+                    true
+                } else {
+                    health_changed
                 }
-                self.notify(error.to_string(), ToastKind::Error);
+            }
+            WorkerEvent::Sent { id, .. } => {
+                let changed = self.health.apply(&id, HealthEvent::Sent);
+                reconfigure = changed;
+                changed
+            }
+            WorkerEvent::Error { id, error, .. } => {
+                let message = error.to_string();
+                let changed = self.health.apply(&id, HealthEvent::Error(message.clone()));
+                self.notify(message, ToastKind::Error);
+                reconfigure = changed;
                 true
             }
-            WorkerEvent::Restored { id, generation, ok } => {
+            WorkerEvent::Restored {
+                id, generation, ok, ..
+            } => {
                 let current = self.sync.status.generation() == Some(generation);
                 if current {
+                    if ok {
+                        reconfigure |= self.health.apply(&id, HealthEvent::Sent);
+                    }
                     self.sync.restore.acknowledge(&id, ok);
                     if self.sync.stop_seen && !self.sync.restore.is_open() {
                         self.finish_restore();
@@ -96,15 +113,18 @@ impl App {
                 }
                 current
             }
-            WorkerEvent::Reachable { id, reachable } => {
-                if reachable {
-                    let changed = self.sync.unreachable.remove(&id);
-                    reconfigure = changed;
-                    let had_error = self.errors.remove(&id).is_some();
-                    changed || had_error
+            WorkerEvent::Reachable { id, reachable, .. } => {
+                let changed = self.health.apply(&id, HealthEvent::Reachable(reachable));
+                reconfigure = changed;
+                changed
+            }
+            WorkerEvent::Exited { id, exit, .. } => {
+                self.workers.remove(&id);
+                reconfigure = true;
+                if exit == WorkerExit::Failed {
+                    self.health.apply(&id, HealthEvent::Exited)
                 } else {
-                    reconfigure = self.sync.unreachable.insert(id);
-                    reconfigure
+                    false
                 }
             }
         };
@@ -123,17 +143,16 @@ impl App {
                 self.startup_error = None;
                 let ids: Vec<String> = self.workers.keys().cloned().collect();
                 for id in ids {
-                    if let Some(sender) = self.workers.remove(&id) {
-                        let _ = sender.send(Command::Stop);
+                    if let Some(handle) = self.workers.remove(&id) {
+                        handle.stop();
                     }
                 }
                 self.bulbs = bulbs;
                 let keep: std::collections::HashSet<String> =
                     self.bulbs.iter().map(|bulb| bulb.id.clone()).collect();
                 self.states.retain(|id, _| keep.contains(id));
-                self.errors.clear();
-                self.sync.unreachable.clear();
-                self.sync.failures.clear();
+                self.health.retain(&keep);
+                self.edits.clear();
                 self.selection = resolve_selection(&self.bulbs, self.selection.as_ref());
                 let bulbs = self.bulbs.clone();
                 for bulb in bulbs {
@@ -197,6 +216,7 @@ impl App {
                 state.mode = ColorMode::Temperature;
                 state.temperature = Some(temperature);
             }
+            self.edits.touch(&id);
             self.send(&id, Command::SetTemperature(temperature));
         }
     }
@@ -220,6 +240,7 @@ impl App {
                 state.mode = ColorMode::Color;
                 state.color = Some(color);
             }
+            self.edits.touch(&id);
             self.send(&id, Command::SetColor(color));
         }
     }
@@ -241,6 +262,7 @@ impl App {
                     },
                 );
             }
+            self.edits.touch(&id);
             self.dashboard.pending_brightness.insert(id, value);
         }
         self.mark_pending();
@@ -265,6 +287,7 @@ impl App {
                     },
                 );
             }
+            self.edits.touch(&id);
             self.dashboard.pending_temperature.insert(id, value);
         }
         self.mark_pending();
@@ -281,6 +304,7 @@ impl App {
     }
 
     pub(crate) fn set_local_power(&mut self, id: &str, on: bool) {
+        self.edits.touch(id);
         if let Some(state) = self.states.get_mut(id) {
             state.power = Some(on);
         } else {
@@ -295,19 +319,28 @@ impl App {
     }
 
     pub(crate) fn send(&mut self, id: &str, command: Command) {
-        let Some(sender) = self.workers.get(id) else {
-            let name = self
-                .bulbs
-                .iter()
-                .find(|bulb| bulb.id == id)
-                .map_or_else(|| "the bulb".to_owned(), |bulb| bulb.name.clone());
+        let name = self
+            .bulbs
+            .iter()
+            .find(|bulb| bulb.id == id)
+            .map_or_else(|| "the bulb".to_owned(), |bulb| bulb.name.clone());
+        let Some(handle) = self.workers.get(id) else {
             self.notify(
                 format!("No connection is open to {name}."),
                 ToastKind::Error,
             );
             return;
         };
-        let _ = sender.send(command);
+        if handle.send(command).is_err() {
+            self.workers.remove(id);
+            if self.health.apply(id, HealthEvent::Exited) {
+                self.notify(
+                    format!("The connection to {name} stopped."),
+                    ToastKind::Error,
+                );
+            }
+            self.configure_sync();
+        }
     }
 
     pub(crate) fn open_add(&mut self) {
@@ -533,9 +566,10 @@ impl App {
         }
         self.bulbs = remaining;
         self.states.remove(&id);
-        self.errors.remove(&id);
-        if let Some(sender) = self.workers.remove(&id) {
-            let _ = sender.send(Command::Stop);
+        self.health.remove(&id);
+        self.edits.remove(&id);
+        if let Some(handle) = self.workers.remove(&id) {
+            handle.stop();
         }
         self.selection =
             crate::bulb::selection::resolve_selection(&self.bulbs, self.selection.as_ref());
@@ -625,9 +659,22 @@ impl App {
     }
 
     pub(crate) fn probe_unreachable(&mut self) {
-        let ids: Vec<String> = self.sync.unreachable.iter().cloned().collect();
-        for id in ids {
-            self.send(&id, Command::Probe);
+        let mut gone = Vec::new();
+        for id in self.health.unreachable_ids() {
+            let Some(handle) = self.workers.get(&id) else {
+                continue;
+            };
+            if handle.send(Command::Probe).is_err() {
+                gone.push(id);
+            }
+        }
+        let had_gone = !gone.is_empty();
+        for id in gone {
+            self.workers.remove(&id);
+            self.health.apply(&id, HealthEvent::Exited);
+        }
+        if had_gone {
+            self.configure_sync();
         }
     }
 
@@ -684,8 +731,8 @@ impl App {
             }
             self.finish_restore();
         }
-        for sender in self.workers.values() {
-            let _ = sender.send(Command::Stop);
+        for handle in self.workers.values() {
+            handle.stop();
         }
         self.screen_handle.take();
         self.preferences_due = None;

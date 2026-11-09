@@ -1,16 +1,16 @@
 pub(crate) mod restore;
 pub(crate) mod run;
 
-use std::collections::{HashMap, HashSet};
-use std::sync::mpsc::Sender;
+use std::collections::HashMap;
 use std::time::Instant;
 
 use crate::app::App;
 use crate::app::state::ToastKind;
 use crate::app::sync::restore::{RESTORE_WINDOW, RestorePlan, RestoreRequest, StopPhase};
 use crate::app::sync::run::RunEvent;
+use crate::bulb::health::HealthSet;
 use crate::bulb::model::{Bulb, BulbState, Rgb};
-use crate::bulb::worker::Command;
+use crate::bulb::worker::{Command, WorkerHandle};
 use crate::screen::capture::{ScreenCommand, ScreenEvent};
 use crate::screen::intensity::intensify;
 use crate::screen::monitor::Scene;
@@ -42,6 +42,7 @@ impl App {
         if self.sync.apply(RunEvent::Start(generation)).is_err() {
             return;
         }
+        self.health.begin_run();
         self.flush_pending();
         self.sync.restore.begin(&self.bulbs, &self.states);
 
@@ -52,8 +53,6 @@ impl App {
         self.sync.flash_until = None;
         self.sync.stop = StopPhase::Idle;
         self.sync.stop_seen = false;
-        self.sync.unreachable.clear();
-        self.sync.failures.clear();
         self.sync.capture_error = None;
         self.sync.capture_failed = false;
 
@@ -81,6 +80,7 @@ impl App {
                 generation,
                 message: message.clone(),
             });
+            self.health.end_run();
             self.notify(message, ToastKind::Error);
         }
     }
@@ -93,7 +93,7 @@ impl App {
                 &self.bulbs,
                 &self.states,
                 &self.workers,
-                &self.sync.unreachable,
+                &self.health,
                 &self.sync.restore,
             ),
         }
@@ -202,6 +202,7 @@ impl App {
         }
         self.sync.stop = StopPhase::Idle;
         let _ = self.sync.apply(RunEvent::Restored);
+        self.health.end_run();
         let report = self.sync.restore.finish();
         let kind = if report.not_restored.is_empty() {
             ToastKind::Success
@@ -296,6 +297,8 @@ impl App {
                 }
                 if !failed {
                     self.sync.capture_error = Some(message.clone());
+                } else {
+                    self.health.end_run();
                 }
                 self.notify(message, ToastKind::Error);
             }
@@ -331,18 +334,18 @@ impl App {
 fn sync_targets(
     bulbs: &[Bulb],
     states: &HashMap<String, BulbState>,
-    workers: &HashMap<String, Sender<Command>>,
-    unreachable: &HashSet<String>,
+    workers: &HashMap<String, WorkerHandle>,
+    health: &HealthSet,
     restore: &RestorePlan,
 ) -> Vec<SyncTarget> {
     bulbs
         .iter()
-        .filter(|bulb| !unreachable.contains(&bulb.id))
+        .filter(|bulb| !health.run_unreachable(&bulb.id))
         .filter(|bulb| restore.covers(&bulb.id))
         .filter_map(|bulb| {
             Some(SyncTarget {
                 id: bulb.id.clone(),
-                sender: workers.get(&bulb.id)?.clone(),
+                sender: workers.get(&bulb.id)?.capture_sender(),
                 on: states.get(&bulb.id).and_then(|state| state.power) == Some(true),
             })
         })
@@ -351,13 +354,14 @@ fn sync_targets(
 
 #[cfg(test)]
 mod tests {
-    use std::collections::{HashMap, HashSet};
+    use std::collections::HashMap;
     use std::sync::mpsc::channel;
 
     use super::sync_targets;
     use crate::app::sync::restore::RestorePlan;
+    use crate::bulb::health::{HealthEvent, HealthSet};
     use crate::bulb::model::{Bulb, BulbState, ColorMode, Rgb};
-    use crate::bulb::worker::Command;
+    use crate::bulb::worker::test_handle;
 
     fn bulb(id: &str, name: &str) -> Bulb {
         Bulb {
@@ -390,20 +394,20 @@ mod tests {
         let (desk_sender, _desk_commands) = channel();
         let (shelf_sender, _shelf_commands) = channel();
         let workers = HashMap::from([
-            ("desk".to_owned(), desk_sender),
-            ("shelf".to_owned(), shelf_sender),
+            ("desk".to_owned(), test_handle(desk_sender)),
+            ("shelf".to_owned(), test_handle(shelf_sender)),
         ]);
         let mut restore = RestorePlan::default();
         restore.observe("desk", "Desk lamp", &state(true));
 
-        let targets = sync_targets(&bulbs, &states, &workers, &HashSet::new(), &restore);
+        let targets = sync_targets(&bulbs, &states, &workers, &HealthSet::default(), &restore);
 
         let ids: Vec<String> = targets.into_iter().map(|target| target.id).collect();
         assert_eq!(ids, vec!["desk".to_owned()]);
     }
 
     #[test]
-    fn an_unreachable_bulb_is_not_a_target() {
+    fn a_bulb_the_run_marked_is_not_a_target() {
         let desk = bulb("desk", "Desk lamp");
         let shelf = bulb("shelf", "Shelf lamp");
         let bulbs = vec![desk, shelf];
@@ -414,15 +418,38 @@ mod tests {
         let (desk_sender, _desk_commands) = channel();
         let (shelf_sender, _shelf_commands) = channel();
         let workers = HashMap::from([
-            ("desk".to_owned(), desk_sender),
-            ("shelf".to_owned(), shelf_sender),
+            ("desk".to_owned(), test_handle(desk_sender)),
+            ("shelf".to_owned(), test_handle(shelf_sender)),
         ]);
         let mut restore = RestorePlan::default();
         restore.observe("desk", "Desk lamp", &state(true));
         restore.observe("shelf", "Shelf lamp", &state(true));
-        let unreachable = HashSet::from(["shelf".to_owned()]);
+        let mut health = HealthSet::default();
+        health.begin_run();
+        for message in ["one", "two", "three"] {
+            health.apply("shelf", HealthEvent::Error(message.to_owned()));
+        }
 
-        let targets = sync_targets(&bulbs, &states, &workers, &unreachable, &restore);
+        let targets = sync_targets(&bulbs, &states, &workers, &health, &restore);
+
+        let ids: Vec<String> = targets.into_iter().map(|target| target.id).collect();
+        assert_eq!(ids, vec!["desk".to_owned()]);
+    }
+
+    #[test]
+    fn a_standing_failure_is_retried_by_the_run() {
+        let desk = bulb("desk", "Desk lamp");
+        let bulbs = vec![desk];
+        let states = HashMap::from([("desk".to_owned(), state(true))]);
+        let (desk_sender, _desk_commands) = channel();
+        let workers = HashMap::from([("desk".to_owned(), test_handle(desk_sender))]);
+        let mut restore = RestorePlan::default();
+        restore.observe("desk", "Desk lamp", &state(true));
+        let mut health = HealthSet::default();
+        health.apply("desk", HealthEvent::Error("no answer".to_owned()));
+        health.begin_run();
+
+        let targets = sync_targets(&bulbs, &states, &workers, &health, &restore);
 
         let ids: Vec<String> = targets.into_iter().map(|target| target.id).collect();
         assert_eq!(ids, vec!["desk".to_owned()]);
@@ -433,11 +460,11 @@ mod tests {
         let desk = bulb("desk", "Desk lamp");
         let bulbs = vec![desk];
         let states = HashMap::from([("desk".to_owned(), state(true))]);
-        let workers = HashMap::<String, std::sync::mpsc::Sender<Command>>::new();
+        let workers = HashMap::new();
         let mut restore = RestorePlan::default();
         restore.observe("desk", "Desk lamp", &state(true));
 
-        let targets = sync_targets(&bulbs, &states, &workers, &HashSet::new(), &restore);
+        let targets = sync_targets(&bulbs, &states, &workers, &HealthSet::default(), &restore);
 
         assert!(targets.is_empty());
     }
