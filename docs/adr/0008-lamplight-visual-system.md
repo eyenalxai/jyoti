@@ -36,8 +36,8 @@ generic kit:
 - **One deck.** Power, brightness, mode and warmth or colour sit in one panel of
   hairline-separated rows. A screen sync run dims the rows it owns and leaves
   power available.
-- **Quiet navigation.** The three sections are text tabs marked by a brass rule
-  under the active label. The filled accent pill is gone.
+- **Quiet navigation.** The three sections are text tabs; the active label and
+  its rule take the brass accent. The filled accent pill is gone.
 - **Motion.** Section changes push only the content below the tab bar; the tabs
   stay put, and a subpage appears in that same content area with a Back control.
   White and Colour swap their tuning rows sideways. Layout and control changes
