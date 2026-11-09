@@ -1,6 +1,6 @@
 use std::ffi::c_void;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -15,7 +15,7 @@ use wayland_client::Connection;
 use crate::screen::grid::prepare_frame;
 use crate::screen::monitor::{MonitorInfo, Scene};
 use crate::screen::reducer::{ReducerState, reduce_prepared};
-use crate::screen::sync::{SyncConfig, SyncFrame, SyncRun};
+use crate::screen::sync::{Drove, SyncConfig, SyncFrame, SyncRun};
 
 const TICK: Duration = Duration::from_millis(667);
 const GRID_WIDTH: usize = 64;
@@ -43,16 +43,38 @@ pub enum ScreenEvent {
     Monitors(Vec<MonitorInfo>),
     Scene(Scene),
     Started { generation: u64 },
-    Stopped { generation: u64, drove: Vec<String> },
+    Stopped { generation: u64, drove: Drove },
     Error(String),
     Fatal(String),
+}
+
+struct Halt(AtomicU64);
+
+impl Halt {
+    fn new() -> Self {
+        Self(AtomicU64::new(0))
+    }
+
+    fn halt(&self, generation: u64) {
+        self.0.store(generation, Ordering::SeqCst);
+    }
+
+    fn stand_down(&self, generation: u64) {
+        if self.0.load(Ordering::SeqCst) != generation {
+            self.0.store(0, Ordering::SeqCst);
+        }
+    }
+
+    fn is_halted(&self) -> bool {
+        self.0.load(Ordering::SeqCst) != 0
+    }
 }
 
 pub struct ScreenHandle {
     pub commands: Sender<ScreenCommand>,
     pub events: Receiver<ScreenEvent>,
     pub latest: Arc<Mutex<Option<SyncFrame>>>,
-    stopping: Arc<AtomicBool>,
+    stopping: Arc<Halt>,
     join: Option<thread::JoinHandle<()>>,
 }
 
@@ -70,7 +92,7 @@ impl ScreenHandle {
         let (commands, inbox) = mpsc::channel::<ScreenCommand>();
         let (outbox, events) = mpsc::channel::<ScreenEvent>();
         let latest = Arc::new(Mutex::new(None));
-        let stopping = Arc::new(AtomicBool::new(false));
+        let stopping = Arc::new(Halt::new());
         let thread_latest = Arc::clone(&latest);
         let thread_stopping = Arc::clone(&stopping);
         let join = thread::Builder::new()
@@ -92,8 +114,8 @@ impl ScreenHandle {
         self.commands.send(command).is_ok()
     }
 
-    pub fn halt(&self) {
-        self.stopping.store(true, Ordering::SeqCst);
+    pub fn halt(&self, generation: u64) {
+        self.stopping.halt(generation);
     }
 }
 
@@ -102,7 +124,7 @@ fn run(
     events: Sender<ScreenEvent>,
     waker: Waker,
     latest: Arc<Mutex<Option<SyncFrame>>>,
-    stopping: Arc<AtomicBool>,
+    stopping: Arc<Halt>,
 ) {
     let mut backend = match Backend::connect() {
         Ok(backend) => backend,
@@ -150,7 +172,7 @@ fn run(
                 selected = Some(monitor);
                 run = Some(SyncRun::new(config));
                 run_generation = Some(generation);
-                stopping.store(false, Ordering::SeqCst);
+                stopping.stand_down(generation);
                 if let Ok(mut slot) = latest.lock() {
                     *slot = None;
                 }
@@ -229,10 +251,8 @@ fn run(
     }
 }
 
-fn finish_run(run: &mut Option<SyncRun>) -> Vec<String> {
-    run.take()
-        .map(|run| run.drove_brightness())
-        .unwrap_or_default()
+fn finish_run(run: &mut Option<SyncRun>) -> Drove {
+    run.take().map(|run| run.drove()).unwrap_or_default()
 }
 
 fn capture(
@@ -241,7 +261,7 @@ fn capture(
     events: &Sender<ScreenEvent>,
     waker: &Waker,
     reducer: &mut ReducerState,
-    run: Option<(&mut SyncRun, &AtomicBool)>,
+    run: Option<(&mut SyncRun, &Halt)>,
     latest: &Arc<Mutex<Option<SyncFrame>>>,
 ) {
     let Some(name) = selected else {
@@ -254,7 +274,7 @@ fn capture(
         Ok(scene) => {
             match run {
                 Some((run, stopping)) => {
-                    if !stopping.load(Ordering::SeqCst) {
+                    if !stopping.is_halted() {
                         let frame = run.apply(scene, Instant::now());
                         if let Ok(mut slot) = latest.lock() {
                             *slot = Some(frame);
@@ -590,5 +610,39 @@ impl Drop for Downsampler {
         let _ = EGL_INSTALCE.make_current(self._display, None, None, None);
         let _ = EGL_INSTALCE.destroy_surface(self._display, self._surface);
         let _ = EGL_INSTALCE.destroy_context(self._display, self._context);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Halt;
+
+    #[test]
+    fn a_start_does_not_clear_a_halt_for_the_same_generation() {
+        let stopping = Halt::new();
+        stopping.halt(7);
+
+        stopping.stand_down(7);
+
+        assert!(stopping.is_halted());
+    }
+
+    #[test]
+    fn a_new_generation_clears_a_previous_halt() {
+        let stopping = Halt::new();
+        stopping.halt(7);
+
+        stopping.stand_down(8);
+
+        assert!(!stopping.is_halted());
+    }
+
+    #[test]
+    fn a_fresh_handle_accepts_its_first_generation() {
+        let stopping = Halt::new();
+
+        stopping.stand_down(1);
+
+        assert!(!stopping.is_halted());
     }
 }

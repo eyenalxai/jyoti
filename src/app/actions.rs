@@ -3,7 +3,8 @@ use std::time::{Duration, Instant};
 use rune::{TextEdit, Tx};
 
 use crate::app::App;
-use crate::app::state::{FormMode, FormState, Screen, StopPhase, Toast, ToastKind};
+use crate::app::state::{Dashboard, FormMode, FormState, Screen, Toast, ToastKind};
+use crate::app::sync::restore::{RESTORE_WINDOW, StopPhase};
 use crate::bulb::aggregate::AggregatePower;
 use crate::bulb::model::{
     Bulb, BulbField, BulbState, ColorMode, NEUTRAL_TEMPERATURE, Rgb, new_id, trim_model,
@@ -52,10 +53,15 @@ impl App {
             WorkerEvent::State { id, state } => {
                 let was_on = self.states.get(&id).and_then(|state| state.power) == Some(true);
                 let is_on = state.power == Some(true);
+                if self.sync.status.is_running()
+                    && let Some(bulb) = self.bulbs.iter().find(|bulb| bulb.id == id)
+                {
+                    reconfigure |= self.sync.restore.observe(&id, &bulb.name, &state);
+                }
                 self.states.insert(id.clone(), state);
                 self.errors.remove(&id);
                 self.sync.failures.remove(&id);
-                reconfigure = was_on != is_on;
+                reconfigure |= was_on != is_on;
                 if self.sync.status.is_running() {
                     reconfigure |= self.sync.unreachable.remove(&id);
                 }
@@ -80,21 +86,15 @@ impl App {
                 self.notify(error.to_string(), ToastKind::Error);
                 true
             }
-            WorkerEvent::Restored { id, ok } => {
-                self.sync.pending_restore.remove(&id);
-                let report = self
-                    .sync
-                    .restore_report
-                    .get_or_insert_with(Default::default);
-                if ok {
-                    report.restored += 1;
-                } else if let Some(bulb) = self.bulbs.iter().find(|bulb| bulb.id == id) {
-                    report.not_restored.push(bulb.name.clone());
+            WorkerEvent::Restored { id, generation, ok } => {
+                let current = self.sync.status.generation() == Some(generation);
+                if current {
+                    self.sync.restore.acknowledge(&id, ok);
+                    if self.sync.stop_seen && !self.sync.restore.is_open() {
+                        self.finish_restore();
+                    }
                 }
-                if self.sync.pending_restore.is_empty() {
-                    self.finish_restore();
-                }
-                true
+                current
             }
             WorkerEvent::Reachable { id, reachable } => {
                 if reachable {
@@ -115,6 +115,9 @@ impl App {
     }
 
     pub(crate) fn refresh_all(&mut self, tx: &mut Tx) {
+        if !self.ensure_sync_stopped("refresh the bulb list") {
+            return;
+        }
         match self.store.load() {
             Ok(bulbs) => {
                 self.startup_error = None;
@@ -272,18 +275,8 @@ impl App {
     }
 
     pub(crate) fn flush_pending(&mut self) {
-        self.dashboard.due_at = None;
-        let brightness = std::mem::take(&mut self.dashboard.pending_brightness);
-        for (id, value) in brightness {
-            self.send(&id, Command::SetBrightness(value));
-        }
-        let temperature = std::mem::take(&mut self.dashboard.pending_temperature);
-        for (id, value) in temperature {
-            self.send(&id, Command::SetTemperature(value));
-        }
-        let color = std::mem::take(&mut self.dashboard.pending_color);
-        for (id, value) in color {
-            self.send(&id, Command::SetColor(value));
+        for (id, command) in pending_commands(&mut self.dashboard) {
+            self.send(&id, command);
         }
     }
 
@@ -640,14 +633,13 @@ impl App {
 
     pub(crate) fn shutdown(&mut self) {
         self.leave_color();
+        self.flush_pending();
         if self.sync.status.is_active() {
             self.stop_sync();
         }
         if self.sync.stop != StopPhase::Idle {
-            let stop_deadline = Instant::now() + Duration::from_millis(2_000);
-            while Instant::now() < stop_deadline
-                && matches!(self.sync.stop, StopPhase::Waiting { .. })
-            {
+            let stop_deadline = Instant::now() + RESTORE_WINDOW;
+            loop {
                 let mut events = Vec::new();
                 if let Some(handle) = &self.screen_handle {
                     while let Ok(event) = handle.events.try_recv() {
@@ -657,7 +649,9 @@ impl App {
                 for event in events {
                     self.handle_screen_event(event);
                 }
-                if !matches!(self.sync.stop, StopPhase::Waiting { .. }) {
+                if !matches!(self.sync.stop, StopPhase::Waiting { .. })
+                    || Instant::now() >= stop_deadline
+                {
                     break;
                 }
                 std::thread::sleep(Duration::from_millis(5));
@@ -669,9 +663,22 @@ impl App {
                 StopPhase::Restoring { deadline } => deadline,
                 StopPhase::Idle | StopPhase::Waiting { .. } => Instant::now(),
             };
-            while Instant::now() < restore_deadline && !self.sync.pending_restore.is_empty() {
+            loop {
+                let mut events = Vec::new();
+                if let Some(handle) = &self.screen_handle {
+                    while let Ok(event) = handle.events.try_recv() {
+                        events.push(event);
+                    }
+                }
+                for event in events {
+                    self.handle_screen_event(event);
+                }
                 while let Ok(event) = self.worker_events.try_recv() {
                     let _ = self.handle_worker_event(event);
+                }
+                let expired = Instant::now() >= restore_deadline;
+                if expired || (self.sync.stop_seen && !self.sync.restore.is_open()) {
+                    break;
                 }
                 std::thread::sleep(Duration::from_millis(20));
             }
@@ -688,5 +695,75 @@ impl App {
     pub(crate) fn single_state(&self) -> BulbState {
         let fallback = BulbState::default();
         self.selected_state().cloned().unwrap_or(fallback)
+    }
+}
+
+fn pending_commands(dashboard: &mut Dashboard) -> Vec<(String, Command)> {
+    dashboard.due_at = None;
+    let mut commands = Vec::new();
+    for (id, value) in std::mem::take(&mut dashboard.pending_brightness) {
+        commands.push((id, Command::SetBrightness(value)));
+    }
+    for (id, value) in std::mem::take(&mut dashboard.pending_temperature) {
+        commands.push((id, Command::SetTemperature(value)));
+    }
+    for (id, value) in std::mem::take(&mut dashboard.pending_color) {
+        commands.push((id, Command::SetColor(value)));
+    }
+    commands
+}
+
+#[cfg(test)]
+mod tests {
+    use std::time::{Duration, Instant};
+
+    use super::pending_commands;
+    use crate::app::state::Dashboard;
+    use crate::bulb::model::Rgb;
+    use crate::bulb::worker::Command;
+
+    #[test]
+    fn the_last_pending_control_values_become_commands() {
+        let mut dashboard = Dashboard::default();
+        dashboard.pending_brightness.insert("desk".to_owned(), 40);
+        dashboard
+            .pending_temperature
+            .insert("shelf".to_owned(), 3_000);
+        dashboard
+            .pending_color
+            .insert("ceiling".to_owned(), Rgb::new(1, 2, 3));
+        dashboard.due_at = Some(Instant::now() + Duration::from_millis(160));
+
+        let commands = pending_commands(&mut dashboard);
+
+        assert_eq!(commands.len(), 3);
+        let mut brightness = false;
+        let mut temperature = false;
+        let mut color = false;
+        for (id, command) in commands {
+            match command {
+                Command::SetBrightness(value) => {
+                    assert_eq!(id, "desk");
+                    assert_eq!(value, 40);
+                    brightness = true;
+                }
+                Command::SetTemperature(value) => {
+                    assert_eq!(id, "shelf");
+                    assert_eq!(value, 3_000);
+                    temperature = true;
+                }
+                Command::SetColor(value) => {
+                    assert_eq!(id, "ceiling");
+                    assert_eq!(value, Rgb::new(1, 2, 3));
+                    color = true;
+                }
+                _ => {}
+            }
+        }
+        assert!(brightness && temperature && color);
+        assert!(dashboard.due_at.is_none());
+        assert!(dashboard.pending_brightness.is_empty());
+        assert!(dashboard.pending_temperature.is_empty());
+        assert!(dashboard.pending_color.is_empty());
     }
 }

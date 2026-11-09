@@ -2,7 +2,7 @@ use std::collections::HashSet;
 use std::sync::mpsc::Sender;
 use std::time::Instant;
 
-use crate::bulb::model::{BulbState, ColorMode, Rgb};
+use crate::bulb::model::Rgb;
 use crate::bulb::worker::Command;
 use crate::screen::brightness::sync_brightness_for;
 use crate::screen::color::Lab;
@@ -25,13 +25,19 @@ pub struct SyncConfig {
     pub targets: Vec<SyncTarget>,
 }
 
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Drove {
+    pub color: Vec<String>,
+    pub brightness: Vec<String>,
+}
+
 #[derive(Clone, Debug)]
 pub struct SyncFrame {
     pub scene: Scene,
     pub output: Rgb,
     pub brightness: u8,
     pub flash_until: Option<Instant>,
-    pub drove_brightness: Vec<String>,
+    pub drove: Drove,
 }
 
 pub struct SyncRun {
@@ -39,7 +45,8 @@ pub struct SyncRun {
     flash: FlashGuard,
     last_publish: Option<Lab>,
     brightness: u8,
-    drove: HashSet<String>,
+    drove_color: HashSet<String>,
+    drove_brightness: HashSet<String>,
     republish: bool,
 }
 
@@ -50,7 +57,8 @@ impl SyncRun {
             flash: FlashGuard::default(),
             last_publish: None,
             brightness: 0,
-            drove: HashSet::new(),
+            drove_color: HashSet::new(),
+            drove_brightness: HashSet::new(),
             republish: false,
         }
     }
@@ -71,8 +79,11 @@ impl SyncRun {
         self.config = config;
     }
 
-    pub fn drove_brightness(&self) -> Vec<String> {
-        self.drove.iter().cloned().collect()
+    pub fn drove(&self) -> Drove {
+        Drove {
+            color: self.drove_color.iter().cloned().collect(),
+            brightness: self.drove_brightness.iter().cloned().collect(),
+        }
     }
 
     pub fn apply(&mut self, scene: Scene, now: Instant) -> SyncFrame {
@@ -96,24 +107,30 @@ impl SyncRun {
                 self.last_publish,
             );
         let publish_brightness = !flashing && (republish || brightness_target != self.brightness);
-        let mut drove = Vec::new();
+        let mut drove_color = Vec::new();
+        let mut drove_brightness = Vec::new();
 
         if publish_color {
             self.last_publish = Some(lab);
             for target in &self.config.targets {
-                let _ = target.sender.send(Command::SetColor(output));
+                if target.sender.send(Command::SetColor(output)).is_ok()
+                    && self.drove_color.insert(target.id.clone())
+                {
+                    drove_color.push(target.id.clone());
+                }
             }
         }
 
         if publish_brightness {
             for target in &self.config.targets {
-                if target.on {
-                    let _ = target
+                if target.on
+                    && target
                         .sender
-                        .send(Command::SetBrightness(brightness_target));
-                    if self.drove.insert(target.id.clone()) {
-                        drove.push(target.id.clone());
-                    }
+                        .send(Command::SetBrightness(brightness_target))
+                        .is_ok()
+                    && self.drove_brightness.insert(target.id.clone())
+                {
+                    drove_brightness.push(target.id.clone());
                 }
             }
         }
@@ -127,50 +144,11 @@ impl SyncRun {
             output,
             brightness: self.brightness,
             flash_until,
-            drove_brightness: drove,
+            drove: Drove {
+                color: drove_color,
+                brightness: drove_brightness,
+            },
         }
-    }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum RestoreControl {
-    Color(crate::bulb::model::Rgb),
-    Temperature(u16),
-}
-
-pub fn restore_control(state: &BulbState) -> Option<RestoreControl> {
-    if state.mode == ColorMode::Temperature
-        && let Some(temperature) = state.temperature
-    {
-        return Some(RestoreControl::Temperature(temperature));
-    }
-    if let Some(color) = state.color {
-        return Some(RestoreControl::Color(color));
-    }
-    state.temperature.map(RestoreControl::Temperature)
-}
-
-#[derive(Clone, Debug, Default)]
-pub struct RestoreReport {
-    pub restored: usize,
-    pub not_restored: Vec<String>,
-    pub total: usize,
-}
-
-impl RestoreReport {
-    pub fn message(&self) -> String {
-        if self.total == 0 {
-            return "Nothing to restore.".to_owned();
-        }
-        if self.not_restored.is_empty() {
-            return format!("Restored {} of {} bulbs.", self.restored, self.total);
-        }
-        format!(
-            "Restored {} of {} bulbs. Not restored: {}.",
-            self.restored,
-            self.total,
-            self.not_restored.join(", ")
-        )
     }
 }
 
@@ -204,7 +182,9 @@ mod tests {
         let published = run.apply(scene(Rgb::new(255, 0, 0), 1.0), Instant::now());
 
         assert_eq!(published.brightness, 100);
-        assert_eq!(published.drove_brightness, vec!["bulb".to_owned()]);
+        assert_eq!(published.drove.color, vec!["bulb".to_owned()]);
+        assert_eq!(published.drove.brightness, vec!["bulb".to_owned()]);
+        assert_eq!(run.drove().color, vec!["bulb".to_owned()]);
         let commands: Vec<Command> = receiver.try_iter().collect();
         assert!(
             commands
@@ -232,6 +212,7 @@ mod tests {
 
         assert!(receiver.try_iter().next().is_none());
         assert!(published.flash_until.is_none());
+        assert!(published.drove.color.is_empty());
     }
 
     #[test]
@@ -239,7 +220,8 @@ mod tests {
         let (mut run, receiver) = run(false);
         let published = run.apply(scene(Rgb::new(255, 0, 0), 1.0), Instant::now());
 
-        assert!(published.drove_brightness.is_empty());
+        assert_eq!(published.drove.color, vec!["bulb".to_owned()]);
+        assert!(published.drove.brightness.is_empty());
         let commands: Vec<Command> = receiver.try_iter().collect();
         assert!(
             commands
@@ -283,7 +265,8 @@ mod tests {
             now + Duration::from_millis(700),
         );
 
-        assert_eq!(published.drove_brightness, vec!["bulb".to_owned()]);
+        assert!(published.drove.color.is_empty());
+        assert_eq!(published.drove.brightness, vec!["bulb".to_owned()]);
         let commands: Vec<Command> = receiver.try_iter().collect();
         assert!(
             commands
@@ -327,28 +310,5 @@ mod tests {
                 .iter()
                 .any(|command| matches!(command, Command::SetBrightness(_)))
         );
-    }
-
-    #[test]
-    fn restore_report_names_the_bulbs_that_did_not_return() {
-        let report = RestoreReport {
-            restored: 2,
-            not_restored: vec!["Shelf lamp".to_owned()],
-            total: 3,
-        };
-        assert_eq!(
-            report.message(),
-            "Restored 2 of 3 bulbs. Not restored: Shelf lamp."
-        );
-    }
-
-    #[test]
-    fn a_clean_restore_counts_every_bulb() {
-        let report = RestoreReport {
-            restored: 3,
-            not_restored: Vec::new(),
-            total: 3,
-        };
-        assert_eq!(report.message(), "Restored 3 of 3 bulbs.");
     }
 }

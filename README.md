@@ -119,7 +119,8 @@ the CPU reducer.
 - The monitor list is read from the Wayland outputs. A monitor can be chosen
   while stopped or switched during a run.
 - A run captures at 1.5 Hz. Pause holds the last colour; resume catches up with
-  the current scene.
+  the current scene. Pause is disabled while a run is starting, and Refresh is
+  disabled while a run is busy.
 - The derived colour is the winning OKLab cluster’s mean lightness and hue,
   with its chroma raised toward the cluster’s 75th percentile. It is the input
   to colour intensity.

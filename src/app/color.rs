@@ -2,10 +2,10 @@ use rune::TextEdit;
 
 use crate::app::App;
 use crate::app::state::{ColorState, ToastKind};
+use crate::app::sync::restore::{RestoreControl, restore_control};
 use crate::bulb::model::{ColorMode, Rgb};
 use crate::bulb::worker::Command;
 use crate::screen::color::{Hsb, hsb_to_rgb, rgb_to_hsb};
-use crate::screen::sync::{RestoreControl, restore_control};
 
 impl App {
     pub(crate) fn open_color(&mut self) {

@@ -3,10 +3,10 @@ use std::time::{Duration, Instant};
 
 use rune::TextEdit;
 
+use crate::app::sync::restore::{RestorePlan, StopPhase};
 use crate::app::sync::run::{Controls, RunEvent, RunPhase, RunRejection};
 use crate::bulb::model::{BulbField, BulbState, Rgb};
 use crate::screen::monitor::{MonitorInfo, Scene};
-use crate::screen::sync::RestoreReport;
 
 pub const STALE_AFTER: Duration = Duration::from_secs(5);
 
@@ -149,18 +149,6 @@ pub struct Dashboard {
     pub due_at: Option<Instant>,
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub enum StopPhase {
-    #[default]
-    Idle,
-    Waiting {
-        until: Instant,
-    },
-    Restoring {
-        deadline: Instant,
-    },
-}
-
 pub struct SyncState {
     pub status: RunPhase,
     pub next_generation: u64,
@@ -175,14 +163,12 @@ pub struct SyncState {
     pub derived: Option<Rgb>,
     pub brightness: u8,
     pub flash_until: Option<Instant>,
-    pub snapshots: HashMap<String, BulbState>,
-    pub drove_brightness: HashSet<String>,
-    pub restore_report: Option<RestoreReport>,
+    pub restore: RestorePlan,
     pub unreachable: HashSet<String>,
     pub failures: HashMap<String, u8>,
     pub last_probe: Instant,
-    pub pending_restore: HashSet<String>,
     pub stop: StopPhase,
+    pub stop_seen: bool,
 }
 
 impl Default for SyncState {
@@ -201,14 +187,12 @@ impl Default for SyncState {
             derived: None,
             brightness: 0,
             flash_until: None,
-            snapshots: HashMap::new(),
-            drove_brightness: HashSet::new(),
-            restore_report: None,
+            restore: RestorePlan::default(),
             unreachable: HashSet::new(),
             failures: HashMap::new(),
             last_probe: Instant::now(),
-            pending_restore: HashSet::new(),
             stop: StopPhase::Idle,
+            stop_seen: false,
         }
     }
 }
