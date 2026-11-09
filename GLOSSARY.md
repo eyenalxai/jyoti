@@ -27,8 +27,8 @@ version. It never holds a token.
 ## Preferences file
 
 `$XDG_CONFIG_HOME/jyoti/prefs.json`, next to the config file. It holds
-preferences that survive launches, currently the sync brightness gain and colour
-intensity. It never holds a token.
+preferences that survive launches: the sync brightness gain, colour intensity
+and appearance. It never holds a token.
 
 ## Token
 
@@ -179,12 +179,18 @@ The dropdown at the top of Control. It lists All bulbs and every configured
 bulb, with the selected choice shown in the trigger. Selecting a choice changes
 the light stage and control deck; there is no second bulb list.
 
+## Appearance
+
+The window’s light or dark treatment: Light, Dark or System. System follows the
+desktop. It is chosen in Settings and remembered in the preferences file.
+
 ## Tabs
 
 The three section buttons under the window title: Control, Sync and Settings.
 They are the only navigation. The active section is marked by a brass rule under
 its label. A form, the colour picker and the remove confirmation replace the tabs
-and carry a Back control.
+and carry a Back control. A section change moves horizontally; a subpage takes
+the tab bar with the page it replaces.
 
 ## Toast
 
@@ -212,15 +218,15 @@ scene instead of replaying it.
 ## Sync status
 
 The run state on the Sync screen: the stage carries the status word, the frame
-age and the output colour, the toolbar repeats the status on every screen, and
-the restore report carries the outcome after a stop. A stale frame or a flashing
-scene adds its own notice under the stage.
+age and the output colour, and the toolbar repeats the status on every screen. A
+stop returns the status to Idle and reports its outcome in a toast. A stale frame
+or a flashing scene adds its own notice under the stage.
 
 ## Sync page
 
 The screen opened from the Sync tab. It owns start/stop, pause, the captured
-monitor, the gain, colour intensity and the restore report. It is the only place
-the sync controls live.
+monitor, the gain and colour intensity. It is the only place the sync controls
+live; the restore outcome arrives as a toast.
 
 ## Captured monitor
 
@@ -286,9 +292,8 @@ the run is allowed with the warning.
 
 ## Restore report
 
-The summary shown after a run stops: how many bulbs restored, and which could
-not. A bulb with no snapshot, no restore value or a failed confirmed send is
-named.
+The toast after a run stops: how many bulbs restored, and which could not. A bulb
+with no snapshot, no restore value or a failed confirmed send is named.
 
 ## Revert
 

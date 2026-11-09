@@ -18,6 +18,50 @@ pub enum Screen {
     Color,
 }
 
+impl Screen {
+    pub fn element_key(&self) -> &'static str {
+        match self {
+            Screen::Dashboard => "dashboard",
+            Screen::Sync => "sync",
+            Screen::Settings => "settings",
+            Screen::Form(_) => "form",
+            Screen::Remove(_) => "remove",
+            Screen::Color => "colour",
+        }
+    }
+
+    fn rank(&self) -> u8 {
+        match self {
+            Screen::Dashboard => 0,
+            Screen::Sync => 1,
+            Screen::Settings => 2,
+            Screen::Form(_) | Screen::Remove(_) | Screen::Color => 3,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum NavDirection {
+    #[default]
+    Forward,
+    Backward,
+}
+
+#[derive(Default)]
+pub struct Navigation {
+    pub direction: NavDirection,
+    pub pending: Option<(Screen, Instant)>,
+    pub entering_until: Option<Instant>,
+}
+
+pub fn nav_direction(from: &Screen, to: &Screen) -> NavDirection {
+    if to.rank() < from.rank() {
+        NavDirection::Backward
+    } else {
+        NavDirection::Forward
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum FormMode {
     Add,
@@ -155,5 +199,53 @@ pub fn toast_duration(kind: ToastKind) -> Duration {
     match kind {
         ToastKind::Error => Duration::from_secs(6),
         ToastKind::Info | ToastKind::Success => Duration::from_secs(4),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{FormMode, NavDirection, Screen, nav_direction};
+
+    #[test]
+    fn section_changes_push_in_tab_order() {
+        assert_eq!(
+            nav_direction(&Screen::Dashboard, &Screen::Sync),
+            NavDirection::Forward
+        );
+        assert_eq!(
+            nav_direction(&Screen::Sync, &Screen::Settings),
+            NavDirection::Forward
+        );
+        assert_eq!(
+            nav_direction(&Screen::Settings, &Screen::Dashboard),
+            NavDirection::Backward
+        );
+    }
+
+    #[test]
+    fn subpages_open_forward_and_return_backward() {
+        assert_eq!(
+            nav_direction(&Screen::Dashboard, &Screen::Color),
+            NavDirection::Forward
+        );
+        assert_eq!(
+            nav_direction(&Screen::Color, &Screen::Dashboard),
+            NavDirection::Backward
+        );
+        assert_eq!(
+            nav_direction(&Screen::Dashboard, &Screen::Form(FormMode::Add)),
+            NavDirection::Forward
+        );
+        assert_eq!(
+            nav_direction(
+                &Screen::Form(FormMode::Edit("id".to_owned())),
+                &Screen::Dashboard
+            ),
+            NavDirection::Backward
+        );
+        assert_eq!(
+            nav_direction(&Screen::Settings, &Screen::Color),
+            NavDirection::Forward
+        );
     }
 }

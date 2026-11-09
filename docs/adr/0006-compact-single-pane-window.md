@@ -25,7 +25,7 @@ screen:
   brightness, mode and warmth or colour, and an overflow menu for refresh, edit
   and remove.
 - **Sync** owns capture status, monitor selection, start/pause/stop, brightness
-  gain, colour intensity and the restore report.
+  gain and colour intensity. A stop reports its restore outcome in a toast.
 - **Settings** owns appearance, storage and about.
 
 The bulb selector is a dropdown menu with one row per bulb; there is no sidebar

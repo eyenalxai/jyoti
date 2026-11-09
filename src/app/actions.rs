@@ -335,7 +335,7 @@ impl App {
             return;
         }
         self.form = FormState::default();
-        self.screen = Screen::Form(FormMode::Add);
+        self.set_screen(Screen::Form(FormMode::Add));
     }
 
     pub(crate) fn open_edit(&mut self, id: &str) {
@@ -355,7 +355,7 @@ impl App {
             }),
             ..FormState::default()
         };
-        self.screen = Screen::Form(FormMode::Edit(id.to_owned()));
+        self.set_screen(Screen::Form(FormMode::Edit(id.to_owned())));
     }
 
     pub(crate) fn edit_selected(&mut self) {
@@ -449,7 +449,7 @@ impl App {
                 self.bulbs = bulbs;
                 self.selection = Some(selection_after_add(before, &id, self.selection.as_ref()));
                 self.spawn_worker(&bulb);
-                self.screen = Screen::Dashboard;
+                self.set_screen(Screen::Dashboard);
                 self.notify(format!("Added {added_name}."), ToastKind::Success);
             }
             Some(id) => {
@@ -494,7 +494,7 @@ impl App {
                 }
                 self.bulbs = bulbs;
                 self.spawn_worker(&bulb);
-                self.screen = Screen::Dashboard;
+                self.set_screen(Screen::Dashboard);
                 self.notify(format!("Saved {}.", bulb.name), ToastKind::Success);
             }
         }
@@ -506,7 +506,7 @@ impl App {
             return;
         }
         if self.bulbs.iter().any(|bulb| bulb.id == id) {
-            self.screen = Screen::Remove(id.to_owned());
+            self.set_screen(Screen::Remove(id.to_owned()));
         }
     }
 
@@ -522,7 +522,7 @@ impl App {
             return;
         };
         let Some(bulb) = self.bulbs.iter().find(|bulb| bulb.id == id).cloned() else {
-            self.screen = Screen::Dashboard;
+            self.set_screen(Screen::Dashboard);
             return;
         };
         let remaining: Vec<Bulb> = self
@@ -551,18 +551,18 @@ impl App {
         }
         self.selection =
             crate::bulb::selection::resolve_selection(&self.bulbs, self.selection.as_ref());
-        self.screen = Screen::Dashboard;
+        self.set_screen(Screen::Dashboard);
         self.notify(format!("Removed {}.", bulb.name), ToastKind::Success);
     }
 
     pub(crate) fn open_settings(&mut self) {
         self.leave_color();
-        self.screen = Screen::Settings;
+        self.set_screen(Screen::Settings);
     }
 
     pub(crate) fn open_sync(&mut self) {
         self.leave_color();
-        self.screen = Screen::Sync;
+        self.set_screen(Screen::Sync);
         let sent = self
             .screen_handle
             .as_ref()
@@ -577,7 +577,7 @@ impl App {
         if self.screen == Screen::Color {
             self.cancel_color();
         } else {
-            self.screen = Screen::Dashboard;
+            self.set_screen(Screen::Dashboard);
         }
     }
 
@@ -611,13 +611,14 @@ impl App {
             .save(crate::bulb::store::Preferences {
                 sync_gain: self.sync.gain,
                 colour_intensity: self.sync.colour_intensity,
+                appearance: self.appearance,
             })
         {
             self.notify(error.to_string(), ToastKind::Error);
         }
     }
 
-    fn schedule_preferences(&mut self) {
+    pub(crate) fn schedule_preferences(&mut self) {
         if self.demo {
             return;
         }

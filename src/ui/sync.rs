@@ -8,7 +8,7 @@ use crate::screen::intensity::intensify;
 use crate::screen::sync::SyncStatus;
 use crate::ui::theme;
 use crate::ui::widget::{
-    ALERT, BULB, PAGE_PAD, SLIDER_WIDTH, SYNC, SliderSpec, dot, dropdown_trigger, frame_age,
+    ALERT, PAGE_PAD, SLIDER_WIDTH, SYNC, SliderSpec, dot, dropdown_trigger, frame_age,
     gradient_slider, hairline, nameplate, notice, rgb_color, slider, stage_surface, surface,
     swatch, value_text,
 };
@@ -63,7 +63,7 @@ pub fn view(app: &App, k: &Kit, layers: &mut Vec<El>) -> El {
         row().w_full().child(start.grow(1.0))
     };
 
-    let mut content = col()
+    let content = col()
         .key("sync")
         .w_full()
         .padding(PAGE_PAD)
@@ -72,24 +72,6 @@ pub fn view(app: &App, k: &Kit, layers: &mut Vec<El>) -> El {
         .child(actions)
         .child(capture_panel(app, k, layers))
         .child(output_panel(app, k));
-
-    if let Some(report) = &app.sync.restore_report {
-        let tone = if report.not_restored.is_empty() {
-            k.c.success
-        } else {
-            k.c.danger
-        };
-        content = content.child(notice(
-            k,
-            if report.not_restored.is_empty() {
-                &BULB
-            } else {
-                &ALERT
-            },
-            &report.message(),
-            tone,
-        ));
-    }
 
     let viewport = content.scroll(ScrollSpec {
         stick_bottom: false,
@@ -151,9 +133,17 @@ fn capture_stage(app: &App, k: &Kit) -> El {
                             ),
                     )
                     .child(
-                        text(format!("Frame {}", frame_age(app.sync.last_scene_at)))
-                            .font(theme::number(12.0, 450.0))
-                            .color(muted),
+                        row()
+                            .gap(5.0)
+                            .center_y()
+                            .child(text("Frame".to_owned()).font(k.ty.small).color(muted))
+                            .child(
+                                row().w(62.0).justify_end().child(
+                                    text(frame_age(app.sync.last_scene_at))
+                                        .font(theme::number(12.0, 450.0))
+                                        .color(muted),
+                                ),
+                            ),
                     ),
             )
             .child(
@@ -441,7 +431,6 @@ fn sync_status_ink(status: &SyncStatus) -> Color {
         SyncStatus::Running | SyncStatus::Starting => theme::positive_on_plate(),
         SyncStatus::Paused | SyncStatus::Stopping => theme::warning_on_plate(),
         SyncStatus::Error(_) => theme::danger_on_plate(),
-        SyncStatus::Restored => theme::info_on_plate(),
         SyncStatus::Idle => theme::quiet_on_plate(),
     }
 }

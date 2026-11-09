@@ -349,10 +349,6 @@ pub fn danger_on_plate() -> Color {
     oklch(0.53, 0.16, 28.0)
 }
 
-pub fn info_on_plate() -> Color {
-    oklch(0.5, 0.09, 240.0)
-}
-
 pub fn quiet_on_plate() -> Color {
     ink().alpha(0.4)
 }
