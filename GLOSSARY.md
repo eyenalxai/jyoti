@@ -104,8 +104,8 @@ the two light modes.
 
 ## Packed colour
 
-The `siid 2 / piid 4` property as one packed 24-bit RGB integer. The picker
-edits hue, saturation and brightness and accepts a six-digit hex value. Every
+The `siid 2 / piid 4` property as one packed 24-bit RGB integer. The colour
+editor edits hue, saturation and brightness and accepts a six-digit hex value. Every
 value it can produce is an sRGB colour, so the swatch is exactly what is sent.
 
 ## Colour intensity
@@ -113,7 +113,7 @@ value it can produce is an sRGB colour, so the swatch is exactly what is sent.
 The saturation boost applied to the derived screen colour before it is sent,
 from 0% natural to 100% full saturation. Hue and value stay put, so a light red
 becomes a vivid red without changing the colour family. It is adjusted on Sync
-and remembered in the preferences file. Manual colours use the picker’s
+and remembered in the preferences file. Manual colours use the editor’s
 Saturation slider instead.
 
 ## Mode
@@ -171,7 +171,8 @@ brightness.
 
 The panel under the light stage on Control: power, brightness, mode and warmth
 or colour in hairline-separated rows. During a sync run the rows sync owns are
-dimmed and power stays available.
+dimmed and power stays available. The mode row is inert while the colour editor
+is open.
 
 ## Bulb selector
 
@@ -188,9 +189,10 @@ desktop. It is chosen in Settings and remembered in the preferences file.
 
 The three section buttons under the window title: Control, Sync and Settings.
 They are the only navigation. The active section’s label and rule take the brass
-accent. A form, the colour picker and the remove confirmation sit below the tabs
-and carry a Back control. Only the content below the tab bar moves between
-screens; the tabs stay put.
+accent. A form and the remove confirmation sit below the tabs and carry a Back
+control. The colour editor expands inside the Control deck and has no Back
+control. Only the content below the tab bar moves between screens; the tabs stay
+put.
 
 ## Toast
 
@@ -297,8 +299,9 @@ with no snapshot, no restore value or a failed confirmed send is named.
 
 ## Revert
 
-Leaving the colour page with Back restores the colour and mode each
-target had when the page opened. Done keeps the current colour.
+Cancelling the colour editor with Cancel restores the colour and mode each
+target had when the editor opened. Keeping the colour closes the editor and
+keeps the current colour.
 
 ## miIO session
 

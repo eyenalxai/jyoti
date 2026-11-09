@@ -13,6 +13,7 @@ use crate::bulb::model::{
 };
 use crate::bulb::selection::Selection;
 use crate::screen::color::kelvin_to_rgb;
+use crate::ui::color;
 use crate::ui::theme;
 use crate::ui::widget::{
     ALERT, BULB, EDIT, MORE, PAGE_PAD, PLUS, REFRESH, SLIDER_WIDTH, SliderSpec, TRASH, dim_when,
@@ -248,11 +249,11 @@ fn control_deck(app: &App, k: &Kit) -> El {
     }
 
     deck = deck.child(brightness_block(k, &aggregate, &state, all, sync_owned));
-    deck = deck
-        .child(hairline(k))
-        .child(mode_block(k, white, colour, sync_owned));
-    if white || colour {
-        let (key, edge, block) = if white {
+    deck =
+        deck.child(hairline(k))
+            .child(mode_block(k, white, colour, sync_owned || app.color.open));
+    if white || colour || app.color.open {
+        let (key, edge, block) = if white && !app.color.open {
             (
                 "tuning-white",
                 Edge::Leading,
@@ -262,7 +263,7 @@ fn control_deck(app: &App, k: &Kit) -> El {
             (
                 "tuning-colour",
                 Edge::Trailing,
-                colour_block(k, &aggregate, &state, all, sync_owned),
+                colour_block(app, k, &aggregate, &state, all, sync_owned),
             )
         };
         deck = deck.child(
@@ -510,13 +511,17 @@ fn temperature_block(
 }
 
 fn colour_block(
+    app: &App,
     k: &Kit,
     aggregate: &AggregateState,
     state: &BulbState,
     all: bool,
     disabled: bool,
 ) -> El {
-    let (color, mixed) = if all {
+    let editing = app.color.open;
+    let (color, mixed) = if editing {
+        (Some(app.color.preview), false)
+    } else if all {
         match aggregate.color {
             Some(crate::bulb::aggregate::AggregateColor::Equal(color)) => (Some(color), false),
             Some(crate::bulb::aggregate::AggregateColor::Mixed) => (None, true),
@@ -541,23 +546,65 @@ fn colour_block(
         .control_size(ControlSize::Regular)
         .icon(&EDIT)
         .disabled(disabled)
-        .on_press(|app: &mut App| app.open_color())
+        .on_press_tx(|app: &mut App, tx: &mut Tx| {
+            app.open_color();
+            if app.color.open {
+                tx.scroll_key_to("colour-editor", 0.0);
+            }
+            tx.instant();
+        })
         .build(k)
+        .key("choose-colour")
+        .h(40.0);
+    let cancel = Button::new("Cancel")
+        .variant(ButtonVariant::Outline)
+        .control_size(ControlSize::Regular)
+        .on_press_tx(|app: &mut App, tx: &mut Tx| {
+            app.cancel_color();
+            tx.instant();
+        })
+        .build(k)
+        .key("cancel-colour")
+        .h(40.0);
+    let keep = Button::new("Keep colour")
+        .variant(ButtonVariant::Contrast)
+        .control_size(ControlSize::Regular)
+        .on_press_tx(|app: &mut App, tx: &mut Tx| {
+            app.commit_color();
+            tx.instant();
+        })
+        .build(k)
+        .key("keep-colour")
         .h(40.0);
     let label_style = if color.is_some() {
         theme::code(14.0, 500.0)
     } else {
         k.ty.ui_medium
     };
-    let block = row()
+    let mut header = row()
         .w_full()
-        .gap(10.0)
+        .gap(8.0)
         .px(16.0)
         .py(10.0)
         .center_y()
         .child(swatch(k, fill, 30.0))
-        .child(text(label).font(label_style).color(k.c.text_base).grow(1.0))
-        .child(choose);
+        .child(
+            text(label)
+                .font(label_style)
+                .color(k.c.text_base)
+                .grow(1.0)
+                .min_w(0.0)
+                .truncate(),
+        );
+    header = if editing {
+        header.child(cancel).child(keep)
+    } else {
+        header.child(choose)
+    };
+    let mut block = col().w_full().key("colour-editor").child(header);
+    if editing {
+        block = block.child(color::editor(app, k));
+    }
     dim_when(block, disabled)
 }
 
