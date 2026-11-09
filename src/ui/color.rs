@@ -6,13 +6,12 @@ use rune_kit::{Button, ButtonVariant, ControlSize, Kit, TextInput};
 use crate::app::App;
 use crate::screen::color::{Hsb, hsb_to_rgb};
 use crate::ui::theme;
-use crate::ui::widget::{ALERT, SliderSpec, gradient_slider, hairline, notice, rgb_color, swatch};
+use crate::ui::widget::{ALERT, SliderSpec, gradient_slider, hairline, notice, rgb_color};
 
-const POPOVER_WIDTH: f32 = 296.0;
+const POPOVER_WIDTH: f32 = 320.0;
 const POPOVER_SLIDER_WIDTH: f32 = 272.0;
 
 pub fn popover(app: &App, k: &Kit) -> El {
-    let preview = app.color.preview;
     let hex = TextInput::new(&app.color.hex)
         .label("Hex colour")
         .placeholder("#FF8A00")
@@ -48,23 +47,25 @@ pub fn popover(app: &App, k: &Kit) -> El {
         .w_full()
         .gap(8.0)
         .center_y()
-        .child(swatch(k, rgb_color(preview), 30.0))
         .child(
             text("Colour".to_owned())
-                .font(k.ty.ui_medium)
+                .font(k.ty.body_medium)
                 .color(k.c.text_base)
-                .grow(1.0),
+                .grow(1.0)
+                .min_w(0.0)
+                .truncate(),
         )
         .child(cancel)
         .child(keep);
 
     let mut body = col()
         .w(POPOVER_WIDTH)
+        .padding(12.0)
         .gap(8.0)
         .child(header)
         .child(
             text(format!(
-                "Live preview · applying to {} {}",
+                "Applying to {} {}",
                 app.color.targets.len(),
                 if app.color.targets.len() == 1 {
                     "bulb"
@@ -180,7 +181,8 @@ pub fn popover(app: &App, k: &Kit) -> El {
             },
         ));
 
-    body
+    body.role("none")
+        .modal(true, |app: &mut App| app.cancel_color())
 }
 
 fn tune_block(

@@ -35,12 +35,12 @@ generic kit:
   control; every action stays on a visible pointer control.
 - **One deck.** Power, brightness, mode and warmth or colour sit in one panel of
   hairline-separated rows. A screen sync run dims the rows it owns and leaves
-  power available. The mode row is inert while the colour editor is open.
+  power available. The colour popover is modal; the page behind it is inert.
 - **Quiet navigation.** The three sections are text tabs; the active label and
   its rule take the brass accent. The filled accent pill is gone.
 - **Motion.** Section changes push only the content below the tab bar; the tabs
   stay put, and a form or the remove confirmation appears in that same content
-  area with a Back control. The colour editor opens as a popover beside the
+  area with a Back control. The colour editor opens as a popover above the
   colour row without moving the page. White and Colour swap their tuning rows
   sideways. Layout and control changes use springs; the appearance switch lands
   at once and the colour popover uses the overlay entrance.
@@ -48,13 +48,13 @@ generic kit:
   tokens because the kit segmented control has no gap between choices.
 - **Shared surfaces.** Sync uses the same stage and nameplate for its captured
   colour. Settings uses group captions over one surface per group. Forms use one
-  surface with a footer; Colour opens in a raised popover with a live swatch, a
-  hex field and its tuning rows. Cancel and Keep share the popover header.
+  surface with a footer; Colour opens in a raised popover. The colour row keeps
+  the live swatch and hex; the popover carries the title, hex field and tuning
+  rows. Cancel and Keep share the popover header.
   Decorative badges and duplicate panel headers are removed.
 - **Accessibility.** Live figures use tabular numerals. Focus rings are neutral
-  ink, not the accent. Stage text sits on the nameplate or uses contrast-aware
-  ink. Interactive targets are 40 points where the kit allows, and scroll
-  viewports carry the kit scroll bar.
+  ink, not the accent. Stage text sits on the nameplate. Interactive targets are
+  40 points where the kit allows, and scroll viewports carry the kit scroll bar.
 
 ## Consequences
 

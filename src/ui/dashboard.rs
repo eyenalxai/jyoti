@@ -543,15 +543,23 @@ fn colour_block(
         Rgb::hex,
     );
     let fill = color.map_or(k.c.layer_03, rgb_color);
-    let choose = Button::new("Choose colour")
-        .variant(ButtonVariant::Outline)
-        .control_size(ControlSize::Regular)
-        .icon(&EDIT)
-        .disabled(disabled)
-        .on_press(|app: &mut App| app.open_color())
-        .build(k)
-        .key("choose-colour")
-        .h(40.0);
+    let choose = Button::new(if editing {
+        "Editing colour"
+    } else {
+        "Choose colour"
+    })
+    .variant(if editing {
+        ButtonVariant::Ghost
+    } else {
+        ButtonVariant::Outline
+    })
+    .control_size(ControlSize::Regular)
+    .icon(&EDIT)
+    .disabled(disabled)
+    .on_press(|app: &mut App| app.open_color())
+    .build(k)
+    .key("choose-colour")
+    .h(40.0);
     let label_style = if color.is_some() {
         theme::code(14.0, 500.0)
     } else {
@@ -560,16 +568,16 @@ fn colour_block(
     let mut popover = Popover::new("colour-popover")
         .trigger(choose)
         .open(editing)
+        .padding(0.0)
         .placement(Placement::TopEnd)
         .gutter(8.0)
-        .label("Colour editor")
-        .on_close(|app: &mut App| app.cancel_color());
+        .label("Colour editor");
     if editing {
         popover = popover.child(color::popover(app, k));
     }
-    let choose = popover.build(k, layers);
+    let trigger = popover.build(k, layers);
 
-    let trigger = row()
+    let trigger_row = row()
         .w_full()
         .gap(10.0)
         .px(16.0)
@@ -584,8 +592,8 @@ fn colour_block(
                 .min_w(0.0)
                 .truncate(),
         )
-        .child(choose);
-    dim_when(trigger, disabled)
+        .child(trigger);
+    dim_when(trigger_row, disabled)
 }
 
 fn selection_label(app: &App) -> String {

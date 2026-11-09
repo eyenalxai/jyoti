@@ -34,9 +34,9 @@ against the page rather than blending into it.
 A missing bulb set shows one compact empty panel with one Add action. Add, edit,
 remove, refresh, colour and screen sync each have one entry point. Forms and the
 remove confirmation sit below the tabs and carry a Back control. The colour
-editor opens as a popover anchored to the colour row; it is not a page and has
-no Back control. The popover keeps a live preview with hue, saturation and
-brightness gradients, not a channel form.
+editor opens as a popover anchored to the trigger button in the colour row; it
+is not a page and has no Back control. The colour row keeps the live preview;
+the popover offers hue, saturation and brightness gradients, not a channel form.
 
 The readable scale starts at 13 points for captions and 14 for control text.
 Tabs are 40 points high, field triggers 36, primary buttons and sliders 28. The

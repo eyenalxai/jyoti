@@ -40,7 +40,8 @@ the light is the only surface that carries a full colour. Every token lives in
   light name and the brightness, so the readout stays legible over any colour.
 - **Control deck** — power, brightness, mode and warmth or colour sit in one
   panel of hairline-separated rows. A screen sync run dims the rows it owns and
-  keeps power available. The mode row is inert while the colour editor is open.
+  keeps power available. The colour popover is modal; the page behind it is inert
+  while it is open.
 - **Sync stage** — the same surface language shows the captured colour, frame
   age and output brightness; capture and output controls sit beneath it.
 - **Type** — Fraunces for names and page titles, Inter for the interface and
@@ -48,10 +49,10 @@ the light is the only surface that carries a full colour. Every token lives in
 - **Motion** — spring-based throughout, except the appearance switch, which
   lands at once. Section changes push the content below the tab bar horizontally
   in tab order; the tabs stay put. A form or the remove confirmation appears in
-  that same content area. The colour editor opens as a popover beside its row and
-  never moves the page. The White/Colour tuning rows swap sideways instead of
-  cross-fading. There is no page-load animation, and every action stays reachable
-  from a pointer.
+  that same content area. The colour editor opens as a popover above the colour
+  row and never moves the page. The White/Colour tuning rows swap sideways
+  instead of cross-fading. There is no page-load animation, and every action
+  stays reachable from a pointer.
 
 ## Requirements
 
@@ -151,7 +152,7 @@ src/
   app/
     state.rs           screen, form, colour, toast and sync state
     selection.rs       bulb selection, overlay state, colour editor exit
-    color.rs           colour popover controls
+    color.rs           colour editor state, commit and restore
     actions.rs         bulb CRUD, controls, forms and toasts
     sync.rs            sync run, scene application and restore
   bulb/
@@ -180,13 +181,13 @@ src/
     monitor.rs         monitor and scene records
     sync.rs            sync status and restore report
   ui/
-    theme.rs           Lamplight palette, type scale and contrast ink
+    theme.rs           Lamplight palette and type scale
     shell.rs           centered toolbar and quiet section tabs
     dashboard.rs       bulb selector and the control deck
     dashboard/
       stage.rs         light stage, nameplate and empty state
     forms.rs           add, edit and remove screens
-    color.rs           hue, saturation and brightness editor
+    color.rs           colour editor popover controls
     sync.rs            capture stage, actions and output controls
     settings.rs        appearance, storage and about
     toast.rs           transient notifications
