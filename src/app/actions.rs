@@ -574,11 +574,7 @@ impl App {
 
     pub(crate) fn back(&mut self) {
         self.close_overlays();
-        if self.screen == Screen::Color {
-            self.cancel_color();
-        } else {
-            self.set_screen(Screen::Dashboard);
-        }
+        self.set_screen(Screen::Dashboard);
     }
 
     pub(crate) fn notify(&mut self, message: impl Into<String>, kind: ToastKind) {

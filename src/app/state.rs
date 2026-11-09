@@ -15,7 +15,6 @@ pub enum Screen {
     Settings,
     Form(FormMode),
     Remove(String),
-    Color,
 }
 
 impl Screen {
@@ -26,7 +25,6 @@ impl Screen {
             Screen::Settings => "settings",
             Screen::Form(_) => "form",
             Screen::Remove(_) => "remove",
-            Screen::Color => "colour",
         }
     }
 
@@ -35,7 +33,7 @@ impl Screen {
             Screen::Dashboard => 0,
             Screen::Sync => 1,
             Screen::Settings => 2,
-            Screen::Form(_) | Screen::Remove(_) | Screen::Color => 3,
+            Screen::Form(_) | Screen::Remove(_) => 3,
         }
     }
 }
@@ -55,13 +53,13 @@ pub struct Navigation {
 }
 
 pub fn nav_direction(from: &Screen, to: &Screen) -> NavDirection {
-    if matches!(from, Screen::Form(_) | Screen::Remove(_) | Screen::Color) {
+    if matches!(from, Screen::Form(_) | Screen::Remove(_)) {
         if matches!(to, Screen::Dashboard) {
             NavDirection::Backward
         } else {
             NavDirection::Forward
         }
-    } else if matches!(to, Screen::Form(_) | Screen::Remove(_) | Screen::Color) {
+    } else if matches!(to, Screen::Form(_) | Screen::Remove(_)) {
         NavDirection::Forward
     } else if to.rank() < from.rank() {
         NavDirection::Backward
@@ -99,6 +97,7 @@ impl Default for FormState {
 }
 
 pub struct ColorState {
+    pub open: bool,
     pub targets: Vec<String>,
     pub hue: f32,
     pub saturation: f32,
@@ -112,6 +111,7 @@ pub struct ColorState {
 impl Default for ColorState {
     fn default() -> Self {
         Self {
+            open: false,
             targets: Vec::new(),
             hue: 0.0,
             saturation: 0.0,
@@ -233,14 +233,6 @@ mod tests {
     #[test]
     fn subpages_open_forward_and_return_backward() {
         assert_eq!(
-            nav_direction(&Screen::Dashboard, &Screen::Color),
-            NavDirection::Forward
-        );
-        assert_eq!(
-            nav_direction(&Screen::Color, &Screen::Dashboard),
-            NavDirection::Backward
-        );
-        assert_eq!(
             nav_direction(&Screen::Dashboard, &Screen::Form(FormMode::Add)),
             NavDirection::Forward
         );
@@ -252,7 +244,7 @@ mod tests {
             NavDirection::Backward
         );
         assert_eq!(
-            nav_direction(&Screen::Settings, &Screen::Color),
+            nav_direction(&Screen::Settings, &Screen::Remove("id".to_owned())),
             NavDirection::Forward
         );
     }

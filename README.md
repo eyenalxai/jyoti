@@ -45,11 +45,13 @@ the light is the only surface that carries a full colour. Every token lives in
   age and output brightness; capture and output controls sit beneath it.
 - **Type** — Fraunces for names and page titles, Inter for the interface and
   tabular figures, IBM Plex Mono for data. No role sets text below 12 points.
-- **Motion** — spring-based throughout. Section changes push the content below
-  the tab bar horizontally in tab order; the tabs stay put. A subpage appears in
-  that same content area, and the White/Colour tuning rows swap sideways instead
-  of cross-fading. There is no page-load animation, and every action stays
-  reachable from a pointer.
+- **Motion** — spring-based throughout, except the appearance switch and the
+  colour editor, which land at once. Section changes push the content below the
+  tab bar horizontally in tab order; the tabs stay put. A form or the remove
+  confirmation appears in that same content area. The colour editor expands
+  inside the Control deck and never moves the page. The White/Colour tuning rows
+  swap sideways instead of cross-fading. There is no page-load animation, and
+  every action stays reachable from a pointer.
 
 ## Requirements
 
@@ -148,8 +150,8 @@ src/
   app.rs               app state, poll and lifecycle
   app/
     state.rs           screen, form, colour, toast and sync state
-    selection.rs       bulb selection, overlay state, colour-page exit
-    color.rs           colour preview and the picker screen
+    selection.rs       bulb selection, overlay state, colour editor exit
+    color.rs           colour preview and the inline editor
     actions.rs         bulb CRUD, controls, forms and toasts
     sync.rs            sync run, scene application and restore
   bulb/
@@ -184,7 +186,7 @@ src/
     dashboard/
       stage.rs         light stage, nameplate and empty state
     forms.rs           add, edit and remove screens
-    color.rs           hue, saturation and brightness picker
+    color.rs           hue, saturation and brightness editor
     sync.rs            capture stage, actions and output controls
     settings.rs        appearance, storage and about
     toast.rs           transient notifications

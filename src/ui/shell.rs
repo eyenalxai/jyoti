@@ -92,7 +92,7 @@ fn sync_status(app: &App, k: &Kit) -> Option<El> {
 
 fn nav(app: &App, k: &Kit) -> El {
     let selected = match &app.screen {
-        Screen::Dashboard | Screen::Form(_) | Screen::Remove(_) | Screen::Color => Some(0),
+        Screen::Dashboard | Screen::Form(_) | Screen::Remove(_) => Some(0),
         Screen::Sync => Some(1),
         Screen::Settings => Some(2),
     };

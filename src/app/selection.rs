@@ -11,7 +11,7 @@ impl App {
 
     pub(crate) fn leave_color(&mut self) {
         self.close_overlays();
-        if self.screen == Screen::Color {
+        if self.color.open {
             self.cancel_color();
         }
     }
