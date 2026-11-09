@@ -1,15 +1,15 @@
 use std::time::{Duration, Instant};
 
 use crate::app::App;
-use crate::app::state::ToastKind;
-use crate::bulb::model::BulbState;
+use crate::app::state::{StopPhase, ToastKind};
+use crate::bulb::model::{BulbState, Rgb};
 use crate::bulb::worker::Command;
-use crate::screen::brightness::sync_brightness_for;
 use crate::screen::capture::{ScreenCommand, ScreenEvent};
 use crate::screen::intensity::intensify;
 use crate::screen::monitor::Scene;
-use crate::screen::reducer::{DerivedColor, lab_for_color, should_publish};
-use crate::screen::sync::{RestoreReport, SyncStatus, restore_control};
+use crate::screen::sync::{
+    RestoreReport, SyncConfig, SyncFrame, SyncStatus, SyncTarget, restore_control,
+};
 
 impl App {
     pub(crate) fn start_sync(&mut self) {
@@ -35,31 +35,61 @@ impl App {
         self.sync.snapshots = self.states.clone();
         self.sync.drove_brightness.clear();
         self.sync.restore_report = None;
-        self.sync.last_publish = None;
         self.sync.last_scene = None;
         self.sync.last_scene_at = None;
         self.sync.derived = None;
         self.sync.brightness = 0;
         self.sync.flashing = false;
         self.sync.stale = false;
-        self.sync.flash = Default::default();
         self.sync.pending_restore.clear();
-        self.sync.restore_deadline = None;
-        self.sync.pending_stop = false;
+        self.sync.stop = StopPhase::Idle;
         self.sync.unreachable.clear();
         self.sync.failures.clear();
         self.sync.status = SyncStatus::Starting;
         self.sync.capture_error = None;
 
-        let sent = self
-            .screen_handle
-            .as_ref()
-            .is_some_and(|handle| handle.send(ScreenCommand::Start(monitor.clone())));
+        let sent = self.screen_handle.as_ref().is_some_and(|handle| {
+            handle.send(ScreenCommand::Start {
+                monitor: monitor.clone(),
+                config: self.sync_config(),
+            })
+        });
         if !sent {
             self.restart_screen();
             if let Some(handle) = &self.screen_handle {
-                let _ = handle.send(ScreenCommand::Start(monitor));
+                let _ = handle.send(ScreenCommand::Start {
+                    monitor,
+                    config: self.sync_config(),
+                });
             }
+        }
+    }
+
+    pub(crate) fn sync_config(&self) -> SyncConfig {
+        SyncConfig {
+            gain: self.sync.gain,
+            intensity: self.sync.colour_intensity,
+            targets: self
+                .bulbs
+                .iter()
+                .filter(|bulb| !self.sync.unreachable.contains(&bulb.id))
+                .filter_map(|bulb| {
+                    Some(SyncTarget {
+                        id: bulb.id.clone(),
+                        sender: self.workers.get(&bulb.id)?.clone(),
+                        on: self.states.get(&bulb.id).and_then(|state| state.power) == Some(true),
+                    })
+                })
+                .collect(),
+        }
+    }
+
+    pub(crate) fn configure_sync(&self) {
+        if !self.sync.status.is_running() {
+            return;
+        }
+        if let Some(handle) = &self.screen_handle {
+            let _ = handle.send(ScreenCommand::Configure(self.sync_config()));
         }
     }
 
@@ -93,14 +123,29 @@ impl App {
     }
 
     pub(crate) fn begin_restore(&mut self) {
-        if let Some(handle) = &self.screen_handle {
-            let _ = handle.send(ScreenCommand::Stop);
-        }
         self.sync.status = SyncStatus::Stopping;
-        self.sync.pending_stop = true;
         self.sync.pending_restore.clear();
+        self.sync.stop = StopPhase::Waiting {
+            until: Instant::now() + Duration::from_millis(2_000),
+        };
+
+        let sent = self
+            .screen_handle
+            .as_ref()
+            .is_some_and(|handle| handle.send(ScreenCommand::Stop));
+        if !sent {
+            self.start_restore();
+        }
+    }
+
+    pub(crate) fn start_restore(&mut self) {
+        if !matches!(self.sync.stop, StopPhase::Waiting { .. }) {
+            return;
+        }
         let restore_deadline = Instant::now() + Duration::from_millis(2_000);
-        self.sync.restore_deadline = Some(restore_deadline);
+        self.sync.stop = StopPhase::Restoring {
+            deadline: restore_deadline,
+        };
 
         let mut report = RestoreReport {
             restored: 0,
@@ -120,16 +165,12 @@ impl App {
             .map(|(id, state)| (id.clone(), state.clone()))
             .collect();
         for (id, state) in snapshots {
-            let control = restore_control(&state);
-            let color = match control {
-                Some(crate::screen::sync::RestoreControl::Color(color)) => Some(color),
-                _ => None,
-            };
-            let temperature = match control {
+            let (color, temperature) = match restore_control(&state) {
+                Some(crate::screen::sync::RestoreControl::Color(color)) => (Some(color), None),
                 Some(crate::screen::sync::RestoreControl::Temperature(temperature)) => {
-                    Some(temperature)
+                    (None, Some(temperature))
                 }
-                _ => None,
+                None => (None, None),
             };
             let brightness = if self.sync.drove_brightness.contains(&id) {
                 state.brightness
@@ -163,10 +204,10 @@ impl App {
     }
 
     pub(crate) fn finish_restore(&mut self) {
-        if !self.sync.pending_stop {
+        if self.sync.stop == StopPhase::Idle {
             return;
         }
-        self.sync.pending_stop = false;
+        self.sync.stop = StopPhase::Idle;
         if let Some(report) = self.sync.restore_report.as_mut() {
             for id in &self.sync.pending_restore {
                 if let Some(bulb) = self.bulbs.iter().find(|bulb| &bulb.id == id)
@@ -177,7 +218,6 @@ impl App {
             }
         }
         self.sync.pending_restore.clear();
-        self.sync.restore_deadline = None;
         self.sync.status = SyncStatus::Restored;
         let message = self
             .sync
@@ -242,24 +282,20 @@ impl App {
                 if self.sync.status == SyncStatus::Starting {
                     self.sync.status = SyncStatus::Running;
                 }
-                if self.sync.status == SyncStatus::Running {
-                    self.apply_scene(scene);
-                } else {
-                    self.sync.last_scene = Some(scene);
-                    self.sync.derived = Some(intensify(scene.color, self.sync.colour_intensity));
-                    self.sync.last_scene_at = Some(Instant::now());
-                    self.sync.stale = false;
-                }
+                self.note_frame(scene, intensify(scene.color, self.sync.colour_intensity));
             }
             ScreenEvent::Started => {
                 self.sync.capture_error = None;
                 self.sync.status = SyncStatus::Running;
             }
-            ScreenEvent::Stopped => {
-                if !self.sync.pending_stop {
-                    self.sync.status = SyncStatus::Idle;
+            ScreenEvent::Stopped { drove } => match self.sync.stop {
+                StopPhase::Waiting { .. } => {
+                    self.sync.drove_brightness.extend(drove);
+                    self.start_restore();
                 }
-            }
+                StopPhase::Idle => self.sync.status = SyncStatus::Idle,
+                StopPhase::Restoring { .. } => {}
+            },
             ScreenEvent::Error(message) => {
                 if self.sync.status.is_running() {
                     if !self.sync.stale {
@@ -283,79 +319,21 @@ impl App {
         }
     }
 
-    pub(crate) fn republish_to(&mut self, id: &str) {
-        if self.sync.status != SyncStatus::Running || self.sync.unreachable.contains(id) {
-            return;
+    pub(crate) fn note_sync_frame(&mut self, frame: SyncFrame) {
+        self.sync.capture_error = None;
+        if self.sync.status == SyncStatus::Starting {
+            self.sync.status = SyncStatus::Running;
         }
-        let Some(scene) = self.sync.last_scene else {
-            return;
-        };
-        let Some(color) = self.sync.derived else {
-            return;
-        };
-        if let Some(sender) = self.workers.get(id) {
-            let _ = sender.send(Command::SetColor(color));
-        }
-        if self.states.get(id).and_then(|state| state.power) == Some(true) {
-            let target = sync_brightness_for(scene.brightness, self.sync.gain);
-            if let Some(sender) = self.workers.get(id) {
-                let _ = sender.send(Command::SetBrightness(target));
-            }
-            self.sync.brightness = target;
-            self.sync.drove_brightness.insert(id.to_owned());
-        }
+        self.note_frame(frame.scene, frame.output);
+        self.sync.brightness = frame.brightness;
+        self.sync.flashing = frame.flashing;
+        self.sync.drove_brightness.extend(frame.drove_brightness);
     }
 
-    fn apply_scene(&mut self, scene: Scene) {
-        let now = Instant::now();
-        let color = intensify(scene.color, self.sync.colour_intensity);
+    fn note_frame(&mut self, scene: Scene, output: Rgb) {
         self.sync.last_scene = Some(scene);
-        self.sync.last_scene_at = Some(now);
-        self.sync.derived = Some(color);
+        self.sync.derived = Some(output);
+        self.sync.last_scene_at = Some(Instant::now());
         self.sync.stale = false;
-
-        let target = sync_brightness_for(scene.brightness, self.sync.gain);
-        let flashing = self.sync.flash.guard(target, now);
-        self.sync.flashing = flashing;
-
-        let lab = lab_for_color(color);
-        let derived = DerivedColor {
-            rgb: color,
-            lab,
-            scene_brightness: scene.brightness,
-        };
-        let publish_color = should_publish(derived, self.sync.last_publish);
-        let publish_brightness = !flashing && target != self.sync.brightness;
-
-        if publish_color {
-            self.sync.last_publish = Some(lab);
-            for bulb in &self.bulbs {
-                if self.sync.unreachable.contains(&bulb.id) {
-                    continue;
-                }
-                if let Some(sender) = self.workers.get(&bulb.id) {
-                    let _ = sender.send(Command::SetColor(color));
-                }
-            }
-        }
-
-        if publish_brightness {
-            for bulb in &self.bulbs {
-                if self.sync.unreachable.contains(&bulb.id) {
-                    continue;
-                }
-                let power = self.states.get(&bulb.id).and_then(|state| state.power);
-                if power == Some(true)
-                    && let Some(sender) = self.workers.get(&bulb.id)
-                {
-                    let _ = sender.send(Command::SetBrightness(target));
-                    self.sync.drove_brightness.insert(bulb.id.clone());
-                }
-            }
-        }
-
-        if !flashing {
-            self.sync.brightness = target;
-        }
     }
 }

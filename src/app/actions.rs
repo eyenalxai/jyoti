@@ -3,7 +3,7 @@ use std::time::{Duration, Instant};
 use rune::{TextEdit, Tx};
 
 use crate::app::App;
-use crate::app::state::{FormMode, FormState, Screen, Toast, ToastKind};
+use crate::app::state::{FormMode, FormState, Screen, StopPhase, Toast, ToastKind};
 use crate::bulb::aggregate::AggregatePower;
 use crate::bulb::model::{
     Bulb, BulbField, BulbState, ColorMode, NEUTRAL_TEMPERATURE, Rgb, new_id, trim_model,
@@ -47,23 +47,23 @@ impl App {
     }
 
     pub(crate) fn handle_worker_event(&mut self, event: WorkerEvent) -> bool {
-        match event {
+        let mut reconfigure = false;
+        let changed = match event {
             WorkerEvent::State { id, state } => {
                 let was_on = self.states.get(&id).and_then(|state| state.power) == Some(true);
                 let is_on = state.power == Some(true);
                 self.states.insert(id.clone(), state);
                 self.errors.remove(&id);
                 self.sync.failures.remove(&id);
+                reconfigure = was_on != is_on;
                 if self.sync.status.is_running() {
-                    self.sync.unreachable.remove(&id);
-                    if !was_on && is_on {
-                        self.republish_to(&id);
-                    }
+                    reconfigure |= self.sync.unreachable.remove(&id);
                 }
                 true
             }
             WorkerEvent::Sent { id } => {
                 let changed = self.sync.unreachable.remove(&id);
+                reconfigure = changed;
                 let had_error = self.errors.remove(&id).is_some();
                 self.sync.failures.remove(&id);
                 changed || had_error
@@ -74,7 +74,7 @@ impl App {
                     let failures = self.sync.failures.entry(id.clone()).or_insert(0);
                     *failures = failures.saturating_add(1);
                     if *failures >= 3 {
-                        self.sync.unreachable.insert(id.clone());
+                        reconfigure = self.sync.unreachable.insert(id.clone());
                     }
                 }
                 self.notify(error.to_string(), ToastKind::Error);
@@ -99,14 +99,19 @@ impl App {
             WorkerEvent::Reachable { id, reachable } => {
                 if reachable {
                     let changed = self.sync.unreachable.remove(&id);
+                    reconfigure = changed;
                     let had_error = self.errors.remove(&id).is_some();
-                    self.republish_to(&id);
                     changed || had_error
                 } else {
-                    self.sync.unreachable.insert(id)
+                    reconfigure = self.sync.unreachable.insert(id);
+                    reconfigure
                 }
             }
+        };
+        if reconfigure {
+            self.configure_sync();
         }
+        changed
     }
 
     pub(crate) fn refresh_all(&mut self, tx: &mut Tx) {
@@ -131,12 +136,7 @@ impl App {
                 for bulb in bulbs {
                     self.spawn_worker(&bulb);
                 }
-                if self.sync.status.is_running() {
-                    let ids: Vec<String> = self.bulbs.iter().map(|bulb| bulb.id.clone()).collect();
-                    for id in ids {
-                        self.republish_to(&id);
-                    }
-                }
+                self.configure_sync();
             }
             Err(error) => {
                 self.startup_error = Some(error.to_string());
@@ -172,11 +172,6 @@ impl App {
         for id in &ids {
             self.set_local_power(id, target);
             self.send(id, Command::SetPower(target));
-        }
-        if target {
-            for id in ids {
-                self.republish_to(&id);
-            }
         }
     }
 
@@ -626,6 +621,7 @@ impl App {
 
     pub(crate) fn set_sync_gain(&mut self, gain: f32) {
         self.sync.gain = normalize_sync_gain(gain);
+        self.configure_sync();
         self.schedule_preferences();
     }
 
@@ -634,7 +630,7 @@ impl App {
         if let Some(scene) = self.sync.last_scene {
             self.sync.derived = Some(intensify(scene.color, self.sync.colour_intensity));
         }
-        self.sync.last_publish = None;
+        self.configure_sync();
         self.schedule_preferences();
     }
 
@@ -649,8 +645,32 @@ impl App {
         self.leave_color();
         if self.sync.status.is_active() {
             self.begin_restore();
-            let deadline = Instant::now() + Duration::from_millis(2_200);
-            while Instant::now() < deadline && !self.sync.pending_restore.is_empty() {
+            let stop_deadline = Instant::now() + Duration::from_millis(2_000);
+            while Instant::now() < stop_deadline
+                && matches!(self.sync.stop, StopPhase::Waiting { .. })
+            {
+                let mut events = Vec::new();
+                if let Some(handle) = &self.screen_handle {
+                    while let Ok(event) = handle.events.try_recv() {
+                        events.push(event);
+                    }
+                }
+                for event in events {
+                    self.handle_screen_event(event);
+                }
+                if !matches!(self.sync.stop, StopPhase::Waiting { .. }) {
+                    break;
+                }
+                std::thread::sleep(Duration::from_millis(5));
+            }
+            if matches!(self.sync.stop, StopPhase::Waiting { .. }) {
+                self.start_restore();
+            }
+            let restore_deadline = match self.sync.stop {
+                StopPhase::Restoring { deadline } => deadline,
+                StopPhase::Idle | StopPhase::Waiting { .. } => Instant::now(),
+            };
+            while Instant::now() < restore_deadline && !self.sync.pending_restore.is_empty() {
                 while let Ok(event) = self.worker_events.try_recv() {
                     let _ = self.handle_worker_event(event);
                 }

@@ -1,4 +1,15 @@
-use crate::bulb::model::{BulbState, ColorMode};
+use std::collections::HashSet;
+use std::sync::mpsc::Sender;
+use std::time::Instant;
+
+use crate::bulb::model::{BulbState, ColorMode, Rgb};
+use crate::bulb::worker::Command;
+use crate::screen::brightness::sync_brightness_for;
+use crate::screen::color::Lab;
+use crate::screen::flash::FlashGuard;
+use crate::screen::intensity::intensify;
+use crate::screen::monitor::Scene;
+use crate::screen::reducer::{DerivedColor, lab_for_color, should_publish};
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub enum SyncStatus {
@@ -44,6 +55,122 @@ impl SyncStatus {
     }
 }
 
+#[derive(Clone, Debug)]
+pub struct SyncTarget {
+    pub id: String,
+    pub sender: Sender<Command>,
+    pub on: bool,
+}
+
+#[derive(Clone, Debug)]
+pub struct SyncConfig {
+    pub gain: f32,
+    pub intensity: f32,
+    pub targets: Vec<SyncTarget>,
+}
+
+#[derive(Clone, Debug)]
+pub struct SyncFrame {
+    pub scene: Scene,
+    pub output: Rgb,
+    pub brightness: u8,
+    pub flashing: bool,
+    pub drove_brightness: Vec<String>,
+}
+
+pub struct SyncRun {
+    config: SyncConfig,
+    flash: FlashGuard,
+    last_publish: Option<Lab>,
+    brightness: u8,
+    drove: HashSet<String>,
+    republish: bool,
+}
+
+impl SyncRun {
+    pub fn new(config: SyncConfig) -> Self {
+        Self {
+            config,
+            flash: FlashGuard::default(),
+            last_publish: None,
+            brightness: 0,
+            drove: HashSet::new(),
+            republish: false,
+        }
+    }
+
+    pub fn configure(&mut self, config: SyncConfig) {
+        let targets_changed = config.targets.len() != self.config.targets.len()
+            || config
+                .targets
+                .iter()
+                .zip(self.config.targets.iter())
+                .any(|(next, current)| next.id != current.id || next.on != current.on);
+        if targets_changed {
+            self.republish = true;
+        }
+        if (config.intensity - self.config.intensity).abs() > f32::EPSILON {
+            self.last_publish = None;
+        }
+        self.config = config;
+    }
+
+    pub fn drove_brightness(&self) -> Vec<String> {
+        self.drove.iter().cloned().collect()
+    }
+
+    pub fn apply(&mut self, scene: Scene, now: Instant) -> SyncFrame {
+        let output = intensify(scene.color, self.config.intensity);
+        let brightness_target = sync_brightness_for(scene.brightness, self.config.gain);
+        let flashing = self.flash.guard(brightness_target, now);
+        let lab = lab_for_color(output);
+        let republish = std::mem::take(&mut self.republish);
+        let publish_color = republish
+            || should_publish(
+                DerivedColor {
+                    rgb: output,
+                    lab,
+                    scene_brightness: scene.brightness,
+                },
+                self.last_publish,
+            );
+        let publish_brightness = !flashing && (republish || brightness_target != self.brightness);
+        let mut drove = Vec::new();
+
+        if publish_color {
+            self.last_publish = Some(lab);
+            for target in &self.config.targets {
+                let _ = target.sender.send(Command::SetColor(output));
+            }
+        }
+
+        if publish_brightness {
+            for target in &self.config.targets {
+                if target.on {
+                    let _ = target
+                        .sender
+                        .send(Command::SetBrightness(brightness_target));
+                    if self.drove.insert(target.id.clone()) {
+                        drove.push(target.id.clone());
+                    }
+                }
+            }
+        }
+
+        if !flashing {
+            self.brightness = brightness_target;
+        }
+
+        SyncFrame {
+            scene,
+            output,
+            brightness: self.brightness,
+            flashing,
+            drove_brightness: drove,
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum RestoreControl {
     Color(crate::bulb::model::Rgb),
@@ -83,5 +210,161 @@ impl RestoreReport {
             self.total,
             self.not_restored.join(", ")
         )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::mpsc::channel;
+    use std::time::Duration;
+
+    fn run(on: bool) -> (SyncRun, std::sync::mpsc::Receiver<Command>) {
+        let (sender, receiver) = channel();
+        let config = SyncConfig {
+            gain: 1.0,
+            intensity: 0.0,
+            targets: vec![SyncTarget {
+                id: "bulb".to_owned(),
+                sender,
+                on,
+            }],
+        };
+        (SyncRun::new(config), receiver)
+    }
+
+    fn scene(color: Rgb, brightness: f32) -> Scene {
+        Scene { color, brightness }
+    }
+
+    #[test]
+    fn a_run_publishes_colour_and_brightness_to_an_on_target() {
+        let (mut run, receiver) = run(true);
+        let published = run.apply(scene(Rgb::new(255, 0, 0), 1.0), Instant::now());
+
+        assert_eq!(published.brightness, 100);
+        assert_eq!(published.drove_brightness, vec!["bulb".to_owned()]);
+        let commands: Vec<Command> = receiver.try_iter().collect();
+        assert!(
+            commands
+                .iter()
+                .any(|command| matches!(command, Command::SetColor(color) if color.red > 200))
+        );
+        assert!(
+            commands
+                .iter()
+                .any(|command| matches!(command, Command::SetBrightness(100)))
+        );
+    }
+
+    #[test]
+    fn an_unchanged_scene_does_not_touch_the_bulb() {
+        let (mut run, receiver) = run(true);
+        let now = Instant::now();
+        run.apply(scene(Rgb::new(255, 0, 0), 1.0), now);
+        receiver.try_iter().for_each(drop);
+
+        let published = run.apply(
+            scene(Rgb::new(255, 0, 0), 1.0),
+            now + Duration::from_secs(1),
+        );
+
+        assert!(receiver.try_iter().next().is_none());
+        assert!(!published.flashing);
+    }
+
+    #[test]
+    fn an_off_target_gets_colour_but_no_brightness() {
+        let (mut run, receiver) = run(false);
+        let published = run.apply(scene(Rgb::new(255, 0, 0), 1.0), Instant::now());
+
+        assert!(published.drove_brightness.is_empty());
+        let commands: Vec<Command> = receiver.try_iter().collect();
+        assert!(
+            commands
+                .iter()
+                .any(|command| matches!(command, Command::SetColor(_)))
+        );
+        assert!(
+            !commands
+                .iter()
+                .any(|command| matches!(command, Command::SetBrightness(_)))
+        );
+    }
+
+    #[test]
+    fn a_target_turning_on_republishes_the_output() {
+        let (sender, receiver) = channel();
+        let mut run = SyncRun::new(SyncConfig {
+            gain: 1.0,
+            intensity: 0.0,
+            targets: vec![SyncTarget {
+                id: "bulb".to_owned(),
+                sender: sender.clone(),
+                on: false,
+            }],
+        });
+        let now = Instant::now();
+        run.apply(scene(Rgb::new(255, 0, 0), 1.0), now);
+        receiver.try_iter().for_each(drop);
+
+        run.configure(SyncConfig {
+            gain: 1.0,
+            intensity: 0.0,
+            targets: vec![SyncTarget {
+                id: "bulb".to_owned(),
+                sender,
+                on: true,
+            }],
+        });
+        let published = run.apply(
+            scene(Rgb::new(255, 0, 0), 1.0),
+            now + Duration::from_millis(700),
+        );
+
+        assert_eq!(published.drove_brightness, vec!["bulb".to_owned()]);
+        let commands: Vec<Command> = receiver.try_iter().collect();
+        assert!(
+            commands
+                .iter()
+                .any(|command| matches!(command, Command::SetColor(_)))
+        );
+        assert!(
+            commands
+                .iter()
+                .any(|command| matches!(command, Command::SetBrightness(100)))
+        );
+    }
+
+    #[test]
+    fn the_flash_guard_holds_brightness_but_keeps_the_colour() {
+        let (mut run, receiver) = run(true);
+        let now = Instant::now();
+        run.apply(scene(Rgb::new(255, 0, 0), 0.0), now);
+        receiver.try_iter().for_each(drop);
+        run.apply(
+            scene(Rgb::new(0, 255, 0), 1.0),
+            now + Duration::from_millis(50),
+        );
+        receiver.try_iter().for_each(drop);
+
+        let published = run.apply(
+            scene(Rgb::new(255, 0, 0), 0.0),
+            now + Duration::from_millis(100),
+        );
+
+        assert!(published.flashing);
+        assert_eq!(published.brightness, 100);
+        let commands: Vec<Command> = receiver.try_iter().collect();
+        assert!(
+            commands
+                .iter()
+                .any(|command| matches!(command, Command::SetColor(_)))
+        );
+        assert!(
+            !commands
+                .iter()
+                .any(|command| matches!(command, Command::SetBrightness(_)))
+        );
     }
 }
