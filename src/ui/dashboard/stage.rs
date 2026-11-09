@@ -2,51 +2,24 @@ use rune::{Color, El, col, row, text};
 use rune_kit::{Button, ButtonVariant, ControlSize, Kit};
 
 use crate::app::App;
-use crate::bulb::aggregate::{AggregatePower, LightQuality, light_quality_of};
-use crate::bulb::selection::Selection;
+use crate::app::selected::SelectedLight;
+use crate::bulb::aggregate::{AggregatePower, LightQuality};
 use crate::screen::color::kelvin_to_rgb;
 use crate::ui::theme;
 use crate::ui::widget::{ALERT, BULB, PAGE_PAD, dot, nameplate, rgb_color, stage_surface};
 
-use super::{STAGE_HEIGHT, health_word, single_power};
+use super::{STAGE_HEIGHT, health_word};
 
-pub fn light_stage(app: &App, k: &Kit) -> El {
-    let all = matches!(app.selection, Some(Selection::All));
-    let aggregate = app.aggregate();
-    let state = app.single_state();
-    let quality = if all {
-        aggregate.quality
-    } else {
-        light_quality_of(state.mode)
-    };
-    let white = quality == LightQuality::White;
-    let colour = quality == LightQuality::Color;
-    let mixed = quality == LightQuality::Mixed;
-    let power = if all {
-        aggregate.power
-    } else {
-        single_power(&state)
-    };
+pub fn light_stage(view: &SelectedLight, k: &Kit) -> El {
+    let white = view.quality == LightQuality::White;
+    let colour = view.quality == LightQuality::Color;
+    let mixed = view.quality == LightQuality::Mixed;
+    let power = view.power;
     let dimmed = power == AggregatePower::Off;
 
-    let temperature = if all {
-        aggregate.temperature.map_or(4_000, |span| span.high)
-    } else {
-        state.temperature.unwrap_or(4_000)
-    };
-    let colour_value = if all {
-        match aggregate.color {
-            Some(crate::bulb::aggregate::AggregateColor::Equal(color)) => Some(color),
-            _ => None,
-        }
-    } else {
-        state.color
-    };
-    let mixed_colour = all
-        && matches!(
-            aggregate.color,
-            Some(crate::bulb::aggregate::AggregateColor::Mixed)
-        );
+    let temperature = view.temperature_value();
+    let colour_value = view.color_value();
+    let mixed_colour = view.color_mixed();
     let base = if white {
         Some(kelvin_to_rgb(temperature))
     } else if colour {
@@ -72,27 +45,9 @@ pub fn light_stage(app: &App, k: &Kit) -> El {
     } else {
         "No light yet".to_owned()
     };
-    let scope = if all {
-        format!("{} bulbs", aggregate.total)
-    } else {
-        app.selected_bulb()
-            .map_or_else(|| "No bulb".to_owned(), |bulb| bulb.name.clone())
-    };
+    let scope = view.scope_label();
     let detail = if white {
-        let span = if all {
-            aggregate.temperature
-        } else {
-            state
-                .temperature
-                .map(|value| crate::bulb::aggregate::ValueSpan {
-                    low: value,
-                    high: value,
-                })
-        };
-        match span {
-            Some(span) if span.low != span.high => format!("{}–{} K", span.low, span.high),
-            _ => format!("{temperature} K"),
-        }
+        view.temperature_label()
     } else if colour {
         if mixed_colour {
             "Colours differ".to_owned()
@@ -113,25 +68,13 @@ pub fn light_stage(app: &App, k: &Kit) -> El {
     } else {
         theme::number(12.0, 450.0)
     };
-    let brightness = if all {
-        aggregate.brightness.map_or(50, |span| span.high)
-    } else {
-        state.brightness.unwrap_or(50)
-    };
-    let brightness_text = if all {
-        match aggregate.brightness {
-            Some(span) if span.low != span.high => format!("{}–{}", span.low, span.high),
-            _ => format!("{brightness}"),
-        }
-    } else {
-        format!("{brightness}")
-    };
-    let (status_ink, status_word) = match app.selection.as_ref() {
-        Some(Selection::Bulb(id)) => match health_word(app.health.status(id)) {
+    let brightness_text = view.brightness_text();
+    let (status_ink, status_word) = match view.health.status {
+        Some(status) => match health_word(status) {
             Some(word) => (theme::warning_on_plate(), word),
             None => stage_status(power),
         },
-        _ => stage_status(power),
+        None => stage_status(power),
     };
     let plate_ink = theme::ink();
     let plate_muted = plate_ink.alpha(0.62);
@@ -212,7 +155,7 @@ pub fn light_stage(app: &App, k: &Kit) -> El {
     let glow = if dimmed { 0.0 } else { 0.24 };
     let stage = stage_surface(k, STAGE_HEIGHT, fill, glow, plate);
 
-    if all && aggregate.failed > 0 {
+    if view.is_all() && view.health.failed > 0 {
         stage.child(
             row()
                 .absolute(12.0, 10.0)
@@ -223,7 +166,7 @@ pub fn light_stage(app: &App, k: &Kit) -> El {
                 .center_y()
                 .child(rune::icon(&ALERT, 13.0).color(theme::plate()).a11y_hidden())
                 .child(
-                    text(format!("{} unreachable", aggregate.failed))
+                    text(format!("{} unreachable", view.health.failed))
                         .font(k.ty.small_medium)
                         .color(theme::plate()),
                 ),

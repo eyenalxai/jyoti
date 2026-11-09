@@ -51,6 +51,14 @@ pub fn light_quality_of(mode: ColorMode) -> LightQuality {
     }
 }
 
+pub fn power_of_state(state: &BulbState) -> AggregatePower {
+    match state.power {
+        Some(true) => AggregatePower::On,
+        Some(false) => AggregatePower::Off,
+        None => AggregatePower::Unknown,
+    }
+}
+
 pub fn aggregate_state(
     bulbs: &[Bulb],
     states: &HashMap<String, BulbState>,

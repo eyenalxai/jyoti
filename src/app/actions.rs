@@ -693,11 +693,6 @@ impl App {
         self.preferences_due = None;
         self.save_preferences();
     }
-
-    pub(crate) fn single_state(&self) -> BulbState {
-        let fallback = BulbState::default();
-        self.selected_state().cloned().unwrap_or(fallback)
-    }
 }
 
 fn pending_commands(dashboard: &mut Dashboard) -> Vec<(String, Command)> {

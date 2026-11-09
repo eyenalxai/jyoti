@@ -1,5 +1,6 @@
 mod actions;
 mod color;
+pub(crate) mod selected;
 mod selection;
 pub(crate) mod state;
 pub(crate) mod sync;
@@ -10,6 +11,7 @@ use std::time::{Duration, Instant};
 
 use rune::{Tx, Waker};
 
+use crate::app::selected::{SelectedLight, selected_light};
 use crate::app::state::{
     ColorState, Dashboard, FormState, LocalEdits, Navigation, Screen, SyncState, Toast, ToastKind,
     nav_direction, toast_duration,
@@ -287,24 +289,21 @@ impl App {
         crate::bulb::aggregate::aggregate_state(&self.bulbs, &self.states, &self.health)
     }
 
+    pub fn selected_light(&self) -> Option<SelectedLight> {
+        selected_light(
+            &self.bulbs,
+            &self.states,
+            &self.health,
+            self.selection.as_ref(),
+        )
+    }
+
     pub fn selected_ids(&self) -> Vec<String> {
         match &self.selection {
             Some(Selection::All) => self.bulbs.iter().map(|bulb| bulb.id.clone()).collect(),
             Some(Selection::Bulb(id)) => vec![id.clone()],
             None => Vec::new(),
         }
-    }
-
-    pub fn selected_bulb(&self) -> Option<&Bulb> {
-        match &self.selection {
-            Some(Selection::Bulb(id)) => self.bulbs.iter().find(|bulb| &bulb.id == id),
-            _ => None,
-        }
-    }
-
-    pub fn selected_state(&self) -> Option<&BulbState> {
-        self.selected_bulb()
-            .and_then(|bulb| self.states.get(&bulb.id))
     }
 
     pub(crate) fn show_now(&mut self, screen: Screen) {

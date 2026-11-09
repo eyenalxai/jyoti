@@ -7,11 +7,12 @@ use rune_kit::{
 };
 
 use crate::app::App;
-use crate::bulb::aggregate::{AggregatePower, AggregateState, LightQuality, light_quality_of};
+use crate::app::selected::SelectedLight;
+use crate::bulb::aggregate::{AggregatePower, LightQuality, power_of_state};
 use crate::bulb::health::HealthStatus;
 use crate::bulb::model::{
-    BulbState, Rgb, TEMPERATURE_MAX, TEMPERATURE_MIN, brightness_from_fraction,
-    fraction_of_brightness, fraction_of_temperature, temperature_from_fraction,
+    Rgb, TEMPERATURE_MAX, TEMPERATURE_MIN, brightness_from_fraction, fraction_of_brightness,
+    fraction_of_temperature, temperature_from_fraction,
 };
 use crate::bulb::selection::Selection;
 use crate::screen::color::kelvin_to_rgb;
@@ -29,15 +30,18 @@ pub fn content(app: &App, k: &Kit, layers: &mut Vec<El>) -> El {
     if app.bulbs.is_empty() {
         return stage::empty_state(k);
     }
+    let Some(view) = app.selected_light() else {
+        return stage::empty_state(k);
+    };
 
     let viewport = col()
         .key("control")
         .w_full()
         .padding(PAGE_PAD)
         .gap(9.0)
-        .child(picker_row(app, k, layers))
-        .child(stage::light_stage(app, k))
-        .child(control_deck(app, k, layers))
+        .child(picker_row(app, k, layers, &view))
+        .child(stage::light_stage(&view, k))
+        .child(control_deck(app, k, layers, &view))
         .scroll(ScrollSpec {
             stick_bottom: false,
         });
@@ -46,21 +50,15 @@ pub fn content(app: &App, k: &Kit, layers: &mut Vec<El>) -> El {
     col().w_full().h_full().min_h(0.0).child(scroll)
 }
 
-fn picker_row(app: &App, k: &Kit, layers: &mut Vec<El>) -> El {
-    let show_all = app.bulbs.len() >= 2;
-    let aggregate = app.aggregate();
-    let all = matches!(app.selection, Some(Selection::All));
-    let current_tone = if all {
-        power_tone(k, aggregate.power)
-    } else {
-        power_tone(k, single_power(&app.single_state()))
-    };
-    let current = selection_label(app);
+fn picker_row(app: &App, k: &Kit, layers: &mut Vec<El>, view: &SelectedLight) -> El {
+    let show_all = view.health.total >= 2;
+    let all = view.is_all();
+    let current_tone = power_tone(k, view.power);
     let trigger = dropdown_trigger(
         k,
         344.0,
         "Bulb",
-        &current,
+        &view.name,
         app.bulb_picker_open,
         Some(current_tone),
         |app: &mut App| app.bulb_picker_open = !app.bulb_picker_open,
@@ -74,10 +72,10 @@ fn picker_row(app: &App, k: &Kit, layers: &mut Vec<El>) -> El {
         picker = picker.item(
             MenuItem::new("All bulbs")
                 .checked(all)
-                .lead(dot(power_tone(k, aggregate.power)))
+                .lead(dot(power_tone(k, view.power)))
                 .description(format!(
                     "{} configured · {} reachable",
-                    aggregate.total, aggregate.reachable
+                    view.health.total, view.health.reachable
                 ))
                 .on_select(|app: &mut App| {
                     app.bulb_picker_open = false;
@@ -91,7 +89,7 @@ fn picker_row(app: &App, k: &Kit, layers: &mut Vec<El>) -> El {
         let tone = if health.is_down() {
             k.c.danger.icon
         } else {
-            power_tone(k, state.map_or(AggregatePower::Unknown, single_power))
+            power_tone(k, state.map_or(AggregatePower::Unknown, power_of_state))
         };
         let power = if let Some(word) = health_word(health) {
             word
@@ -134,7 +132,7 @@ fn picker_row(app: &App, k: &Kit, layers: &mut Vec<El>) -> El {
         IconButtonVariant::GhostMuted,
         |app: &mut App| app.bulb_menu_open = !app.bulb_menu_open,
     );
-    let single = matches!(app.selection, Some(Selection::Bulb(_)));
+    let single = !view.is_all();
     let menu = Menu::new("bulb-actions")
         .trigger(trigger)
         .open(app.bulb_menu_open)
@@ -198,25 +196,14 @@ fn icon_button(
         .radius(k.radius.md)
 }
 
-fn control_deck(app: &App, k: &Kit, layers: &mut Vec<El>) -> El {
-    let all = matches!(app.selection, Some(Selection::All));
-    let aggregate = app.aggregate();
-    let state = app.single_state();
-    let quality = if all {
-        aggregate.quality
-    } else {
-        light_quality_of(state.mode)
-    };
+fn control_deck(app: &App, k: &Kit, layers: &mut Vec<El>, view: &SelectedLight) -> El {
+    let quality = view.quality;
     let white = quality == LightQuality::White;
     let colour = quality == LightQuality::Color;
     let mixed = quality == LightQuality::Mixed;
     let unknown = quality == LightQuality::Unknown;
     let sync_owned = !app.sync.controls().manual;
-    let power = if all {
-        aggregate.power
-    } else {
-        single_power(&state)
-    };
+    let power = view.power;
     let power_switch = Switch::new(power == AggregatePower::On)
         .control_size(ControlSize::Large)
         .label("Power")
@@ -253,7 +240,7 @@ fn control_deck(app: &App, k: &Kit, layers: &mut Vec<El>) -> El {
         deck = deck.child(hairline(k));
     }
 
-    deck = deck.child(brightness_block(k, &aggregate, &state, all, sync_owned));
+    deck = deck.child(brightness_block(k, view, sync_owned));
     deck =
         deck.child(hairline(k))
             .child(mode_block(k, white, colour, sync_owned || app.color.open));
@@ -262,13 +249,13 @@ fn control_deck(app: &App, k: &Kit, layers: &mut Vec<El>) -> El {
             (
                 "tuning-white",
                 Edge::Leading,
-                temperature_block(k, &aggregate, &state, all, sync_owned),
+                temperature_block(k, view, sync_owned),
             )
         } else {
             (
                 "tuning-colour",
                 Edge::Trailing,
-                colour_block(app, k, &aggregate, &state, all, sync_owned, layers),
+                colour_block(app, k, view, sync_owned, layers),
             )
         };
         deck = deck.child(
@@ -303,16 +290,7 @@ fn control_deck(app: &App, k: &Kit, layers: &mut Vec<El>) -> El {
                 k.c.info,
             )));
     }
-    let error = match app.selection.as_ref() {
-        Some(Selection::Bulb(id)) => app.health.message(id).map(str::to_owned),
-        Some(Selection::All) => app
-            .bulbs
-            .iter()
-            .find_map(|bulb| app.health.message(&bulb.id))
-            .map(str::to_owned),
-        None => None,
-    };
-    if let Some(error) = error {
+    if let Some(error) = view.health.message.as_deref() {
         deck = deck.child(hairline(k)).child(
             row()
                 .w_full()
@@ -324,33 +302,16 @@ fn control_deck(app: &App, k: &Kit, layers: &mut Vec<El>) -> El {
                         .color(k.c.danger.icon)
                         .a11y_hidden(),
                 )
-                .child(error_text(k, &error)),
+                .child(error_text(k, error)),
         );
     }
 
     surface(k, deck)
 }
 
-fn brightness_block(
-    k: &Kit,
-    aggregate: &AggregateState,
-    state: &BulbState,
-    all: bool,
-    disabled: bool,
-) -> El {
-    let value = if all {
-        aggregate.brightness.map_or(50, |span| span.high)
-    } else {
-        state.brightness.unwrap_or(50)
-    };
-    let label = if all {
-        match aggregate.brightness {
-            Some(span) if span.low != span.high => format!("{}–{}%", span.low, span.high),
-            _ => format!("{value}%"),
-        }
-    } else {
-        format!("{value}%")
-    };
+fn brightness_block(k: &Kit, view: &SelectedLight, disabled: bool) -> El {
+    let value = view.brightness_value();
+    let label = view.brightness_label();
     let slider = slider(
         k,
         "brightness",
@@ -424,26 +385,9 @@ fn mode_block(k: &Kit, white: bool, colour: bool, disabled: bool) -> El {
     dim_when(block, disabled)
 }
 
-fn temperature_block(
-    k: &Kit,
-    aggregate: &AggregateState,
-    state: &BulbState,
-    all: bool,
-    disabled: bool,
-) -> El {
-    let value = if all {
-        aggregate.temperature.map_or(4_000, |span| span.high)
-    } else {
-        state.temperature.unwrap_or(4_000)
-    };
-    let label = if all {
-        match aggregate.temperature {
-            Some(span) if span.low != span.high => format!("{}–{} K", span.low, span.high),
-            _ => format!("{value} K"),
-        }
-    } else {
-        format!("{value} K")
-    };
+fn temperature_block(k: &Kit, view: &SelectedLight, disabled: bool) -> El {
+    let value = view.temperature_value();
+    let label = view.temperature_label();
     let stop = |kelvin| {
         (
             fraction_of_temperature(kelvin),
@@ -520,23 +464,15 @@ fn temperature_block(
 fn colour_block(
     app: &App,
     k: &Kit,
-    aggregate: &AggregateState,
-    state: &BulbState,
-    all: bool,
+    view: &SelectedLight,
     disabled: bool,
     layers: &mut Vec<El>,
 ) -> El {
     let editing = app.color.open;
     let (color, mixed) = if editing {
         (Some(app.color.preview), false)
-    } else if all {
-        match aggregate.color {
-            Some(crate::bulb::aggregate::AggregateColor::Equal(color)) => (Some(color), false),
-            Some(crate::bulb::aggregate::AggregateColor::Mixed) => (None, true),
-            None => (None, false),
-        }
     } else {
-        (state.color, false)
+        (view.color_value(), view.color_mixed())
     };
     let label = color.map_or_else(
         || {
@@ -600,26 +536,6 @@ fn colour_block(
         )
         .child(trigger);
     dim_when(trigger_row, disabled)
-}
-
-fn selection_label(app: &App) -> String {
-    match &app.selection {
-        Some(Selection::All) => "All bulbs".to_owned(),
-        Some(Selection::Bulb(id)) => app
-            .bulbs
-            .iter()
-            .find(|bulb| &bulb.id == id)
-            .map_or_else(|| "Select a bulb".to_owned(), |bulb| bulb.name.clone()),
-        None => "Select a bulb".to_owned(),
-    }
-}
-
-fn single_power(state: &BulbState) -> AggregatePower {
-    match state.power {
-        Some(true) => AggregatePower::On,
-        Some(false) => AggregatePower::Off,
-        None => AggregatePower::Unknown,
-    }
 }
 
 pub(super) fn health_word(status: HealthStatus) -> Option<&'static str> {
