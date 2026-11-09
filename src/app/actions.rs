@@ -40,7 +40,7 @@ impl App {
         };
         let handle = crate::bulb::worker::spawn(
             bulb.clone(),
-            self.registry.tokens().clone(),
+            self.registry.token_store().clone(),
             self.config.clone(),
             self.worker_sender.clone(),
             waker,
@@ -433,22 +433,8 @@ impl App {
                 };
                 let bulbs = match self.registry.add(&self.bulbs, &bulb, &token) {
                     Ok(bulbs) => bulbs,
-                    Err(RegistryError::Invalid(BulbListIssue::DuplicateName { .. })) => {
-                        self.form.errors.insert(
-                            BulbField::Name,
-                            format!("A bulb named {} already exists.", bulb.name),
-                        );
-                        return;
-                    }
-                    Err(RegistryError::Invalid(BulbListIssue::DuplicateAddress { .. })) => {
-                        self.form.errors.insert(
-                            BulbField::Address,
-                            format!("A bulb at {} already exists.", bulb.address),
-                        );
-                        return;
-                    }
                     Err(error) => {
-                        self.notify(error.to_string(), ToastKind::Error);
+                        self.show_save_error(error, &bulb);
                         return;
                     }
                 };
@@ -461,10 +447,6 @@ impl App {
                 self.notify(format!("Added {}.", bulb.name), ToastKind::Success);
             }
             Some(id) => {
-                if !self.bulbs.iter().any(|bulb| bulb.id == id) {
-                    self.notify("That bulb is no longer in the list.", ToastKind::Error);
-                    return;
-                }
                 let bulb = Bulb {
                     id,
                     name,
@@ -474,22 +456,8 @@ impl App {
                 let new_token = (!token.is_empty()).then_some(token.as_str());
                 let bulbs = match self.registry.update(&self.bulbs, &bulb, new_token) {
                     Ok(bulbs) => bulbs,
-                    Err(RegistryError::Invalid(BulbListIssue::DuplicateName { .. })) => {
-                        self.form.errors.insert(
-                            BulbField::Name,
-                            format!("A bulb named {} already exists.", bulb.name),
-                        );
-                        return;
-                    }
-                    Err(RegistryError::Invalid(BulbListIssue::DuplicateAddress { .. })) => {
-                        self.form.errors.insert(
-                            BulbField::Address,
-                            format!("A bulb at {} already exists.", bulb.address),
-                        );
-                        return;
-                    }
                     Err(error) => {
-                        self.notify(error.to_string(), ToastKind::Error);
+                        self.show_save_error(error, &bulb);
                         return;
                     }
                 };
@@ -498,6 +466,24 @@ impl App {
                 self.set_screen(Screen::Dashboard);
                 self.notify(format!("Saved {}.", bulb.name), ToastKind::Success);
             }
+        }
+    }
+
+    fn show_save_error(&mut self, error: RegistryError, bulb: &Bulb) {
+        match error {
+            RegistryError::Invalid(BulbListIssue::DuplicateName { .. }) => {
+                self.form.errors.insert(
+                    BulbField::Name,
+                    format!("A bulb named {} already exists.", bulb.name),
+                );
+            }
+            RegistryError::Invalid(BulbListIssue::DuplicateAddress { .. }) => {
+                self.form.errors.insert(
+                    BulbField::Address,
+                    format!("A bulb at {} already exists.", bulb.address),
+                );
+            }
+            error => self.notify(error.to_string(), ToastKind::Error),
         }
     }
 

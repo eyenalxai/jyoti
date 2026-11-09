@@ -19,6 +19,7 @@ pub const PIID_COLOR: u32 = 4;
 pub const PIID_COLOR_MODE: u32 = 6;
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
 pub struct Bulb {
     pub id: String,
     pub name: String,
@@ -28,6 +29,7 @@ pub struct Bulb {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct BulbFile {
     pub version: u8,
     pub bulbs: Vec<Bulb>,
@@ -94,12 +96,16 @@ pub fn validate_bulbs(bulbs: &[Bulb]) -> Result<(), BulbListIssue> {
         if !ids.insert(bulb.id.clone()) {
             return Err(BulbListIssue::DuplicateId);
         }
-        if !names.insert(name.to_ascii_lowercase()) {
+        if !names.insert(name.to_lowercase()) {
             return Err(BulbListIssue::DuplicateName {
                 name: name.to_owned(),
             });
         }
-        if !addresses.insert(address.to_owned()) {
+        let address_key = match address.parse::<IpAddr>() {
+            Ok(address) => address.to_string(),
+            Err(_) => address.to_owned(),
+        };
+        if !addresses.insert(address_key) {
             return Err(BulbListIssue::DuplicateAddress {
                 address: address.to_owned(),
             });
@@ -393,6 +399,19 @@ mod tests {
             validate_bulbs(&[desk.clone(), same_name]),
             Err(BulbListIssue::DuplicateAddress {
                 address: "192.168.1.42".to_owned()
+            })
+        );
+
+        let loopback = bulb("00000000-0000-4000-8000-000000000003", "Loopback", "::1");
+        let expanded_loopback = bulb(
+            "00000000-0000-4000-8000-000000000004",
+            "Expanded loopback",
+            "0:0:0:0:0:0:0:1",
+        );
+        assert_eq!(
+            validate_bulbs(&[loopback, expanded_loopback]),
+            Err(BulbListIssue::DuplicateAddress {
+                address: "0:0:0:0:0:0:0:1".to_owned()
             })
         );
     }

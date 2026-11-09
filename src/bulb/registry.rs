@@ -74,11 +74,11 @@ impl<M: MetadataStore, T: TokenStore> BulbRegistry<M, T> {
         Self { metadata, tokens }
     }
 
-    pub fn load(&self) -> Result<Vec<Bulb>, StoreError> {
-        self.metadata.load()
+    pub fn load(&self) -> Result<Vec<Bulb>, RegistryError> {
+        Ok(self.metadata.load()?)
     }
 
-    pub fn tokens(&self) -> &T {
+    pub fn token_store(&self) -> &T {
         &self.tokens
     }
 
@@ -297,6 +297,14 @@ mod tests {
 
     fn log(state: &FakeState) -> Vec<&'static str> {
         state.log.borrow().clone()
+    }
+
+    #[test]
+    fn a_load_returns_the_saved_bulbs() -> Result<(), Box<dyn std::error::Error>> {
+        let (registry, _state, bulbs) = registry();
+
+        assert_eq!(registry.load()?, bulbs);
+        Ok(())
     }
 
     #[test]

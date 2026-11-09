@@ -26,17 +26,10 @@ impl BulbStore {
             return Ok(Vec::new());
         };
 
-        let value: serde_json::Value =
-            serde_json::from_str(&text).map_err(|source| StoreError::Decode {
-                path: self.path.clone(),
-                source,
-            })?;
-        reject_token_key(&value, &self.path)?;
-        let file: BulbFile =
-            serde_json::from_value(value).map_err(|source| StoreError::Decode {
-                path: self.path.clone(),
-                source,
-            })?;
+        let file: BulbFile = serde_json::from_str(&text).map_err(|source| StoreError::Decode {
+            path: self.path.clone(),
+            source,
+        })?;
 
         if file.version != BulbFile::VERSION {
             return Err(StoreError::Invalid {
@@ -173,36 +166,10 @@ impl PreferencesStore {
     }
 }
 
-fn reject_token_key(value: &serde_json::Value, path: &Path) -> Result<(), StoreError> {
-    if value.get("token").is_some() {
-        return Err(StoreError::TokenKey {
-            path: path.to_path_buf(),
-        });
-    }
-    if let Some(bulbs) = value.get("bulbs").and_then(serde_json::Value::as_array) {
-        for bulb in bulbs {
-            if bulb.get("token").is_some() {
-                return Err(StoreError::TokenKey {
-                    path: path.to_path_buf(),
-                });
-            }
-        }
-    }
-    Ok(())
-}
-
 fn store_issue(path: &Path, issue: BulbListIssue) -> StoreError {
     match issue {
         BulbListIssue::DuplicateId => StoreError::DuplicateId {
             path: path.to_path_buf(),
-        },
-        BulbListIssue::DuplicateName { name } => StoreError::DuplicateName {
-            path: path.to_path_buf(),
-            name,
-        },
-        BulbListIssue::DuplicateAddress { address } => StoreError::DuplicateAddress {
-            path: path.to_path_buf(),
-            address,
         },
         issue => StoreError::Invalid {
             path: path.to_path_buf(),
@@ -301,13 +268,13 @@ mod tests {
             &path,
             r#"{"version":1,"bulbs":[{"id":"00000000-0000-4000-8000-000000000001","name":"Desk lamp","address":"192.168.1.42","token":"0123456789abcdef0123456789abcdef"}]}"#,
         )?;
-        assert!(matches!(store.load(), Err(StoreError::TokenKey { .. })));
+        assert!(matches!(store.load(), Err(StoreError::Decode { .. })));
 
         std::fs::write(
             &path,
             r#"{"version":1,"bulbs":[],"token":"0123456789abcdef0123456789abcdef"}"#,
         )?;
-        assert!(matches!(store.load(), Err(StoreError::TokenKey { .. })));
+        assert!(matches!(store.load(), Err(StoreError::Decode { .. })));
         Ok(())
     }
 
@@ -323,7 +290,7 @@ mod tests {
         )?;
         assert!(matches!(
             store.load(),
-            Err(StoreError::DuplicateName { .. })
+            Err(StoreError::Invalid { message, .. }) if message.contains("two bulbs named")
         ));
 
         std::fs::write(
@@ -332,7 +299,7 @@ mod tests {
         )?;
         assert!(matches!(
             store.load(),
-            Err(StoreError::DuplicateAddress { .. })
+            Err(StoreError::Invalid { message, .. }) if message.contains("two bulbs at")
         ));
         Ok(())
     }
