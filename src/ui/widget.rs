@@ -182,7 +182,9 @@ pub fn segmented_switch(
                     .a11y_hidden(),
             );
         if on {
-            segment = k.elevate(segment.fill(k.c.bg_base), &k.elevation.knob);
+            segment = k
+                .elevate(segment.fill(k.c.bg_base), &k.elevation.knob)
+                .border(1.0, k.c.border_strong);
         } else {
             segment = segment.hover(k.c.hover).press(k.c.pressed);
         }

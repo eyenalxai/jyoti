@@ -123,7 +123,7 @@ fn nav(app: &App, k: &Kit) -> El {
                 1 => app.open_sync(),
                 _ => app.open_settings(),
             });
-        let ink = if on { k.c.text_base } else { k.c.text_muted };
+        let ink = if on { k.c.text_accent } else { k.c.text_muted };
         tab = tab.child(
             row().w_full().h(TAB_HEIGHT - 2.0).center().child(
                 text(label.to_owned())
