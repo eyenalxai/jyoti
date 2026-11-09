@@ -1,6 +1,7 @@
 use std::ffi::c_void;
 use std::path::PathBuf;
 use std::sync::mpsc::{self, Receiver, Sender};
+use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -13,6 +14,7 @@ use wayland_client::Connection;
 use crate::screen::grid::prepare_frame;
 use crate::screen::monitor::{MonitorInfo, Scene};
 use crate::screen::reducer::{ReducerState, reduce_prepared};
+use crate::screen::sync::{SyncConfig, SyncFrame, SyncRun};
 
 const TICK: Duration = Duration::from_millis(667);
 const GRID_WIDTH: usize = 64;
@@ -21,7 +23,8 @@ const GRID_HEIGHT: usize = 36;
 #[derive(Clone, Debug)]
 pub enum ScreenCommand {
     ListMonitors,
-    Start(String),
+    Start { monitor: String, config: SyncConfig },
+    Configure(SyncConfig),
     Pause,
     Resume,
     SelectMonitor(String),
@@ -35,7 +38,7 @@ pub enum ScreenEvent {
     Monitors(Vec<MonitorInfo>),
     Scene(Scene),
     Started,
-    Stopped,
+    Stopped { drove: Vec<String> },
     Error(String),
     Fatal(String),
 }
@@ -43,6 +46,7 @@ pub enum ScreenEvent {
 pub struct ScreenHandle {
     pub commands: Sender<ScreenCommand>,
     pub events: Receiver<ScreenEvent>,
+    pub latest: Arc<Mutex<Option<SyncFrame>>>,
     join: Option<thread::JoinHandle<()>>,
 }
 
@@ -59,15 +63,18 @@ impl ScreenHandle {
     pub fn start(waker: Waker) -> Self {
         let (commands, inbox) = mpsc::channel::<ScreenCommand>();
         let (outbox, events) = mpsc::channel::<ScreenEvent>();
+        let latest = Arc::new(Mutex::new(None));
+        let thread_latest = Arc::clone(&latest);
         let join = thread::Builder::new()
             .name("jyoti-screen".to_owned())
             .spawn(move || {
-                run(inbox, outbox, waker);
+                run(inbox, outbox, waker, thread_latest);
             })
             .ok();
         Self {
             commands,
             events,
+            latest,
             join,
         }
     }
@@ -77,7 +84,12 @@ impl ScreenHandle {
     }
 }
 
-fn run(inbox: Receiver<ScreenCommand>, events: Sender<ScreenEvent>, waker: Waker) {
+fn run(
+    inbox: Receiver<ScreenCommand>,
+    events: Sender<ScreenEvent>,
+    waker: Waker,
+    latest: Arc<Mutex<Option<SyncFrame>>>,
+) {
     let mut backend = match Backend::connect() {
         Ok(backend) => backend,
         Err(error) => {
@@ -92,6 +104,7 @@ fn run(inbox: Receiver<ScreenCommand>, events: Sender<ScreenEvent>, waker: Waker
 
     let mut running = false;
     let mut paused = false;
+    let mut run: Option<SyncRun> = None;
     let mut selected = backend.first_monitor();
     let mut reducer = ReducerState::default();
     let mut last_capture = Instant::now() - TICK;
@@ -114,8 +127,12 @@ fn run(inbox: Receiver<ScreenCommand>, events: Sender<ScreenEvent>, waker: Waker
                 let _ = events.send(ScreenEvent::Monitors(backend.monitors()));
                 waker();
             }
-            Some(ScreenCommand::Start(name)) => {
-                selected = Some(name);
+            Some(ScreenCommand::Start { monitor, config }) => {
+                selected = Some(monitor);
+                run = Some(SyncRun::new(config));
+                if let Ok(mut slot) = latest.lock() {
+                    *slot = None;
+                }
                 running = true;
                 paused = false;
                 let _ = events.send(ScreenEvent::Started);
@@ -126,8 +143,15 @@ fn run(inbox: Receiver<ScreenCommand>, events: Sender<ScreenEvent>, waker: Waker
                     &events,
                     &waker,
                     &mut reducer,
+                    run.as_mut(),
+                    &latest,
                 );
                 last_capture = Instant::now();
+            }
+            Some(ScreenCommand::Configure(config)) => {
+                if let Some(run) = run.as_mut() {
+                    run.configure(config);
+                }
             }
             Some(ScreenCommand::Pause) => {
                 paused = true;
@@ -143,7 +167,8 @@ fn run(inbox: Receiver<ScreenCommand>, events: Sender<ScreenEvent>, waker: Waker
             Some(ScreenCommand::Stop) => {
                 running = false;
                 paused = false;
-                let _ = events.send(ScreenEvent::Stopped);
+                let drove = finish_run(&mut run);
+                let _ = events.send(ScreenEvent::Stopped { drove });
                 waker();
             }
             Some(ScreenCommand::CaptureOnce) => {
@@ -153,13 +178,17 @@ fn run(inbox: Receiver<ScreenCommand>, events: Sender<ScreenEvent>, waker: Waker
                     &events,
                     &waker,
                     &mut reducer,
+                    None,
+                    &latest,
                 );
             }
-            Some(ScreenCommand::Shutdown) | None => {
+            Some(ScreenCommand::Shutdown) => {
+                let drove = finish_run(&mut run);
+                let _ = events.send(ScreenEvent::Stopped { drove });
+                break;
+            }
+            None => {
                 if !running || paused {
-                    if matches!(command, Some(ScreenCommand::Shutdown)) {
-                        break;
-                    }
                     continue;
                 }
                 capture(
@@ -168,11 +197,19 @@ fn run(inbox: Receiver<ScreenCommand>, events: Sender<ScreenEvent>, waker: Waker
                     &events,
                     &waker,
                     &mut reducer,
+                    run.as_mut(),
+                    &latest,
                 );
                 last_capture = Instant::now();
             }
         }
     }
+}
+
+fn finish_run(run: &mut Option<SyncRun>) -> Vec<String> {
+    run.take()
+        .map(|run| run.drove_brightness())
+        .unwrap_or_default()
 }
 
 fn capture(
@@ -181,6 +218,8 @@ fn capture(
     events: &Sender<ScreenEvent>,
     waker: &Waker,
     reducer: &mut ReducerState,
+    run: Option<&mut SyncRun>,
+    latest: &Arc<Mutex<Option<SyncFrame>>>,
 ) {
     let Some(name) = selected else {
         let _ = events.send(ScreenEvent::Error("No monitor is selected.".to_owned()));
@@ -190,7 +229,17 @@ fn capture(
 
     match capture.capture(name, reducer) {
         Ok(scene) => {
-            let _ = events.send(ScreenEvent::Scene(scene));
+            match run {
+                Some(run) => {
+                    let frame = run.apply(scene, Instant::now());
+                    if let Ok(mut slot) = latest.lock() {
+                        *slot = Some(frame);
+                    }
+                }
+                None => {
+                    let _ = events.send(ScreenEvent::Scene(scene));
+                }
+            }
             waker();
         }
         Err(error) => {

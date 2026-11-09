@@ -11,7 +11,7 @@ use std::time::{Duration, Instant};
 use rune::{Tx, Waker};
 
 use crate::app::state::{
-    ColorState, Dashboard, FormState, Navigation, Screen, SyncState, Toast, ToastKind,
+    ColorState, Dashboard, FormState, Navigation, Screen, StopPhase, SyncState, Toast, ToastKind,
     nav_direction, toast_duration,
 };
 use crate::bulb::keyring::KeyringStore;
@@ -164,13 +164,19 @@ impl App {
         }
 
         let mut screen_events = Vec::new();
+        let mut latest = None;
         if let Some(handle) = &self.screen_handle {
             while let Ok(event) = handle.events.try_recv() {
                 screen_events.push(event);
             }
+            latest = handle.latest.lock().ok().and_then(|mut slot| slot.take());
         }
         for event in screen_events {
             self.handle_screen_event(event);
+            changed = true;
+        }
+        if let Some(frame) = latest {
+            self.note_sync_frame(frame);
             changed = true;
         }
 
@@ -244,16 +250,24 @@ impl App {
             }
         }
 
-        if self.sync.pending_stop {
-            if self
-                .sync
-                .restore_deadline
-                .is_some_and(|deadline| now >= deadline)
-            {
-                self.finish_restore();
-                changed = true;
-            } else {
-                tx.wake_after(Duration::from_millis(100));
+        if self.sync.stop != StopPhase::Idle {
+            match self.sync.stop {
+                StopPhase::Waiting { until } => {
+                    if now >= until {
+                        self.start_restore();
+                        changed = true;
+                    }
+                    tx.wake_after(Duration::from_millis(100));
+                }
+                StopPhase::Restoring { deadline } => {
+                    if now >= deadline {
+                        self.finish_restore();
+                        changed = true;
+                    } else {
+                        tx.wake_after(Duration::from_millis(100));
+                    }
+                }
+                StopPhase::Idle => {}
             }
         }
 
