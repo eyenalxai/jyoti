@@ -87,14 +87,29 @@ impl Rgb {
 
     pub fn parse_hex(value: &str) -> Option<Self> {
         let value = value.trim().trim_start_matches('#');
-        if value.len() != 6 {
-            return None;
-        }
-        let red = u8::from_str_radix(&value[0..2], 16).ok()?;
-        let green = u8::from_str_radix(&value[2..4], 16).ok()?;
-        let blue = u8::from_str_radix(&value[4..6], 16).ok()?;
-        Some(Self { red, green, blue })
+        let [
+            red_high,
+            red_low,
+            green_high,
+            green_low,
+            blue_high,
+            blue_low,
+        ] = value.as_bytes().try_into().ok()?;
+        Some(Self {
+            red: hex_byte(red_high, red_low)?,
+            green: hex_byte(green_high, green_low)?,
+            blue: hex_byte(blue_high, blue_low)?,
+        })
     }
+}
+
+fn hex_byte(high: u8, low: u8) -> Option<u8> {
+    if !high.is_ascii_hexdigit() || !low.is_ascii_hexdigit() {
+        return None;
+    }
+    let digits = [high, low];
+    let text = std::str::from_utf8(&digits).ok()?;
+    u8::from_str_radix(text, 16).ok()
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -235,12 +250,20 @@ mod tests {
     }
 
     #[test]
-    fn rgb_round_trips_through_hex() {
+    fn rgb_formats_as_uppercase_hex() {
+        assert_eq!(Rgb::new(255, 136, 0).hex(), "#FF8800");
+    }
+
+    #[test]
+    fn hex_values_parse_or_are_rejected_without_panicking() {
         let color = Rgb::new(255, 136, 0);
-        assert_eq!(color.hex(), "#FF8800");
-        assert_eq!(Rgb::parse_hex("#ff8800"), Some(color));
+        assert_eq!(Rgb::parse_hex("#FF8800"), Some(color));
         assert_eq!(Rgb::parse_hex("ff8800"), Some(color));
         assert_eq!(Rgb::parse_hex("#ff88"), None);
+        assert_eq!(Rgb::parse_hex("#ff880000"), None);
+        assert_eq!(Rgb::parse_hex("\u{20ac}\u{20ac}"), None);
+        assert_eq!(Rgb::parse_hex("#\u{20ac}\u{20ac}"), None);
+        assert_eq!(Rgb::parse_hex("+fffff"), None);
     }
 
     #[test]
