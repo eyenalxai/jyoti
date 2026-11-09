@@ -35,7 +35,7 @@ generic kit:
   control; every action stays on a visible pointer control.
 - **One deck.** Power, brightness, mode and warmth or colour sit in one panel of
   hairline-separated rows. A screen sync run dims the rows it owns and leaves
-  power available.
+  power available. The mode row is inert while the colour editor is open.
 - **Quiet navigation.** The three sections are text tabs; the active label and
   its rule take the brass accent. The filled accent pill is gone.
 - **Motion.** Section changes push only the content below the tab bar; the tabs

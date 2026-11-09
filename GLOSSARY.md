@@ -171,7 +171,8 @@ brightness.
 
 The panel under the light stage on Control: power, brightness, mode and warmth
 or colour in hairline-separated rows. During a sync run the rows sync owns are
-dimmed and power stays available.
+dimmed and power stays available. The mode row is inert while the colour editor
+is open.
 
 ## Bulb selector
 

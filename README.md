@@ -40,7 +40,7 @@ the light is the only surface that carries a full colour. Every token lives in
   light name and the brightness, so the readout stays legible over any colour.
 - **Control deck** — power, brightness, mode and warmth or colour sit in one
   panel of hairline-separated rows. A screen sync run dims the rows it owns and
-  keeps power available.
+  keeps power available. The mode row is inert while the colour editor is open.
 - **Sync stage** — the same surface language shows the captured colour, frame
   age and output brightness; capture and output controls sit beneath it.
 - **Type** — Fraunces for names and page titles, Inter for the interface and

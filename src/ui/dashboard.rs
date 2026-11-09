@@ -576,7 +576,7 @@ fn colour_block(
         .build(k)
         .key("keep-colour")
         .h(40.0);
-    let label_style = if color.is_some() && !editing {
+    let label_style = if color.is_some() {
         theme::code(14.0, 500.0)
     } else {
         k.ty.ui_medium
