@@ -87,14 +87,19 @@ impl Rgb {
 
     pub fn parse_hex(value: &str) -> Option<Self> {
         let value = value.trim().trim_start_matches('#');
-        if value.len() != 6 {
-            return None;
-        }
-        let red = u8::from_str_radix(&value[0..2], 16).ok()?;
-        let green = u8::from_str_radix(&value[2..4], 16).ok()?;
-        let blue = u8::from_str_radix(&value[4..6], 16).ok()?;
-        Some(Self { red, green, blue })
+        let digits: [u8; 6] = value.as_bytes().try_into().ok()?;
+        Some(Self {
+            red: hex_byte(digits[0], digits[1])?,
+            green: hex_byte(digits[2], digits[3])?,
+            blue: hex_byte(digits[4], digits[5])?,
+        })
     }
+}
+
+fn hex_byte(high: u8, low: u8) -> Option<u8> {
+    let digits = [high, low];
+    let text = std::str::from_utf8(&digits).ok()?;
+    u8::from_str_radix(text, 16).ok()
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -241,6 +246,13 @@ mod tests {
         assert_eq!(Rgb::parse_hex("#ff8800"), Some(color));
         assert_eq!(Rgb::parse_hex("ff8800"), Some(color));
         assert_eq!(Rgb::parse_hex("#ff88"), None);
+        assert_eq!(Rgb::parse_hex("#ff880000"), None);
+    }
+
+    #[test]
+    fn non_ascii_hex_is_rejected_without_panicking() {
+        assert_eq!(Rgb::parse_hex("\u{20ac}\u{20ac}"), None);
+        assert_eq!(Rgb::parse_hex("#\u{20ac}\u{20ac}"), None);
     }
 
     #[test]
