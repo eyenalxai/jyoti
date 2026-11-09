@@ -128,7 +128,7 @@ fn capture_thread(
     latest: Arc<Mutex<Option<SyncFrame>>>,
     stopping: Arc<Halt>,
 ) {
-    let mut backend = match Backend::connect() {
+    let backend = match Backend::connect() {
         Ok(backend) => backend,
         Err(error) => {
             let _ = events.send(ScreenEvent::Fatal(error));
@@ -136,7 +136,17 @@ fn capture_thread(
             return;
         }
     };
+    run_loop(backend, inbox, events, waker, latest, stopping);
+}
 
+fn run_loop<C: Capture>(
+    mut backend: C,
+    inbox: Receiver<ScreenCommand>,
+    events: Sender<ScreenEvent>,
+    waker: Waker,
+    latest: Arc<Mutex<Option<SyncFrame>>>,
+    stopping: Arc<Halt>,
+) {
     let mut capture_run = CaptureRun::new(stopping);
     capture_run.select_monitor(backend.first_monitor(), Instant::now());
     let _ = events.send(ScreenEvent::Monitors(backend.monitors()));
@@ -164,17 +174,14 @@ fn capture_thread(
                     *slot = None;
                 }
                 let now = Instant::now();
-                match capture_run.start(generation, monitor, config, now) {
-                    Ok(()) => match capture_run.started(generation, now) {
-                        Ok(()) => {
-                            let _ = events.send(ScreenEvent::Started { generation });
-                            waker();
-                        }
-                        Err(error) => {
-                            let _ = events.send(ScreenEvent::Fatal(error.to_string()));
-                            waker();
-                        }
-                    },
+                let started = capture_run
+                    .start(generation, monitor, config, now)
+                    .and_then(|()| capture_run.started(generation, now));
+                match started {
+                    Ok(()) => {
+                        let _ = events.send(ScreenEvent::Started { generation });
+                        waker();
+                    }
                     Err(error) => {
                         let _ = events.send(ScreenEvent::Fatal(error.to_string()));
                         waker();
@@ -558,7 +565,72 @@ impl Drop for Downsampler {
 
 #[cfg(test)]
 mod tests {
-    use super::Halt;
+    use std::sync::{Arc, Mutex, mpsc::channel};
+
+    use super::{
+        Capture, Halt, MonitorInfo, ReducerState, Scene, ScreenCommand, ScreenEvent, SyncConfig,
+        run_loop,
+    };
+
+    struct FakeCapture;
+
+    impl Capture for FakeCapture {
+        fn monitors(&mut self) -> Vec<MonitorInfo> {
+            Vec::new()
+        }
+
+        fn first_monitor(&self) -> Option<String> {
+            None
+        }
+
+        fn capture(
+            &mut self,
+            _monitor: &str,
+            _reducer: &mut ReducerState,
+        ) -> Result<Scene, String> {
+            Err("The loop should not capture before shutdown.".to_owned())
+        }
+    }
+
+    #[test]
+    fn a_shutdown_while_running_exits_the_loop() -> Result<(), Box<dyn std::error::Error>> {
+        let (commands, inbox) = channel();
+        let (events, observed) = channel();
+        commands.send(ScreenCommand::Start {
+            generation: 7,
+            monitor: "DP-1".to_owned(),
+            config: SyncConfig {
+                gain: 1.0,
+                intensity: 0.0,
+                targets: Vec::new(),
+            },
+        })?;
+        commands.send(ScreenCommand::Shutdown)?;
+        let latest = Arc::new(Mutex::new(None));
+        let stopping = Arc::new(Halt::new());
+
+        run_loop(
+            FakeCapture,
+            inbox,
+            events,
+            Arc::new(|| {}),
+            latest,
+            stopping,
+        );
+
+        let events: Vec<ScreenEvent> = observed.try_iter().collect();
+        assert!(
+            events
+                .iter()
+                .any(|event| matches!(event, ScreenEvent::Started { generation: 7 }))
+        );
+        assert!(
+            events
+                .iter()
+                .any(|event| matches!(event, ScreenEvent::Stopped { generation: 7, .. }))
+        );
+        Ok(())
+    }
 
     #[test]
     fn a_start_does_not_clear_a_halt_for_the_same_generation() {

@@ -9,6 +9,11 @@ use super::{Capture, Halt};
 
 const TICK: Duration = Duration::from_millis(667);
 const IDLE_WAIT: Duration = Duration::from_secs(3_600);
+const NO_MONITOR: &str = "No monitor is selected.";
+
+fn immediate(now: Instant) -> Instant {
+    now.checked_sub(TICK).unwrap_or(now)
+}
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(crate) enum CapturePhase {
@@ -77,9 +82,19 @@ impl CaptureRun {
         }
     }
 
+    #[cfg(test)]
+    pub fn phase(&self) -> CapturePhase {
+        self.phase
+    }
+
+    #[cfg(test)]
+    pub fn selected(&self) -> Option<&str> {
+        self.selected.as_deref()
+    }
+
     pub fn select_monitor(&mut self, monitor: Option<String>, now: Instant) {
         self.selected = monitor;
-        self.last_capture = Some(now.checked_sub(TICK).unwrap_or(now));
+        self.last_capture = Some(immediate(now));
     }
 
     pub fn start(
@@ -95,7 +110,6 @@ impl CaptureRun {
         self.phase = CapturePhase::Starting(generation);
         self.selected = Some(monitor);
         self.run = Some(SyncRun::new(config));
-        self.reducer = ReducerState::default();
         self.last_capture = Some(now);
         self.stopping.stand_down(generation);
         Ok(())
@@ -105,7 +119,7 @@ impl CaptureRun {
         match self.phase {
             CapturePhase::Starting(current) if current == generation => {
                 self.phase = CapturePhase::Running(generation);
-                self.last_capture = Some(now.checked_sub(TICK).unwrap_or(now));
+                self.last_capture = Some(immediate(now));
                 Ok(())
             }
             CapturePhase::Starting(_) => Err(CaptureRejection::GenerationMismatch),
@@ -127,7 +141,7 @@ impl CaptureRun {
         match self.phase {
             CapturePhase::Paused(generation) => {
                 self.phase = CapturePhase::Running(generation);
-                self.last_capture = Some(now.checked_sub(TICK).unwrap_or(now));
+                self.last_capture = Some(immediate(now));
                 Ok(())
             }
             _ => Err(CaptureRejection::NotPaused),
@@ -141,6 +155,14 @@ impl CaptureRun {
     }
 
     pub fn stop(&mut self) -> Option<CaptureStop> {
+        self.finish_active()
+    }
+
+    pub fn shutdown(&mut self) -> Option<CaptureStop> {
+        self.finish_active()
+    }
+
+    fn finish_active(&mut self) -> Option<CaptureStop> {
         let generation = match self.phase {
             CapturePhase::Starting(generation)
             | CapturePhase::Running(generation)
@@ -148,25 +170,11 @@ impl CaptureRun {
             CapturePhase::Idle => return None,
         };
         self.phase = CapturePhase::Idle;
-        Some(CaptureStop {
-            generation,
-            drove: self.finish(),
-        })
-    }
-
-    pub fn shutdown(&mut self) -> Option<CaptureStop> {
-        match self.phase {
-            CapturePhase::Starting(generation)
-            | CapturePhase::Running(generation)
-            | CapturePhase::Paused(generation) => {
-                self.phase = CapturePhase::Idle;
-                Some(CaptureStop {
-                    generation,
-                    drove: self.finish(),
-                })
-            }
-            CapturePhase::Idle => None,
-        }
+        let drove = match self.run.take() {
+            Some(run) => run.drove(),
+            None => Drove::default(),
+        };
+        Some(CaptureStop { generation, drove })
     }
 
     pub fn wait(&self, now: Instant) -> Duration {
@@ -192,7 +200,7 @@ impl CaptureRun {
             return Ok(None);
         }
         let Some(monitor) = self.selected.as_deref() else {
-            return Err("No monitor is selected.".to_owned());
+            return Err(NO_MONITOR.to_owned());
         };
         let scene = capture.capture(monitor, &mut self.reducer)?;
         if self.stopping.is_halted() {
@@ -206,16 +214,9 @@ impl CaptureRun {
 
     pub fn capture_once(&mut self, capture: &mut dyn Capture) -> Result<Scene, String> {
         let Some(monitor) = self.selected.as_deref() else {
-            return Err("No monitor is selected.".to_owned());
+            return Err(NO_MONITOR.to_owned());
         };
         capture.capture(monitor, &mut self.reducer)
-    }
-
-    fn finish(&mut self) -> Drove {
-        match self.run.take() {
-            Some(run) => run.drove(),
-            None => Drove::default(),
-        }
     }
 }
 
@@ -293,7 +294,7 @@ mod tests {
         let capture = FakeCapture::new([scene(), scene()]);
         assert!(run.start(7, "DP-1".to_owned(), config(), now).is_ok());
         assert!(run.started(7, now).is_ok());
-        assert_eq!(run.phase, CapturePhase::Running(7));
+        assert_eq!(run.phase(), CapturePhase::Running(7));
         (run, capture, halt)
     }
 
@@ -302,24 +303,24 @@ mod tests {
     -> Result<(), Box<dyn std::error::Error>> {
         let now = Instant::now();
         let (mut run, mut capture, _halt) = running(now);
-        assert_eq!(run.selected.as_deref(), Some("DP-1"));
+        assert_eq!(run.selected(), Some("DP-1"));
 
         assert!(run.tick(&mut capture, now)?.is_some());
         assert_eq!(capture.captures, 1);
 
         run.pause()?;
-        assert_eq!(run.phase, CapturePhase::Paused(7));
+        assert_eq!(run.phase(), CapturePhase::Paused(7));
         assert!(run.tick(&mut capture, now)?.is_none());
         assert_eq!(capture.captures, 1);
 
         run.resume(now)?;
-        assert_eq!(run.phase, CapturePhase::Running(7));
+        assert_eq!(run.phase(), CapturePhase::Running(7));
         assert!(run.tick(&mut capture, now + TICK)?.is_some());
         assert_eq!(capture.captures, 2);
 
         let stop = run.stop().ok_or("the run should stop")?;
         assert_eq!(stop.generation, 7);
-        assert_eq!(run.phase, CapturePhase::Idle);
+        assert_eq!(run.phase(), CapturePhase::Idle);
         assert!(run.stop().is_none());
         assert!(run.shutdown().is_none());
         Ok(())
@@ -334,7 +335,7 @@ mod tests {
 
         run.start(8, "DP-1".to_owned(), config(), now)?;
 
-        assert_eq!(run.phase, CapturePhase::Starting(8));
+        assert_eq!(run.phase(), CapturePhase::Starting(8));
         Ok(())
     }
 
@@ -346,7 +347,7 @@ mod tests {
         let stop = run.shutdown().ok_or("the running capture should stop")?;
 
         assert_eq!(stop.generation, 7);
-        assert_eq!(run.phase, CapturePhase::Idle);
+        assert_eq!(run.phase(), CapturePhase::Idle);
         Ok(())
     }
 
@@ -380,7 +381,7 @@ mod tests {
             run.started(8, now),
             Err(CaptureRejection::GenerationMismatch)
         );
-        assert_eq!(run.phase, CapturePhase::Starting(7));
+        assert_eq!(run.phase(), CapturePhase::Starting(7));
         Ok(())
     }
 
