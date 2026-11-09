@@ -207,7 +207,7 @@ fn control_deck(app: &App, k: &Kit, layers: &mut Vec<El>) -> El {
     let colour = quality == LightQuality::Color;
     let mixed = quality == LightQuality::Mixed;
     let unknown = quality == LightQuality::Unknown;
-    let sync_owned = app.sync.status.is_busy();
+    let sync_owned = !app.sync.controls().manual;
     let power = if all {
         aggregate.power
     } else {

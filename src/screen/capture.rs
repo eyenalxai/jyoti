@@ -1,5 +1,6 @@
 use std::ffi::c_void;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -23,7 +24,11 @@ const GRID_HEIGHT: usize = 36;
 #[derive(Clone, Debug)]
 pub enum ScreenCommand {
     ListMonitors,
-    Start { monitor: String, config: SyncConfig },
+    Start {
+        generation: u64,
+        monitor: String,
+        config: SyncConfig,
+    },
     Configure(SyncConfig),
     Pause,
     Resume,
@@ -37,8 +42,8 @@ pub enum ScreenCommand {
 pub enum ScreenEvent {
     Monitors(Vec<MonitorInfo>),
     Scene(Scene),
-    Started,
-    Stopped { drove: Vec<String> },
+    Started { generation: u64 },
+    Stopped { generation: u64, drove: Vec<String> },
     Error(String),
     Fatal(String),
 }
@@ -47,6 +52,7 @@ pub struct ScreenHandle {
     pub commands: Sender<ScreenCommand>,
     pub events: Receiver<ScreenEvent>,
     pub latest: Arc<Mutex<Option<SyncFrame>>>,
+    stopping: Arc<AtomicBool>,
     join: Option<thread::JoinHandle<()>>,
 }
 
@@ -64,23 +70,30 @@ impl ScreenHandle {
         let (commands, inbox) = mpsc::channel::<ScreenCommand>();
         let (outbox, events) = mpsc::channel::<ScreenEvent>();
         let latest = Arc::new(Mutex::new(None));
+        let stopping = Arc::new(AtomicBool::new(false));
         let thread_latest = Arc::clone(&latest);
+        let thread_stopping = Arc::clone(&stopping);
         let join = thread::Builder::new()
             .name("jyoti-screen".to_owned())
             .spawn(move || {
-                run(inbox, outbox, waker, thread_latest);
+                run(inbox, outbox, waker, thread_latest, thread_stopping);
             })
             .ok();
         Self {
             commands,
             events,
             latest,
+            stopping,
             join,
         }
     }
 
     pub fn send(&self, command: ScreenCommand) -> bool {
         self.commands.send(command).is_ok()
+    }
+
+    pub fn halt(&self) {
+        self.stopping.store(true, Ordering::SeqCst);
     }
 }
 
@@ -89,6 +102,7 @@ fn run(
     events: Sender<ScreenEvent>,
     waker: Waker,
     latest: Arc<Mutex<Option<SyncFrame>>>,
+    stopping: Arc<AtomicBool>,
 ) {
     let mut backend = match Backend::connect() {
         Ok(backend) => backend,
@@ -105,6 +119,7 @@ fn run(
     let mut running = false;
     let mut paused = false;
     let mut run: Option<SyncRun> = None;
+    let mut run_generation: Option<u64> = None;
     let mut selected = backend.first_monitor();
     let mut reducer = ReducerState::default();
     let mut last_capture = Instant::now() - TICK;
@@ -127,15 +142,21 @@ fn run(
                 let _ = events.send(ScreenEvent::Monitors(backend.monitors()));
                 waker();
             }
-            Some(ScreenCommand::Start { monitor, config }) => {
+            Some(ScreenCommand::Start {
+                generation,
+                monitor,
+                config,
+            }) => {
                 selected = Some(monitor);
                 run = Some(SyncRun::new(config));
+                run_generation = Some(generation);
+                stopping.store(false, Ordering::SeqCst);
                 if let Ok(mut slot) = latest.lock() {
                     *slot = None;
                 }
                 running = true;
                 paused = false;
-                let _ = events.send(ScreenEvent::Started);
+                let _ = events.send(ScreenEvent::Started { generation });
                 waker();
                 capture(
                     &mut backend,
@@ -143,7 +164,7 @@ fn run(
                     &events,
                     &waker,
                     &mut reducer,
-                    run.as_mut(),
+                    run.as_mut().map(|run| (run, stopping.as_ref())),
                     &latest,
                 );
                 last_capture = Instant::now();
@@ -167,8 +188,9 @@ fn run(
             Some(ScreenCommand::Stop) => {
                 running = false;
                 paused = false;
+                let generation = run_generation.take().unwrap_or(0);
                 let drove = finish_run(&mut run);
-                let _ = events.send(ScreenEvent::Stopped { drove });
+                let _ = events.send(ScreenEvent::Stopped { generation, drove });
                 waker();
             }
             Some(ScreenCommand::CaptureOnce) => {
@@ -183,8 +205,9 @@ fn run(
                 );
             }
             Some(ScreenCommand::Shutdown) => {
+                let generation = run_generation.take().unwrap_or(0);
                 let drove = finish_run(&mut run);
-                let _ = events.send(ScreenEvent::Stopped { drove });
+                let _ = events.send(ScreenEvent::Stopped { generation, drove });
                 break;
             }
             None => {
@@ -197,7 +220,7 @@ fn run(
                     &events,
                     &waker,
                     &mut reducer,
-                    run.as_mut(),
+                    run.as_mut().map(|run| (run, stopping.as_ref())),
                     &latest,
                 );
                 last_capture = Instant::now();
@@ -218,7 +241,7 @@ fn capture(
     events: &Sender<ScreenEvent>,
     waker: &Waker,
     reducer: &mut ReducerState,
-    run: Option<&mut SyncRun>,
+    run: Option<(&mut SyncRun, &AtomicBool)>,
     latest: &Arc<Mutex<Option<SyncFrame>>>,
 ) {
     let Some(name) = selected else {
@@ -230,10 +253,12 @@ fn capture(
     match capture.capture(name, reducer) {
         Ok(scene) => {
             match run {
-                Some(run) => {
-                    let frame = run.apply(scene, Instant::now());
-                    if let Ok(mut slot) = latest.lock() {
-                        *slot = Some(frame);
+                Some((run, stopping)) => {
+                    if !stopping.load(Ordering::SeqCst) {
+                        let frame = run.apply(scene, Instant::now());
+                        if let Ok(mut slot) = latest.lock() {
+                            *slot = Some(frame);
+                        }
                     }
                 }
                 None => {

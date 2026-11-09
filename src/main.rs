@@ -12,9 +12,9 @@ use rune::{AppSpec, Tx, Waker};
 
 use crate::app::App;
 use crate::app::state::{FormMode, Screen, ToastKind};
+use crate::app::sync::run::RunPhase;
 use crate::bulb::model::Rgb;
 use crate::screen::monitor::{MonitorInfo, Scene};
-use crate::screen::sync::SyncStatus;
 
 fn setup(app: &mut App, waker: Waker) {
     app.start(waker);
@@ -95,7 +95,7 @@ const SCENES: &[(&str, SceneFn)] = &[
             },
         ];
         app.sync.selected_monitor = Some("eDP-1".to_owned());
-        app.sync.status = SyncStatus::Running;
+        app.sync.status = RunPhase::Running(1);
         app.sync.gain = 1.2;
         app.sync.colour_intensity = 35.0;
         app.sync.derived = Some(crate::screen::intensity::intensify(

@@ -3,9 +3,12 @@ use std::time::{Duration, Instant};
 
 use rune::TextEdit;
 
+use crate::app::sync::run::{Controls, RunEvent, RunPhase, RunRejection};
 use crate::bulb::model::{BulbField, BulbState, Rgb};
 use crate::screen::monitor::{MonitorInfo, Scene};
-use crate::screen::sync::{RestoreReport, SyncStatus};
+use crate::screen::sync::RestoreReport;
+
+pub const STALE_AFTER: Duration = Duration::from_secs(5);
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Screen {
@@ -159,9 +162,11 @@ pub enum StopPhase {
 }
 
 pub struct SyncState {
-    pub status: SyncStatus,
+    pub status: RunPhase,
+    pub next_generation: u64,
     pub monitors: Vec<MonitorInfo>,
     pub capture_error: Option<String>,
+    pub capture_failed: bool,
     pub selected_monitor: Option<String>,
     pub gain: f32,
     pub colour_intensity: f32,
@@ -169,8 +174,7 @@ pub struct SyncState {
     pub last_scene_at: Option<Instant>,
     pub derived: Option<Rgb>,
     pub brightness: u8,
-    pub flashing: bool,
-    pub stale: bool,
+    pub flash_until: Option<Instant>,
     pub snapshots: HashMap<String, BulbState>,
     pub drove_brightness: HashSet<String>,
     pub restore_report: Option<RestoreReport>,
@@ -184,9 +188,11 @@ pub struct SyncState {
 impl Default for SyncState {
     fn default() -> Self {
         Self {
-            status: SyncStatus::Idle,
+            status: RunPhase::Idle,
+            next_generation: 1,
             monitors: Vec::new(),
             capture_error: None,
+            capture_failed: false,
             selected_monitor: None,
             gain: crate::screen::gain::SYNC_GAIN_DEFAULT,
             colour_intensity: crate::screen::intensity::SYNC_INTENSITY_DEFAULT,
@@ -194,8 +200,7 @@ impl Default for SyncState {
             last_scene_at: None,
             derived: None,
             brightness: 0,
-            flashing: false,
-            stale: false,
+            flash_until: None,
             snapshots: HashMap::new(),
             drove_brightness: HashSet::new(),
             restore_report: None,
@@ -208,6 +213,28 @@ impl Default for SyncState {
     }
 }
 
+impl SyncState {
+    pub fn apply(&mut self, event: RunEvent) -> Result<(), RunRejection> {
+        self.status = self.status.transition(event)?;
+        Ok(())
+    }
+
+    pub fn controls(&self) -> Controls {
+        self.status.controls()
+    }
+
+    pub fn flashing_at(&self, now: Instant) -> bool {
+        self.status.is_running() && self.flash_until.is_some_and(|until| now < until)
+    }
+
+    pub fn stale_at(&self, now: Instant) -> bool {
+        matches!(self.status, RunPhase::Running(_))
+            && self
+                .last_scene_at
+                .is_some_and(|at| now.saturating_duration_since(at) > STALE_AFTER)
+    }
+}
+
 pub fn toast_duration(kind: ToastKind) -> Duration {
     match kind {
         ToastKind::Error => Duration::from_secs(6),
@@ -217,7 +244,65 @@ pub fn toast_duration(kind: ToastKind) -> Duration {
 
 #[cfg(test)]
 mod tests {
-    use super::{FormMode, NavDirection, Screen, nav_direction};
+    use std::time::{Duration, Instant};
+
+    use super::{FormMode, NavDirection, STALE_AFTER, Screen, SyncState, nav_direction};
+    use crate::app::sync::run::RunPhase;
+    use crate::screen::flash::FLASH_HOLD;
+
+    #[test]
+    fn flashing_expires_after_the_hold_while_paused() {
+        let now = Instant::now();
+        let mut state = SyncState {
+            status: RunPhase::Paused(1),
+            flash_until: Some(now + FLASH_HOLD),
+            ..SyncState::default()
+        };
+
+        assert!(state.flashing_at(now + Duration::from_secs(1)));
+        assert!(!state.flashing_at(now + FLASH_HOLD));
+
+        state.status = RunPhase::Idle;
+        assert!(!state.flashing_at(now));
+    }
+
+    #[test]
+    fn stale_follows_the_frame_clock_and_the_run() {
+        let now = Instant::now();
+        let later = now + STALE_AFTER + Duration::from_secs(1);
+        let mut state = SyncState {
+            status: RunPhase::Running(1),
+            last_scene_at: Some(now),
+            ..SyncState::default()
+        };
+
+        assert!(!state.stale_at(now));
+        assert!(state.stale_at(later));
+
+        state.last_scene_at = Some(later);
+        assert!(!state.stale_at(later));
+
+        state.status = RunPhase::Paused(1);
+        assert!(!state.stale_at(later));
+
+        state.status = RunPhase::Stopping(1);
+        assert!(!state.stale_at(later));
+    }
+
+    #[test]
+    fn a_run_without_a_frame_is_not_stale_yet() {
+        let now = Instant::now();
+        let later = now + Duration::from_secs(60);
+        let mut state = SyncState {
+            status: RunPhase::Starting(1),
+            ..SyncState::default()
+        };
+
+        assert!(!state.stale_at(later));
+
+        state.status = RunPhase::Running(1);
+        assert!(!state.stale_at(later));
+    }
 
     #[test]
     fn section_changes_push_in_tab_order() {

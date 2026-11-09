@@ -4,6 +4,7 @@ use rune_kit::shell::{Page, Toolbar};
 
 use crate::app::App;
 use crate::app::state::{NavDirection, Screen};
+use crate::app::sync::run::RunPhase;
 use crate::ui::theme;
 use crate::ui::widget::{FLAME, PAGE_PAD, dot, sync_status_tone};
 
@@ -75,7 +76,7 @@ fn brand(k: &Kit) -> El {
 }
 
 fn sync_status(app: &App, k: &Kit) -> Option<El> {
-    if app.sync.status == crate::screen::sync::SyncStatus::Idle {
+    if app.sync.status == RunPhase::Idle {
         return None;
     }
     let tone = sync_status_tone(k, &app.sync.status);

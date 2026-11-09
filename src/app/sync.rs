@@ -1,20 +1,21 @@
+pub(crate) mod run;
+
 use std::time::{Duration, Instant};
 
 use crate::app::App;
 use crate::app::state::{StopPhase, ToastKind};
+use crate::app::sync::run::RunEvent;
 use crate::bulb::model::{BulbState, Rgb};
 use crate::bulb::worker::Command;
 use crate::screen::capture::{ScreenCommand, ScreenEvent};
 use crate::screen::intensity::intensify;
 use crate::screen::monitor::Scene;
-use crate::screen::sync::{
-    RestoreReport, SyncConfig, SyncFrame, SyncStatus, SyncTarget, restore_control,
-};
+use crate::screen::sync::{RestoreReport, SyncConfig, SyncFrame, SyncTarget, restore_control};
 
 impl App {
     pub(crate) fn start_sync(&mut self) {
         self.monitor_picker_open = false;
-        if self.sync.status.is_busy() {
+        if !self.sync.controls().start {
             return;
         }
         if self.bulbs.is_empty() {
@@ -32,6 +33,13 @@ impl App {
             return;
         };
 
+        let generation = self.sync.next_generation;
+        self.sync.next_generation = generation.wrapping_add(1);
+        if self.sync.apply(RunEvent::Start(generation)).is_err() {
+            return;
+        }
+        self.flush_pending();
+
         self.sync.snapshots = self.states.clone();
         self.sync.drove_brightness.clear();
         self.sync.restore_report = None;
@@ -39,29 +47,39 @@ impl App {
         self.sync.last_scene_at = None;
         self.sync.derived = None;
         self.sync.brightness = 0;
-        self.sync.flashing = false;
-        self.sync.stale = false;
+        self.sync.flash_until = None;
         self.sync.pending_restore.clear();
         self.sync.stop = StopPhase::Idle;
         self.sync.unreachable.clear();
         self.sync.failures.clear();
-        self.sync.status = SyncStatus::Starting;
         self.sync.capture_error = None;
+        self.sync.capture_failed = false;
 
-        let sent = self.screen_handle.as_ref().is_some_and(|handle| {
+        let config = self.sync_config();
+        let mut sent = self.screen_handle.as_ref().is_some_and(|handle| {
             handle.send(ScreenCommand::Start {
+                generation,
                 monitor: monitor.clone(),
-                config: self.sync_config(),
+                config: config.clone(),
             })
         });
         if !sent {
             self.restart_screen();
-            if let Some(handle) = &self.screen_handle {
-                let _ = handle.send(ScreenCommand::Start {
+            sent = self.screen_handle.as_ref().is_some_and(|handle| {
+                handle.send(ScreenCommand::Start {
+                    generation,
                     monitor,
-                    config: self.sync_config(),
-                });
-            }
+                    config,
+                })
+            });
+        }
+        if !sent {
+            let message = "Screen capture did not start.".to_owned();
+            let _ = self.sync.apply(RunEvent::Fail {
+                generation,
+                message: message.clone(),
+            });
+            self.notify(message, ToastKind::Error);
         }
     }
 
@@ -94,21 +112,18 @@ impl App {
     }
 
     pub(crate) fn pause_sync(&mut self) {
-        if !self.sync.status.is_running() {
+        if self.sync.apply(RunEvent::Pause).is_err() {
             return;
         }
-        self.sync.status = SyncStatus::Paused;
         if let Some(handle) = &self.screen_handle {
             let _ = handle.send(ScreenCommand::Pause);
         }
     }
 
     pub(crate) fn resume_sync(&mut self) {
-        if self.sync.status != SyncStatus::Paused {
+        if self.sync.apply(RunEvent::Resume).is_err() {
             return;
         }
-        self.sync.status = SyncStatus::Running;
-        self.sync.stale = false;
         self.sync.last_scene_at = Some(Instant::now());
         if let Some(handle) = &self.screen_handle {
             let _ = handle.send(ScreenCommand::Resume);
@@ -116,23 +131,22 @@ impl App {
     }
 
     pub(crate) fn stop_sync(&mut self) {
-        if !self.sync.status.is_active() {
+        if self.sync.apply(RunEvent::Stop).is_err() {
             return;
         }
         self.begin_restore();
     }
 
     pub(crate) fn begin_restore(&mut self) {
-        self.sync.status = SyncStatus::Stopping;
         self.sync.pending_restore.clear();
         self.sync.stop = StopPhase::Waiting {
             until: Instant::now() + Duration::from_millis(2_000),
         };
 
-        let sent = self
-            .screen_handle
-            .as_ref()
-            .is_some_and(|handle| handle.send(ScreenCommand::Stop));
+        let sent = self.screen_handle.as_ref().is_some_and(|handle| {
+            handle.halt();
+            handle.send(ScreenCommand::Stop)
+        });
         if !sent {
             self.start_restore();
         }
@@ -218,7 +232,7 @@ impl App {
             }
         }
         self.sync.pending_restore.clear();
-        self.sync.status = SyncStatus::Idle;
+        let _ = self.sync.apply(RunEvent::Restored);
         let report = self.sync.restore_report.take();
         let message = report
             .as_ref()
@@ -276,39 +290,45 @@ impl App {
                         scene.brightness
                     );
                 }
-                if self.sync.status == SyncStatus::Starting {
-                    self.sync.status = SyncStatus::Running;
-                }
                 self.note_frame(scene, intensify(scene.color, self.sync.colour_intensity));
             }
-            ScreenEvent::Started => {
+            ScreenEvent::Started { generation } => {
                 self.sync.capture_error = None;
-                self.sync.status = SyncStatus::Running;
+                let _ = self.sync.apply(RunEvent::Started(generation));
             }
-            ScreenEvent::Stopped { drove } => match self.sync.stop {
-                StopPhase::Waiting { .. } => {
+            ScreenEvent::Stopped { generation, drove } => {
+                if self.sync.apply(RunEvent::Stopped(generation)).is_ok() {
                     self.sync.drove_brightness.extend(drove);
-                    self.start_restore();
+                    if matches!(self.sync.stop, StopPhase::Waiting { .. }) {
+                        self.start_restore();
+                    }
                 }
-                StopPhase::Idle => self.sync.status = SyncStatus::Idle,
-                StopPhase::Restoring { .. } => {}
-            },
+            }
             ScreenEvent::Error(message) => {
                 if self.sync.status.is_running() {
-                    if !self.sync.stale {
-                        self.notify(message.clone(), ToastKind::Error);
+                    if !self.sync.capture_failed {
+                        self.notify(message, ToastKind::Error);
+                        self.sync.capture_failed = true;
                     }
-                    self.sync.stale = true;
                 } else {
                     self.sync.capture_error = Some(message.clone());
                     self.notify(message, ToastKind::Error);
                 }
             }
             ScreenEvent::Fatal(message) => {
-                if self.sync.status.is_running() || self.sync.status == SyncStatus::Stopping {
-                    self.sync.status = SyncStatus::Error(message.clone());
-                    self.sync.stale = true;
-                } else {
+                let mut failed = false;
+                if let Some(generation) = self.sync.status.generation()
+                    && self
+                        .sync
+                        .apply(RunEvent::Fail {
+                            generation,
+                            message: message.clone(),
+                        })
+                        .is_ok()
+                {
+                    failed = true;
+                }
+                if !failed {
                     self.sync.capture_error = Some(message.clone());
                 }
                 self.notify(message, ToastKind::Error);
@@ -317,20 +337,27 @@ impl App {
     }
 
     pub(crate) fn note_sync_frame(&mut self, frame: SyncFrame) {
-        self.sync.capture_error = None;
-        if self.sync.status == SyncStatus::Starting {
-            self.sync.status = SyncStatus::Running;
+        let SyncFrame {
+            scene,
+            output,
+            brightness,
+            flash_until,
+            drove_brightness,
+        } = frame;
+        self.sync.drove_brightness.extend(drove_brightness);
+        if self.sync.apply(RunEvent::Frame).is_err() {
+            return;
         }
-        self.note_frame(frame.scene, frame.output);
-        self.sync.brightness = frame.brightness;
-        self.sync.flashing = frame.flashing;
-        self.sync.drove_brightness.extend(frame.drove_brightness);
+        self.sync.capture_error = None;
+        self.note_frame(scene, output);
+        self.sync.brightness = brightness;
+        self.sync.flash_until = flash_until;
     }
 
     fn note_frame(&mut self, scene: Scene, output: Rgb) {
         self.sync.last_scene = Some(scene);
         self.sync.derived = Some(output);
         self.sync.last_scene_at = Some(Instant::now());
-        self.sync.stale = false;
+        self.sync.capture_failed = false;
     }
 }
