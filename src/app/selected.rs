@@ -26,7 +26,6 @@ pub struct SelectedHealth {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SelectedLight {
     pub scope: SelectedScope,
-    pub id: Option<String>,
     pub name: String,
     pub power: AggregatePower,
     pub quality: LightQuality,
@@ -54,17 +53,11 @@ impl SelectedLight {
     }
 
     pub fn brightness_text(&self) -> String {
-        match self.brightness {
-            Some(span) if span.low != span.high => format!("{}–{}", span.low, span.high),
-            _ => format!("{}", self.brightness_value()),
-        }
+        span_label(self.brightness, self.brightness_value(), "")
     }
 
     pub fn brightness_label(&self) -> String {
-        match self.brightness {
-            Some(span) if span.low != span.high => format!("{}–{}%", span.low, span.high),
-            _ => format!("{}%", self.brightness_value()),
-        }
+        span_label(self.brightness, self.brightness_value(), "%")
     }
 
     pub fn temperature_value(&self) -> u16 {
@@ -72,10 +65,7 @@ impl SelectedLight {
     }
 
     pub fn temperature_label(&self) -> String {
-        match self.temperature {
-            Some(span) if span.low != span.high => format!("{}–{} K", span.low, span.high),
-            _ => format!("{} K", self.temperature_value()),
-        }
+        span_label(self.temperature, self.temperature_value(), " K")
     }
 
     pub fn color_value(&self) -> Option<Rgb> {
@@ -90,6 +80,17 @@ impl SelectedLight {
     }
 }
 
+fn span_label<T: std::fmt::Display + PartialEq>(
+    span: Option<ValueSpan<T>>,
+    value: T,
+    suffix: &str,
+) -> String {
+    match span {
+        Some(span) if span.low != span.high => format!("{}–{}{suffix}", span.low, span.high),
+        _ => format!("{value}{suffix}"),
+    }
+}
+
 pub fn selected_light(
     bulbs: &[Bulb],
     states: &HashMap<String, BulbState>,
@@ -101,7 +102,6 @@ pub fn selected_light(
             let aggregate = aggregate_state(bulbs, states, health);
             Some(SelectedLight {
                 scope: SelectedScope::All,
-                id: None,
                 name: "All bulbs".to_owned(),
                 power: aggregate.power,
                 quality: aggregate.quality,
@@ -123,11 +123,11 @@ pub fn selected_light(
         Some(Selection::Bulb(id)) => {
             let bulb = bulbs.iter().find(|bulb| &bulb.id == id)?;
             let state = states.get(id).cloned().unwrap_or_default();
+            let answered = states.contains_key(id);
             let status = health.status(id);
             let down = status.is_down();
             Some(SelectedLight {
                 scope: SelectedScope::Bulb,
-                id: Some(id.clone()),
                 name: bulb.name.clone(),
                 power: power_of_state(&state),
                 quality: light_quality_of(state.mode),
@@ -142,7 +142,7 @@ pub fn selected_light(
                 color: state.color.map(AggregateColor::Equal),
                 health: SelectedHealth {
                     total: 1,
-                    reachable: if down { 0 } else { 1 },
+                    reachable: if answered && !down { 1 } else { 0 },
                     failed: if down { 1 } else { 0 },
                     status: Some(status),
                     message: health.message(id).map(str::to_owned),
@@ -263,6 +263,31 @@ mod tests {
         assert_eq!(view.brightness_label(), "50%");
         assert_eq!(view.temperature_value(), 4_000);
         assert_eq!(view.temperature_label(), "4000 K");
+        assert_eq!(view.health.total, 1);
+        assert_eq!(view.health.reachable, 0);
+        assert_eq!(view.health.failed, 0);
+        Ok(())
+    }
+
+    #[test]
+    fn an_unknown_all_view_matches_the_one_view() -> Result<(), Box<dyn std::error::Error>> {
+        let bulbs = vec![bulb("a", "Desk"), bulb("b", "Shelf")];
+        let states = HashMap::new();
+        let health = HealthSet::default();
+
+        let all = selected_light(&bulbs, &states, &health, Some(&Selection::All))
+            .ok_or("the all view should exist")?;
+
+        assert_eq!(all.power, AggregatePower::Unknown);
+        assert_eq!(all.quality, LightQuality::Unknown);
+        assert_eq!(all.brightness, None);
+        assert_eq!(all.temperature, None);
+        assert_eq!(all.color, None);
+        assert_eq!(all.health.total, 2);
+        assert_eq!(all.health.reachable, 0);
+        assert_eq!(all.health.failed, 0);
+        assert_eq!(all.brightness_value(), 50);
+        assert_eq!(all.temperature_value(), 4_000);
         Ok(())
     }
 

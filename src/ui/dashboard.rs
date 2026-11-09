@@ -7,7 +7,7 @@ use rune_kit::{
 };
 
 use crate::app::App;
-use crate::app::selected::SelectedLight;
+use crate::app::selected::{SelectedLight, selected_light};
 use crate::bulb::aggregate::{AggregatePower, LightQuality, power_of_state};
 use crate::bulb::health::HealthStatus;
 use crate::bulb::model::{
@@ -51,7 +51,7 @@ pub fn content(app: &App, k: &Kit, layers: &mut Vec<El>) -> El {
 }
 
 fn picker_row(app: &App, k: &Kit, layers: &mut Vec<El>, view: &SelectedLight) -> El {
-    let show_all = view.health.total >= 2;
+    let show_all = app.bulbs.len() >= 2;
     let all = view.is_all();
     let current_tone = power_tone(k, view.power);
     let trigger = dropdown_trigger(
@@ -69,13 +69,18 @@ fn picker_row(app: &App, k: &Kit, layers: &mut Vec<El>, view: &SelectedLight) ->
         .min_width(360.0)
         .on_close(|app: &mut App| app.bulb_picker_open = false);
     if show_all {
+        let all_light =
+            match selected_light(&app.bulbs, &app.states, &app.health, Some(&Selection::All)) {
+                Some(all_light) => all_light,
+                None => view.clone(),
+            };
         picker = picker.item(
             MenuItem::new("All bulbs")
                 .checked(all)
-                .lead(dot(power_tone(k, view.power)))
+                .lead(dot(power_tone(k, all_light.power)))
                 .description(format!(
                     "{} configured · {} reachable",
-                    view.health.total, view.health.reachable
+                    all_light.health.total, all_light.health.reachable
                 ))
                 .on_select(|app: &mut App| {
                     app.bulb_picker_open = false;
