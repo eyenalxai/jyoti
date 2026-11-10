@@ -156,6 +156,7 @@ pub fn selected_light(
 #[cfg(test)]
 mod tests {
     use std::collections::HashMap;
+    use std::net::IpAddr;
 
     use super::{SelectedScope, selected_light};
     use crate::bulb::aggregate::{AggregateColor, AggregatePower, LightQuality};
@@ -167,7 +168,7 @@ mod tests {
         Bulb {
             id: id.to_owned(),
             name: name.to_owned(),
-            address: "192.168.1.42".to_owned(),
+            address: IpAddr::from([192, 168, 1, 42]),
             model: None,
         }
     }

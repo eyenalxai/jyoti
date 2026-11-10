@@ -295,6 +295,7 @@ impl RestorePlan {
 #[cfg(test)]
 mod tests {
     use std::collections::HashMap;
+    use std::net::IpAddr;
 
     use super::{RestoreControl, RestoreControls, RestorePlan, RestoreReport, RestoreRequest};
     use crate::bulb::model::{Bulb, BulbState, ColorMode, Rgb};
@@ -304,7 +305,7 @@ mod tests {
         Bulb {
             id: id.to_owned(),
             name: name.to_owned(),
-            address: "192.168.1.42".to_owned(),
+            address: IpAddr::from([192, 168, 1, 42]),
             model: None,
         }
     }

@@ -10,7 +10,9 @@ pub enum StoreError {
         #[source]
         source: std::io::Error,
     },
-    #[error("{path} does not match the bulb file format. Fix or remove it, then refresh.")]
+    #[error(
+        "{path} does not match the bulb file format: {source}. Fix or remove it, then refresh."
+    )]
     Decode {
         path: PathBuf,
         #[source]
@@ -68,8 +70,6 @@ pub enum MiioError {
     Token { address: String },
     #[error("{message}")]
     Value { address: String, message: String },
-    #[error("{message}")]
-    Address { address: String, message: String },
 }
 
 impl MiioError {

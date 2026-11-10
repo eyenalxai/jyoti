@@ -361,6 +361,7 @@ fn sync_targets(
 #[cfg(test)]
 mod tests {
     use std::collections::HashMap;
+    use std::net::IpAddr;
     use std::sync::mpsc::channel;
 
     use super::sync_targets;
@@ -373,7 +374,7 @@ mod tests {
         Bulb {
             id: id.to_owned(),
             name: name.to_owned(),
-            address: "192.168.1.42".to_owned(),
+            address: IpAddr::from([192, 168, 1, 42]),
             model: None,
         }
     }

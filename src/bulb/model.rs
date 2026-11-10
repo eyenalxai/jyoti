@@ -1,7 +1,6 @@
 use std::collections::HashSet;
 use std::fmt::{self, Display, Formatter};
 use std::net::IpAddr;
-use std::str::FromStr;
 
 use serde::{Deserialize, Serialize};
 
@@ -23,7 +22,7 @@ pub const PIID_COLOR_MODE: u32 = 6;
 pub struct Bulb {
     pub id: String,
     pub name: String,
-    pub address: String,
+    pub address: IpAddr,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
 }
@@ -42,7 +41,7 @@ impl BulbFile {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum BulbListIssue {
     InvalidId { id: String },
-    MissingNameOrAddress { id: String },
+    MissingName { id: String },
     DuplicateId,
     DuplicateName { name: String },
     DuplicateAddress { address: String },
@@ -55,9 +54,9 @@ impl Display for BulbListIssue {
                 formatter,
                 "contains a bulb with the invalid ID {id}. Fix or remove it, then refresh."
             ),
-            BulbListIssue::MissingNameOrAddress { id } => write!(
+            BulbListIssue::MissingName { id } => write!(
                 formatter,
-                "contains the bulb {id} with no name or address. Fix or remove it, then refresh."
+                "contains the bulb {id} with no name. Fix or remove it, then refresh."
             ),
             BulbListIssue::DuplicateId => formatter
                 .write_str("has two bulbs with the same ID. Remove one entry and add it again."),
@@ -86,9 +85,8 @@ pub fn validate_bulbs(bulbs: &[Bulb]) -> Result<(), BulbListIssue> {
         }
 
         let name = bulb.name.trim();
-        let address = bulb.address.trim();
-        if name.is_empty() || address.is_empty() {
-            return Err(BulbListIssue::MissingNameOrAddress {
+        if name.is_empty() {
+            return Err(BulbListIssue::MissingName {
                 id: bulb.id.clone(),
             });
         }
@@ -101,13 +99,9 @@ pub fn validate_bulbs(bulbs: &[Bulb]) -> Result<(), BulbListIssue> {
                 name: name.to_owned(),
             });
         }
-        let address_key = match address.parse::<IpAddr>() {
-            Ok(address) => address.to_string(),
-            Err(_) => address.to_owned(),
-        };
-        if !addresses.insert(address_key) {
+        if !addresses.insert(bulb.address) {
             return Err(BulbListIssue::DuplicateAddress {
-                address: address.to_owned(),
+                address: bulb.address.to_string(),
             });
         }
     }
@@ -253,18 +247,50 @@ pub fn token_bytes(value: &str) -> Option<[u8; 16]> {
     Some(bytes)
 }
 
+fn parse_address(value: &str) -> Result<IpAddr, FieldIssue> {
+    value.trim().parse().map_err(|_| {
+        FieldIssue::new(
+            BulbField::Address,
+            "Use an IPv4 or IPv6 address, for example 192.168.1.42.",
+        )
+    })
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Draft {
+    pub name: String,
+    pub address: IpAddr,
+    pub model: Option<String>,
+    pub token: String,
+}
+
 pub fn validate_draft(
     name: &str,
     address: &str,
     model: &str,
     token: &str,
     token_required: bool,
-) -> Vec<FieldIssue> {
+) -> Result<Draft, Vec<FieldIssue>> {
     let mut issues = Vec::new();
     let name = name.trim();
     let address = address.trim();
     let model = model.trim();
     let token = token.trim();
+    let parsed_address = if address.is_empty() {
+        issues.push(FieldIssue::new(
+            BulbField::Address,
+            "Enter the bulb's IP address.",
+        ));
+        None
+    } else {
+        match parse_address(address) {
+            Ok(address) => Some(address),
+            Err(issue) => {
+                issues.push(issue);
+                None
+            }
+        }
+    };
 
     if name.is_empty() {
         issues.push(FieldIssue::new(BulbField::Name, "Give the bulb a name."));
@@ -272,18 +298,6 @@ pub fn validate_draft(
         issues.push(FieldIssue::new(
             BulbField::Name,
             "Keep the name under 60 characters.",
-        ));
-    }
-
-    if address.is_empty() {
-        issues.push(FieldIssue::new(
-            BulbField::Address,
-            "Enter the bulb's IP address.",
-        ));
-    } else if IpAddr::from_str(address).is_err() {
-        issues.push(FieldIssue::new(
-            BulbField::Address,
-            "Use an IPv4 or IPv6 address, for example 192.168.1.42.",
         ));
     }
 
@@ -308,7 +322,15 @@ pub fn validate_draft(
         ));
     }
 
-    issues
+    match parsed_address {
+        Some(address) if issues.is_empty() => Ok(Draft {
+            name: name.to_owned(),
+            address,
+            model: trim_model(model),
+            token: token.to_owned(),
+        }),
+        _ => Err(issues),
+    }
 }
 
 pub fn new_id() -> String {
@@ -371,26 +393,34 @@ mod tests {
 
     #[test]
     fn a_draft_checks_the_address_and_token() {
-        let issues = validate_draft(
+        let valid = validate_draft(
             "Desk lamp",
             "192.168.1.42",
             "",
             "0123456789abcdef0123456789abcdef",
             true,
         );
-        assert!(issues.is_empty());
+        assert!(valid.is_ok());
+        if let Ok(draft) = valid {
+            assert_eq!(draft.name, "Desk lamp");
+            assert_eq!(draft.address.to_string(), "192.168.1.42");
+            assert!(draft.model.is_none());
+        }
 
-        let issues = validate_draft("", "not-an-ip", "", "short", true);
-        assert!(issues.iter().any(|issue| issue.field == BulbField::Name));
-        assert!(issues.iter().any(|issue| issue.field == BulbField::Address));
-        assert!(issues.iter().any(|issue| issue.field == BulbField::Token));
+        let invalid = validate_draft("", "not-an-ip", "", "short", true);
+        assert!(invalid.is_err());
+        if let Err(issues) = invalid {
+            assert!(issues.iter().any(|issue| issue.field == BulbField::Name));
+            assert!(issues.iter().any(|issue| issue.field == BulbField::Address));
+            assert!(issues.iter().any(|issue| issue.field == BulbField::Token));
+        }
     }
 
-    fn bulb(id: &str, name: &str, address: &str) -> Bulb {
+    fn bulb(id: &str, name: &str, address: IpAddr) -> Bulb {
         Bulb {
             id: id.to_owned(),
             name: name.to_owned(),
-            address: address.to_owned(),
+            address,
             model: None,
         }
     }
@@ -400,14 +430,14 @@ mod tests {
         let desk = bulb(
             "00000000-0000-4000-8000-000000000001",
             "Desk lamp",
-            "192.168.1.42",
+            IpAddr::from([192, 168, 1, 42]),
         );
         assert!(validate_bulbs(std::slice::from_ref(&desk)).is_ok());
 
         let mut same_name = bulb(
             "00000000-0000-4000-8000-000000000002",
             " desk LAMP ",
-            "192.168.1.43",
+            IpAddr::from([192, 168, 1, 43]),
         );
         assert_eq!(
             validate_bulbs(&[desk.clone(), same_name.clone()]),
@@ -417,7 +447,7 @@ mod tests {
         );
 
         same_name.name = "Shelf lamp".to_owned();
-        same_name.address = " 192.168.1.42 ".to_owned();
+        same_name.address = IpAddr::from([192, 168, 1, 42]);
         assert_eq!(
             validate_bulbs(&[desk.clone(), same_name]),
             Err(BulbListIssue::DuplicateAddress {
@@ -425,16 +455,20 @@ mod tests {
             })
         );
 
-        let loopback = bulb("00000000-0000-4000-8000-000000000003", "Loopback", "::1");
+        let loopback = bulb(
+            "00000000-0000-4000-8000-000000000003",
+            "Loopback",
+            IpAddr::from(std::net::Ipv6Addr::LOCALHOST),
+        );
         let expanded_loopback = bulb(
             "00000000-0000-4000-8000-000000000004",
             "Expanded loopback",
-            "0:0:0:0:0:0:0:1",
+            IpAddr::from(std::net::Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 1)),
         );
         assert_eq!(
             validate_bulbs(&[loopback, expanded_loopback]),
             Err(BulbListIssue::DuplicateAddress {
-                address: "0:0:0:0:0:0:0:1".to_owned()
+                address: "::1".to_owned()
             })
         );
     }

@@ -6,6 +6,7 @@ pub(crate) mod state;
 pub(crate) mod sync;
 
 use std::collections::HashMap;
+use std::net::IpAddr;
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::time::{Duration, Instant};
 
@@ -317,16 +318,28 @@ impl App {
 
 fn demo_bulbs() -> Vec<Bulb> {
     [
-        ("Desk lamp", "192.168.1.52", "yeelink.light.color3"),
-        ("Shelf lamp", "192.168.1.142", "yeelink.light.color3"),
-        ("Ceiling", "192.168.1.132", "yeelink.light.color3"),
+        (
+            "Desk lamp",
+            IpAddr::from([192, 168, 1, 52]),
+            "yeelink.light.color3",
+        ),
+        (
+            "Shelf lamp",
+            IpAddr::from([192, 168, 1, 142]),
+            "yeelink.light.color3",
+        ),
+        (
+            "Ceiling",
+            IpAddr::from([192, 168, 1, 132]),
+            "yeelink.light.color3",
+        ),
     ]
     .into_iter()
     .enumerate()
     .map(|(index, (name, address, model))| Bulb {
         id: format!("00000000-0000-4000-8000-{:012}", index + 1),
         name: name.to_owned(),
-        address: address.to_owned(),
+        address,
         model: Some(model.to_owned()),
     })
     .collect()

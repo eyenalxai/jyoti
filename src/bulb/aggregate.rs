@@ -164,16 +164,18 @@ fn color_of(values: &[Rgb]) -> Option<AggregateColor> {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashMap;
+    use std::net::IpAddr;
+
     use super::*;
     use crate::bulb::health::{HealthEvent, HealthSet};
     use crate::bulb::model::{Bulb, BulbState, ColorMode, Rgb};
-    use std::collections::HashMap;
 
     fn bulb(id: &str, name: &str) -> Bulb {
         Bulb {
             id: id.to_owned(),
             name: name.to_owned(),
-            address: "192.168.1.10".to_owned(),
+            address: IpAddr::from([192, 168, 1, 10]),
             model: None,
         }
     }
