@@ -1,5 +1,3 @@
-//! The capture-owned part of a sync run.
-
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum CapturePhase {
     #[default]

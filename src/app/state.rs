@@ -109,8 +109,8 @@ impl SyncState {
         Ok(())
     }
 
-    pub fn report(&mut self, phase: CapturePhase) {
-        self.status.report(phase);
+    pub fn report(&mut self, phase: CapturePhase) -> bool {
+        self.status.report(phase)
     }
 
     pub fn controls(&self) -> Controls {
@@ -118,7 +118,7 @@ impl SyncState {
     }
 
     pub fn flashing_at(&self, now: Instant) -> bool {
-        self.status.is_running() && self.flash_until.is_some_and(|until| now < until)
+        self.status.is_in_run() && self.flash_until.is_some_and(|until| now < until)
     }
 
     pub fn stale_at(&self, now: Instant) -> bool {

@@ -238,7 +238,7 @@ impl App {
             }
         }
 
-        if self.sync.status.is_running() {
+        if self.sync.status.is_in_run() {
             if self.sync.last_probe.elapsed() > Duration::from_secs(5) {
                 self.probe_unreachable();
                 self.sync.last_probe = now;

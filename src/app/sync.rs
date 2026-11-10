@@ -7,7 +7,7 @@ use std::time::Instant;
 use crate::app::App;
 use crate::app::state::ToastKind;
 use crate::app::sync::restore::{RestorePlan, RestoreRequest};
-use crate::app::sync::run::{RunAdvance, RunEvent, StopStage};
+use crate::app::sync::run::{RunAdvance, RunEvent, RunPhase, StopStage};
 use crate::app::view::Overlay;
 use crate::bulb::health::HealthSet;
 use crate::bulb::model::{Bulb, BulbState, Rgb};
@@ -99,7 +99,7 @@ impl App {
     }
 
     pub(crate) fn configure_sync(&self) {
-        if !self.sync.status.is_running() {
+        if !self.sync.status.is_in_run() {
             return;
         }
         if let Some(handle) = &self.screen_handle {
@@ -114,7 +114,6 @@ impl App {
     }
 
     pub(crate) fn resume_sync(&mut self) {
-        self.sync.last_scene_at = Some(Instant::now());
         if let Some(handle) = &self.screen_handle {
             let _ = handle.send(ScreenCommand::Resume);
         }
@@ -213,7 +212,7 @@ impl App {
     pub(crate) fn select_monitor(&mut self, name: String) {
         self.close_overlay(Overlay::MonitorPicker);
         self.sync.selected_monitor = Some(name.clone());
-        if self.sync.status.is_running()
+        if self.sync.status.is_in_run()
             && let Some(handle) = &self.screen_handle
         {
             let _ = handle.send(ScreenCommand::SelectMonitor(name));
@@ -255,10 +254,10 @@ impl App {
                 self.note_frame(scene, intensify(scene.color, self.sync.colour_intensity));
             }
             ScreenEvent::Phase(phase) => {
-                if phase.is_running() {
+                if self.sync.report(phase) && phase.is_running() {
                     self.sync.capture_error = None;
+                    self.sync.last_scene_at = Some(Instant::now());
                 }
-                self.sync.report(phase);
             }
             ScreenEvent::Stopped { generation, drove } => {
                 if self.sync.apply(RunEvent::Stopped(generation)).is_ok() {
@@ -275,7 +274,7 @@ impl App {
                 }
             }
             ScreenEvent::Error(message) => {
-                if self.sync.status.is_running() {
+                if self.sync.status.is_in_run() {
                     if !self.sync.capture_failed {
                         self.notify(message, ToastKind::Error);
                         self.sync.capture_failed = true;
@@ -316,7 +315,7 @@ impl App {
             flash_until,
             drove,
         } = frame;
-        if !self.sync.status.is_running() {
+        if !matches!(self.sync.status, RunPhase::Running(_)) {
             return;
         }
         self.sync.restore.record(&drove);

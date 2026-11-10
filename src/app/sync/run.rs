@@ -190,21 +190,15 @@ impl RunPhase {
     /// Stores the phase the capture thread reported. Starting, Running and
     /// Paused belong to the thread; Stopping and Failed stay here. A report
     /// for another generation, or an idle report, is ignored.
-    pub fn report(&mut self, phase: CapturePhase) {
-        if !self.is_capture_owned() {
-            return;
+    pub fn report(&mut self, phase: CapturePhase) -> bool {
+        if !self.is_in_run() {
+            return false;
         }
         if phase.generation() != self.generation() {
-            return;
+            return false;
         }
         *self = phase.into();
-    }
-
-    fn is_capture_owned(&self) -> bool {
-        matches!(
-            self,
-            RunPhase::Starting(_) | RunPhase::Running(_) | RunPhase::Paused(_)
-        )
+        true
     }
 
     pub fn label(&self) -> String {
@@ -261,7 +255,7 @@ impl RunPhase {
         }
     }
 
-    pub fn is_running(&self) -> bool {
+    pub fn is_in_run(&self) -> bool {
         matches!(
             self,
             RunPhase::Starting(_) | RunPhase::Running(_) | RunPhase::Paused(_)
@@ -273,7 +267,7 @@ impl RunPhase {
     }
 
     pub fn is_active(&self) -> bool {
-        self.is_running() || matches!(self, RunPhase::Failed { .. })
+        self.is_in_run() || matches!(self, RunPhase::Failed { .. })
     }
 }
 
