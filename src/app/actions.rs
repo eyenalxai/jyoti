@@ -73,14 +73,17 @@ impl App {
                 let health_changed = self.health.apply(&id, HealthEvent::State);
                 reconfigure |= health_changed;
                 if self.edits.accepts(&id, observed_at) {
-                    let was_on = self.states.get(&id).and_then(|state| state.power) == Some(true);
-                    let is_on = state.power == Some(true);
+                    let (was_on, is_on, merged) = {
+                        let current = self.states.entry(id.clone()).or_default();
+                        let was_on = current.power == Some(true);
+                        current.apply(&state);
+                        (was_on, current.power == Some(true), current.clone())
+                    };
                     if self.sync.status.is_running()
                         && let Some(bulb) = self.bulbs.iter().find(|bulb| bulb.id == id)
                     {
-                        reconfigure |= self.sync.restore.observe(&id, &bulb.name, &state);
+                        reconfigure |= self.sync.restore.observe(&id, &bulb.name, &merged);
                     }
-                    self.states.insert(id.clone(), state);
                     reconfigure |= was_on != is_on;
                     true
                 } else {

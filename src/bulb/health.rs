@@ -53,10 +53,9 @@ impl Record {
                 self.message = None;
             }
             HealthEvent::Reachable(false) => {
+                self.unreachable = true;
                 if in_run {
                     self.run_unreachable = true;
-                } else {
-                    self.unreachable = true;
                 }
             }
             HealthEvent::Error(message) => {
@@ -65,6 +64,7 @@ impl Record {
                     self.run_failures = self.run_failures.saturating_add(1);
                     if self.run_failures >= RUN_FAILURE_LIMIT {
                         self.run_unreachable = true;
+                        self.unreachable = true;
                     }
                 } else {
                     self.unreachable = true;
@@ -208,7 +208,7 @@ mod tests {
     }
 
     #[test]
-    fn a_run_marks_a_bulb_after_three_failures_and_clears_it_at_run_end() {
+    fn a_run_failure_stays_visible_after_the_run_ends() {
         let mut health = HealthSet::default();
         health.begin_run();
 
@@ -222,10 +222,22 @@ mod tests {
         assert_eq!(health.unreachable_ids().len(), 1);
 
         health.end_run();
-        assert!(!health.unreachable("desk"));
-        assert!(health.unreachable_ids().is_empty());
-        assert_eq!(health.status("desk"), HealthStatus::Connecting);
-        assert_eq!(health.message("desk"), None);
+        assert!(health.unreachable("desk"));
+        assert_eq!(health.unreachable_ids().len(), 1);
+        assert_eq!(health.status("desk"), HealthStatus::Unreachable);
+        assert_eq!(health.message("desk"), Some("three"));
+    }
+
+    #[test]
+    fn a_failed_probe_stays_visible_after_the_run_ends() {
+        let mut health = HealthSet::default();
+        health.begin_run();
+
+        health.apply("desk", HealthEvent::Reachable(false));
+        health.end_run();
+
+        assert!(health.unreachable("desk"));
+        assert_eq!(health.unreachable_ids().len(), 1);
     }
 
     #[test]

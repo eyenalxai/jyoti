@@ -64,8 +64,8 @@ pub fn aggregate_state(
     states: &HashMap<String, BulbState>,
     health: &HealthSet,
 ) -> AggregateState {
-    let mut powers = Vec::new();
-    let mut qualities = Vec::new();
+    let mut powers: Vec<Option<bool>> = Vec::new();
+    let mut qualities: Vec<Option<LightQuality>> = Vec::new();
     let mut brightness = Vec::new();
     let mut temperatures = Vec::new();
     let mut colors = Vec::new();
@@ -80,12 +80,8 @@ pub fn aggregate_state(
         }
         reachable += 1;
         let quality = light_quality_of(state.mode);
-        if quality != LightQuality::Unknown {
-            qualities.push(quality);
-        }
-        if let Some(power) = state.power {
-            powers.push(power);
-        }
+        qualities.push((quality != LightQuality::Unknown).then_some(quality));
+        powers.push(state.power);
         if let Some(value) = state.brightness {
             brightness.push(value);
         }
@@ -129,11 +125,14 @@ fn span_of<T: Copy + Ord>(values: &[T]) -> Option<ValueSpan<T>> {
     span
 }
 
-fn power_of(values: &[bool]) -> AggregatePower {
-    if values.is_empty() {
+fn power_of(values: &[Option<bool>]) -> AggregatePower {
+    if values.is_empty() || values.iter().all(|value| value.is_none()) {
         return AggregatePower::Unknown;
     }
-    let on = values.iter().filter(|value| **value).count();
+    if values.iter().any(|value| value.is_none()) {
+        return AggregatePower::Mixed;
+    }
+    let on = values.iter().filter(|value| **value == Some(true)).count();
     if on == values.len() {
         AggregatePower::On
     } else if on == 0 {
@@ -143,12 +142,12 @@ fn power_of(values: &[bool]) -> AggregatePower {
     }
 }
 
-fn quality_of(values: &[LightQuality]) -> LightQuality {
+fn quality_of(values: &[Option<LightQuality>]) -> LightQuality {
     let Some(first) = values.first() else {
         return LightQuality::Unknown;
     };
     if values.iter().all(|value| value == first) {
-        *first
+        (*first).unwrap_or(LightQuality::Unknown)
     } else {
         LightQuality::Mixed
     }
@@ -236,5 +235,54 @@ mod tests {
         assert_eq!(aggregate.failed, picker);
         assert_eq!(aggregate.failed, 2);
         assert_eq!(aggregate.reachable, 1);
+    }
+
+    #[test]
+    fn an_unknown_power_value_is_mixed() {
+        let bulbs = vec![bulb("a", "A"), bulb("b", "B")];
+        let states = HashMap::from([
+            (
+                "a".to_owned(),
+                BulbState {
+                    power: Some(true),
+                    ..BulbState::default()
+                },
+            ),
+            ("b".to_owned(), BulbState::default()),
+        ]);
+
+        let aggregate = aggregate_state(&bulbs, &states, &HealthSet::default());
+
+        assert_eq!(aggregate.power, AggregatePower::Mixed);
+    }
+
+    #[test]
+    fn an_unknown_mode_is_mixed() {
+        let bulbs = vec![bulb("a", "A"), bulb("b", "B")];
+        let states = HashMap::from([
+            (
+                "a".to_owned(),
+                BulbState {
+                    mode: ColorMode::Temperature,
+                    ..BulbState::default()
+                },
+            ),
+            ("b".to_owned(), BulbState::default()),
+        ]);
+
+        let aggregate = aggregate_state(&bulbs, &states, &HealthSet::default());
+
+        assert_eq!(aggregate.quality, LightQuality::Mixed);
+    }
+
+    #[test]
+    fn an_all_unknown_aggregate_stays_unknown() {
+        let bulbs = vec![bulb("a", "A")];
+        let states = HashMap::from([("a".to_owned(), BulbState::default())]);
+
+        let aggregate = aggregate_state(&bulbs, &states, &HealthSet::default());
+
+        assert_eq!(aggregate.power, AggregatePower::Unknown);
+        assert_eq!(aggregate.quality, LightQuality::Unknown);
     }
 }
