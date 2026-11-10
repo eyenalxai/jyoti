@@ -1,7 +1,8 @@
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet};
 use std::time::Duration;
 
-use crate::bulb::model::{Bulb, BulbState, ColorMode, Rgb};
+use crate::bulb::model::{BulbState, ColorMode, Rgb};
+use crate::bulb::runtime::Runtimes;
 use crate::screen::sync::Drove;
 
 pub const RESTORE_WINDOW: Duration = Duration::from_millis(2_000);
@@ -105,18 +106,18 @@ pub enum RestoreRequest {
 }
 
 impl RestorePlan {
-    pub fn begin(&mut self, bulbs: &[Bulb], states: &HashMap<String, BulbState>) {
+    pub fn begin(&mut self, runtimes: &Runtimes) {
         self.expected.clear();
         self.driven.clear();
         self.waiting.clear();
         self.acknowledged.clear();
         self.failed.clear();
-        for bulb in bulbs {
+        for runtime in runtimes.iter() {
             self.expected.insert(
-                bulb.id.clone(),
+                runtime.id().to_owned(),
                 ExpectedBulb {
-                    name: bulb.name.clone(),
-                    snapshot: states.get(&bulb.id).cloned(),
+                    name: runtime.name().to_owned(),
+                    snapshot: runtime.has_state().then(|| runtime.state().clone()),
                 },
             );
         }
@@ -294,11 +295,11 @@ impl RestorePlan {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashMap;
     use std::net::IpAddr;
 
     use super::{RestoreControl, RestoreControls, RestorePlan, RestoreReport, RestoreRequest};
     use crate::bulb::model::{Bulb, BulbState, ColorMode, Rgb};
+    use crate::bulb::runtime::Runtimes;
     use crate::screen::sync::Drove;
 
     fn bulb(id: &str, name: &str) -> Bulb {
@@ -308,6 +309,17 @@ mod tests {
             address: IpAddr::from([192, 168, 1, 42]),
             model: None,
         }
+    }
+
+    fn runtimes(entries: &[(&str, &str, Option<BulbState>)]) -> Runtimes {
+        let mut runtimes =
+            Runtimes::from_bulbs(entries.iter().map(|(id, name, _)| bulb(id, name)).collect());
+        for (id, _, state) in entries {
+            if let Some(state) = state {
+                runtimes.set_state(id, state.clone());
+            }
+        }
+        runtimes
     }
 
     fn colour_state(color: Rgb, brightness: u8) -> BulbState {
@@ -347,12 +359,17 @@ mod tests {
 
     #[test]
     fn a_configured_bulb_becomes_a_restore_target_when_its_state_is_known() {
-        let desk = bulb("desk", "Desk lamp");
-        let shelf = bulb("shelf", "Shelf lamp");
-        let states = HashMap::from([(desk.id.clone(), colour_state(Rgb::new(255, 0, 0), 40))]);
+        let runtimes = runtimes(&[
+            (
+                "desk",
+                "Desk lamp",
+                Some(colour_state(Rgb::new(255, 0, 0), 40)),
+            ),
+            ("shelf", "Shelf lamp", None),
+        ]);
         let mut plan = RestorePlan::default();
 
-        plan.begin(&[desk, shelf], &states);
+        plan.begin(&runtimes);
 
         assert!(plan.covers("desk"));
         assert!(!plan.covers("shelf"));
@@ -382,11 +399,14 @@ mod tests {
 
     #[test]
     fn a_run_that_never_published_sends_no_restore() {
-        let desk = bulb("desk", "Desk lamp");
-        let states = HashMap::from([(desk.id.clone(), colour_state(Rgb::new(255, 0, 0), 40))]);
+        let runtimes = runtimes(&[(
+            "desk",
+            "Desk lamp",
+            Some(colour_state(Rgb::new(255, 0, 0), 40)),
+        )]);
         let mut plan = RestorePlan::default();
 
-        plan.begin(&[desk], &states);
+        plan.begin(&runtimes);
 
         assert!(plan.requests().is_empty());
         assert!(!plan.is_open());
@@ -399,10 +419,13 @@ mod tests {
 
     #[test]
     fn only_the_controls_the_run_wrote_are_restored() {
-        let desk = bulb("desk", "Desk lamp");
-        let states = HashMap::from([(desk.id.clone(), colour_state(Rgb::new(255, 128, 0), 40))]);
+        let runtimes = runtimes(&[(
+            "desk",
+            "Desk lamp",
+            Some(colour_state(Rgb::new(255, 128, 0), 40)),
+        )]);
         let mut plan = RestorePlan::default();
-        plan.begin(&[desk], &states);
+        plan.begin(&runtimes);
 
         plan.record(&drove(&["desk"], &[]));
 
@@ -417,10 +440,13 @@ mod tests {
 
     #[test]
     fn a_brightness_write_restores_only_brightness() {
-        let desk = bulb("desk", "Desk lamp");
-        let states = HashMap::from([(desk.id.clone(), colour_state(Rgb::new(255, 128, 0), 40))]);
+        let runtimes = runtimes(&[(
+            "desk",
+            "Desk lamp",
+            Some(colour_state(Rgb::new(255, 128, 0), 40)),
+        )]);
         let mut plan = RestorePlan::default();
-        plan.begin(&[desk], &states);
+        plan.begin(&runtimes);
 
         plan.record(&drove(&[], &["desk"]));
 
@@ -435,10 +461,9 @@ mod tests {
 
     #[test]
     fn a_temperature_snapshot_restores_the_temperature() {
-        let desk = bulb("desk", "Desk lamp");
-        let states = HashMap::from([(desk.id.clone(), temperature_state(3_000, 40))]);
+        let runtimes = runtimes(&[("desk", "Desk lamp", Some(temperature_state(3_000, 40)))]);
         let mut plan = RestorePlan::default();
-        plan.begin(&[desk], &states);
+        plan.begin(&runtimes);
 
         plan.record(&drove(&["desk"], &[]));
 
@@ -453,16 +478,15 @@ mod tests {
 
     #[test]
     fn a_partial_snapshot_restores_what_it_has_and_names_the_bulb() {
-        let desk = bulb("desk", "Desk lamp");
         let partial = BulbState {
             power: Some(true),
             color: Some(Rgb::new(255, 0, 0)),
             mode: ColorMode::Color,
             ..BulbState::default()
         };
-        let states = HashMap::from([(desk.id.clone(), partial)]);
+        let runtimes = runtimes(&[("desk", "Desk lamp", Some(partial))]);
         let mut plan = RestorePlan::default();
-        plan.begin(&[desk], &states);
+        plan.begin(&runtimes);
         plan.record(&drove(&["desk"], &["desk"]));
 
         assert_eq!(
@@ -487,10 +511,9 @@ mod tests {
 
     #[test]
     fn a_missing_restore_value_is_named_as_not_restored() {
-        let desk = bulb("desk", "Desk lamp");
-        let states = HashMap::from([(desk.id.clone(), BulbState::default())]);
+        let runtimes = runtimes(&[("desk", "Desk lamp", Some(BulbState::default()))]);
         let mut plan = RestorePlan::default();
-        plan.begin(&[desk], &states);
+        plan.begin(&runtimes);
         plan.record(&drove(&["desk"], &[]));
 
         assert_eq!(
@@ -509,14 +532,20 @@ mod tests {
 
     #[test]
     fn the_plan_waits_for_every_acknowledgement() {
-        let desk = bulb("desk", "Desk lamp");
-        let shelf = bulb("shelf", "Shelf lamp");
-        let states = HashMap::from([
-            (desk.id.clone(), colour_state(Rgb::new(255, 0, 0), 40)),
-            (shelf.id.clone(), colour_state(Rgb::new(0, 255, 0), 70)),
+        let runtimes = runtimes(&[
+            (
+                "desk",
+                "Desk lamp",
+                Some(colour_state(Rgb::new(255, 0, 0), 40)),
+            ),
+            (
+                "shelf",
+                "Shelf lamp",
+                Some(colour_state(Rgb::new(0, 255, 0), 70)),
+            ),
         ]);
         let mut plan = RestorePlan::default();
-        plan.begin(&[desk, shelf], &states);
+        plan.begin(&runtimes);
         plan.record(&drove(&["desk", "shelf"], &["desk", "shelf"]));
 
         let requests = plan.requests();
@@ -545,14 +574,20 @@ mod tests {
 
     #[test]
     fn the_report_names_the_bulbs_still_pending_at_the_deadline() {
-        let desk = bulb("desk", "Desk lamp");
-        let shelf = bulb("shelf", "Shelf lamp");
-        let states = HashMap::from([
-            (desk.id.clone(), colour_state(Rgb::new(255, 0, 0), 40)),
-            (shelf.id.clone(), colour_state(Rgb::new(0, 255, 0), 70)),
+        let runtimes = runtimes(&[
+            (
+                "desk",
+                "Desk lamp",
+                Some(colour_state(Rgb::new(255, 0, 0), 40)),
+            ),
+            (
+                "shelf",
+                "Shelf lamp",
+                Some(colour_state(Rgb::new(0, 255, 0), 70)),
+            ),
         ]);
         let mut plan = RestorePlan::default();
-        plan.begin(&[desk, shelf], &states);
+        plan.begin(&runtimes);
         plan.record(&drove(&["desk", "shelf"], &["desk", "shelf"]));
         plan.mark_waiting("desk");
         plan.mark_waiting("shelf");
@@ -571,10 +606,13 @@ mod tests {
 
     #[test]
     fn a_failed_acknowledgement_is_not_restored() {
-        let desk = bulb("desk", "Desk lamp");
-        let states = HashMap::from([(desk.id.clone(), colour_state(Rgb::new(255, 0, 0), 40))]);
+        let runtimes = runtimes(&[(
+            "desk",
+            "Desk lamp",
+            Some(colour_state(Rgb::new(255, 0, 0), 40)),
+        )]);
         let mut plan = RestorePlan::default();
-        plan.begin(&[desk], &states);
+        plan.begin(&runtimes);
         plan.record(&drove(&["desk"], &[]));
         plan.mark_waiting("desk");
 
@@ -588,11 +626,16 @@ mod tests {
 
     #[test]
     fn a_configured_bulb_without_a_snapshot_is_named() {
-        let desk = bulb("desk", "Desk lamp");
-        let shelf = bulb("shelf", "Shelf lamp");
-        let states = HashMap::from([(desk.id.clone(), colour_state(Rgb::new(255, 0, 0), 40))]);
+        let runtimes = runtimes(&[
+            (
+                "desk",
+                "Desk lamp",
+                Some(colour_state(Rgb::new(255, 0, 0), 40)),
+            ),
+            ("shelf", "Shelf lamp", None),
+        ]);
         let mut plan = RestorePlan::default();
-        plan.begin(&[desk, shelf], &states);
+        plan.begin(&runtimes);
         plan.record(&drove(&["desk"], &[]));
         plan.mark_waiting("desk");
         plan.acknowledge("desk", true);
@@ -605,10 +648,13 @@ mod tests {
 
     #[test]
     fn an_unwritten_snapshot_is_not_counted_as_restored() {
-        let desk = bulb("desk", "Desk lamp");
-        let states = HashMap::from([(desk.id.clone(), colour_state(Rgb::new(255, 0, 0), 40))]);
+        let runtimes = runtimes(&[(
+            "desk",
+            "Desk lamp",
+            Some(colour_state(Rgb::new(255, 0, 0), 40)),
+        )]);
         let mut plan = RestorePlan::default();
-        plan.begin(&[desk], &states);
+        plan.begin(&runtimes);
 
         let report = plan.finish();
         assert_eq!(report.total, 0);
@@ -618,7 +664,7 @@ mod tests {
     #[test]
     fn a_clean_restore_without_bulbs_reports_nothing_to_restore() {
         let mut plan = RestorePlan::default();
-        plan.begin(&[], &HashMap::new());
+        plan.begin(&Runtimes::default());
 
         let report = plan.finish();
         assert_eq!(report.total, 0);

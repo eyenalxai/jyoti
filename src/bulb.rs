@@ -3,6 +3,7 @@ pub mod health;
 pub mod keyring;
 pub mod model;
 pub mod registry;
+pub mod runtime;
 pub mod selection;
 pub mod store;
 pub mod worker;

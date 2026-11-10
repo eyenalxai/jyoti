@@ -1,7 +1,6 @@
 pub(crate) mod restore;
 pub(crate) mod run;
 
-use std::collections::HashMap;
 use std::time::Instant;
 
 use crate::app::App;
@@ -9,9 +8,9 @@ use crate::app::state::ToastKind;
 use crate::app::sync::restore::{RestorePlan, RestoreRequest};
 use crate::app::sync::run::{RunAdvance, RunEvent, RunPhase, StopStage};
 use crate::app::view::Overlay;
-use crate::bulb::health::HealthSet;
-use crate::bulb::model::{Bulb, BulbState, Rgb};
-use crate::bulb::worker::{Command, WorkerHandle};
+use crate::bulb::model::Rgb;
+use crate::bulb::runtime::Runtimes;
+use crate::bulb::worker::Command;
 use crate::screen::capture::{ScreenCommand, ScreenEvent};
 use crate::screen::intensity::intensify;
 use crate::screen::monitor::Scene;
@@ -23,7 +22,7 @@ impl App {
         if !self.sync.controls().start {
             return;
         }
-        if self.bulbs.is_empty() {
+        if self.runtimes.is_empty() {
             self.notify("Add a bulb before starting screen sync.", ToastKind::Error);
             return;
         }
@@ -43,9 +42,9 @@ impl App {
         if self.sync.apply(RunEvent::Start(generation)).is_err() {
             return;
         }
-        self.health.begin_run();
+        self.runtimes.begin_run();
         self.flush_pending();
-        self.sync.restore.begin(&self.bulbs, &self.states);
+        self.sync.restore.begin(&self.runtimes);
 
         self.sync.last_scene = None;
         self.sync.last_scene_at = None;
@@ -79,7 +78,7 @@ impl App {
                 generation,
                 message: message.clone(),
             });
-            self.health.end_run();
+            self.runtimes.end_run();
             self.notify(message, ToastKind::Error);
         }
     }
@@ -88,13 +87,7 @@ impl App {
         SyncConfig {
             gain: self.sync.gain,
             intensity: self.sync.colour_intensity,
-            targets: sync_targets(
-                &self.bulbs,
-                &self.states,
-                &self.workers,
-                &self.health,
-                &self.sync.restore,
-            ),
+            targets: sync_targets(&self.runtimes, &self.sync.restore),
         }
     }
 
@@ -167,7 +160,7 @@ impl App {
         for request in requests {
             match request {
                 RestoreRequest::Restore { id, controls } => {
-                    let Some(sender) = self.workers.get(&id) else {
+                    let Some(sender) = self.runtimes.worker(&id) else {
                         self.sync.restore.mark_failed(&id);
                         continue;
                     };
@@ -199,7 +192,7 @@ impl App {
         if self.sync.apply(RunEvent::Restored(generation)).is_err() {
             return;
         }
-        self.health.end_run();
+        self.runtimes.end_run();
         let report = self.sync.restore.finish();
         let kind = if report.not_restored.is_empty() {
             ToastKind::Success
@@ -298,7 +291,7 @@ impl App {
                     failed = true;
                 }
                 if failed {
-                    self.health.end_run();
+                    self.runtimes.end_run();
                 } else {
                     self.sync.capture_error = Some(message.clone());
                 }
@@ -333,22 +326,16 @@ impl App {
     }
 }
 
-fn sync_targets(
-    bulbs: &[Bulb],
-    states: &HashMap<String, BulbState>,
-    workers: &HashMap<String, WorkerHandle>,
-    health: &HealthSet,
-    restore: &RestorePlan,
-) -> Vec<SyncTarget> {
-    bulbs
+fn sync_targets(runtimes: &Runtimes, restore: &RestorePlan) -> Vec<SyncTarget> {
+    runtimes
         .iter()
-        .filter(|bulb| !health.run_unreachable(&bulb.id))
-        .filter(|bulb| restore.covers(&bulb.id))
-        .filter_map(|bulb| {
+        .filter(|runtime| !runtime.is_run_unreachable())
+        .filter(|runtime| restore.covers(runtime.id()))
+        .filter_map(|runtime| {
             Some(SyncTarget {
-                id: bulb.id.clone(),
-                sender: workers.get(&bulb.id)?.capture_sender(),
-                on: states.get(&bulb.id).and_then(|state| state.power) == Some(true),
+                id: runtime.id().to_owned(),
+                sender: runtime.worker()?.capture_sender(),
+                on: runtime.state().power == Some(true),
             })
         })
         .collect()
@@ -356,14 +343,14 @@ fn sync_targets(
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashMap;
     use std::net::IpAddr;
     use std::sync::mpsc::channel;
 
     use super::sync_targets;
     use crate::app::sync::restore::RestorePlan;
-    use crate::bulb::health::{HealthEvent, HealthSet};
+    use crate::bulb::health::HealthEvent;
     use crate::bulb::model::{Bulb, BulbState, ColorMode, Rgb};
+    use crate::bulb::runtime::Runtimes;
     use crate::bulb::worker::test_handle;
 
     fn bulb(id: &str, name: &str) -> Bulb {
@@ -373,6 +360,10 @@ mod tests {
             address: IpAddr::from([192, 168, 1, 42]),
             model: None,
         }
+    }
+
+    fn runtimes(entries: &[(&str, &str)]) -> Runtimes {
+        Runtimes::from_bulbs(entries.iter().map(|(id, name)| bulb(id, name)).collect())
     }
 
     fn state(on: bool) -> BulbState {
@@ -385,25 +376,22 @@ mod tests {
         }
     }
 
+    fn add_worker(runtimes: &mut Runtimes, id: &str) {
+        let (sender, _commands) = channel();
+        assert!(runtimes.set_worker(id, test_handle(sender)));
+    }
+
     #[test]
     fn a_bulb_without_a_plan_entry_is_never_a_target() {
-        let desk = bulb("desk", "Desk lamp");
-        let shelf = bulb("shelf", "Shelf lamp");
-        let bulbs = vec![desk, shelf];
-        let states = HashMap::from([
-            ("desk".to_owned(), state(true)),
-            ("shelf".to_owned(), state(true)),
-        ]);
-        let (desk_sender, _desk_commands) = channel();
-        let (shelf_sender, _shelf_commands) = channel();
-        let workers = HashMap::from([
-            ("desk".to_owned(), test_handle(desk_sender)),
-            ("shelf".to_owned(), test_handle(shelf_sender)),
-        ]);
+        let mut runtimes = runtimes(&[("desk", "Desk lamp"), ("shelf", "Shelf lamp")]);
+        runtimes.set_state("desk", state(true));
+        runtimes.set_state("shelf", state(true));
+        add_worker(&mut runtimes, "desk");
+        add_worker(&mut runtimes, "shelf");
         let mut restore = RestorePlan::default();
         restore.observe("desk", "Desk lamp", &state(true));
 
-        let targets = sync_targets(&bulbs, &states, &workers, &HealthSet::default(), &restore);
+        let targets = sync_targets(&runtimes, &restore);
 
         let ids: Vec<String> = targets.into_iter().map(|target| target.id).collect();
         assert_eq!(ids, vec!["desk".to_owned()]);
@@ -411,28 +399,19 @@ mod tests {
 
     #[test]
     fn a_bulb_the_run_marked_is_not_a_target() {
-        let desk = bulb("desk", "Desk lamp");
-        let shelf = bulb("shelf", "Shelf lamp");
-        let bulbs = vec![desk, shelf];
-        let states = HashMap::from([
-            ("desk".to_owned(), state(true)),
-            ("shelf".to_owned(), state(true)),
-        ]);
-        let (desk_sender, _desk_commands) = channel();
-        let (shelf_sender, _shelf_commands) = channel();
-        let workers = HashMap::from([
-            ("desk".to_owned(), test_handle(desk_sender)),
-            ("shelf".to_owned(), test_handle(shelf_sender)),
-        ]);
+        let mut runtimes = runtimes(&[("desk", "Desk lamp"), ("shelf", "Shelf lamp")]);
+        runtimes.set_state("desk", state(true));
+        runtimes.set_state("shelf", state(true));
+        add_worker(&mut runtimes, "desk");
+        add_worker(&mut runtimes, "shelf");
         let mut restore = RestorePlan::default();
         restore.observe("desk", "Desk lamp", &state(true));
         restore.observe("shelf", "Shelf lamp", &state(true));
-        let mut health = HealthSet::default();
         for message in ["one", "two", "three"] {
-            health.apply("shelf", HealthEvent::Error(message.to_owned()), true);
+            runtimes.apply_health("shelf", HealthEvent::Error(message.to_owned()), true);
         }
 
-        let targets = sync_targets(&bulbs, &states, &workers, &health, &restore);
+        let targets = sync_targets(&runtimes, &restore);
 
         let ids: Vec<String> = targets.into_iter().map(|target| target.id).collect();
         assert_eq!(ids, vec!["desk".to_owned()]);
@@ -440,17 +419,14 @@ mod tests {
 
     #[test]
     fn a_standing_failure_is_retried_by_the_run() {
-        let desk = bulb("desk", "Desk lamp");
-        let bulbs = vec![desk];
-        let states = HashMap::from([("desk".to_owned(), state(true))]);
-        let (desk_sender, _desk_commands) = channel();
-        let workers = HashMap::from([("desk".to_owned(), test_handle(desk_sender))]);
+        let mut runtimes = runtimes(&[("desk", "Desk lamp")]);
+        runtimes.set_state("desk", state(true));
+        add_worker(&mut runtimes, "desk");
         let mut restore = RestorePlan::default();
         restore.observe("desk", "Desk lamp", &state(true));
-        let mut health = HealthSet::default();
-        health.apply("desk", HealthEvent::Error("no answer".to_owned()), false);
+        runtimes.apply_health("desk", HealthEvent::Error("no answer".to_owned()), false);
 
-        let targets = sync_targets(&bulbs, &states, &workers, &health, &restore);
+        let targets = sync_targets(&runtimes, &restore);
 
         let ids: Vec<String> = targets.into_iter().map(|target| target.id).collect();
         assert_eq!(ids, vec!["desk".to_owned()]);
@@ -458,14 +434,12 @@ mod tests {
 
     #[test]
     fn a_bulb_without_a_worker_is_not_a_target() {
-        let desk = bulb("desk", "Desk lamp");
-        let bulbs = vec![desk];
-        let states = HashMap::from([("desk".to_owned(), state(true))]);
-        let workers = HashMap::new();
+        let mut runtimes = runtimes(&[("desk", "Desk lamp")]);
+        runtimes.set_state("desk", state(true));
         let mut restore = RestorePlan::default();
         restore.observe("desk", "Desk lamp", &state(true));
 
-        let targets = sync_targets(&bulbs, &states, &workers, &HealthSet::default(), &restore);
+        let targets = sync_targets(&runtimes, &restore);
 
         assert!(targets.is_empty());
     }

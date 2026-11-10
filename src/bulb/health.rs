@@ -1,5 +1,3 @@
-use std::collections::{HashMap, HashSet};
-
 /// A run publishes at 1.5 Hz, so a single missed reply is normal. A bulb only
 /// leaves the run after this many consecutive failures; outside a run one
 /// failure is already a failure.
@@ -31,297 +29,308 @@ impl HealthStatus {
     }
 }
 
-#[derive(Clone, Debug, Default)]
-struct Record {
-    answered: bool,
-    unreachable: bool,
-    run_unreachable: bool,
-    run_failures: u8,
-    exited: bool,
-    message: Option<String>,
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub enum HealthState {
+    #[default]
+    Connecting,
+    Online,
+    Unreachable {
+        message: Option<String>,
+        run: bool,
+    },
+    Failed {
+        message: String,
+    },
 }
 
-impl Record {
-    fn apply(&mut self, event: HealthEvent, in_run: bool) -> bool {
-        let was = (self.status(), self.message.clone());
-        match event {
-            HealthEvent::State | HealthEvent::Sent | HealthEvent::Reachable(true) => {
-                self.answered = true;
-                self.unreachable = false;
-                self.run_unreachable = false;
-                self.run_failures = 0;
-                self.message = None;
-            }
-            HealthEvent::Reachable(false) => {
-                self.unreachable = true;
-                if in_run {
-                    self.run_unreachable = true;
-                }
-            }
-            HealthEvent::Error(message) => {
-                self.message = Some(message);
-                if in_run {
-                    self.run_failures = self.run_failures.saturating_add(1);
-                    if self.run_failures >= RUN_FAILURE_LIMIT {
-                        self.run_unreachable = true;
-                        self.unreachable = true;
-                    }
-                } else {
-                    self.unreachable = true;
-                }
-            }
-            HealthEvent::Exited => {
-                self.exited = true;
-                self.message.get_or_insert_with(|| LOST_MESSAGE.to_owned());
-            }
-        }
-        self.status() != was.0 || self.message != was.1
-    }
-
-    fn status(&self) -> HealthStatus {
-        if self.exited {
-            HealthStatus::Failed
-        } else if self.run_unreachable || self.unreachable {
-            HealthStatus::Unreachable
-        } else if self.answered {
-            HealthStatus::Online
-        } else {
-            HealthStatus::Connecting
+impl HealthState {
+    pub fn status(&self) -> HealthStatus {
+        match self {
+            HealthState::Connecting => HealthStatus::Connecting,
+            HealthState::Online => HealthStatus::Online,
+            HealthState::Unreachable { .. } => HealthStatus::Unreachable,
+            HealthState::Failed { .. } => HealthStatus::Failed,
         }
     }
 
-    fn begin_run(&mut self) {
-        self.run_unreachable = false;
-        self.run_failures = 0;
+    pub fn is_down(&self) -> bool {
+        self.status().is_down()
     }
 
-    fn end_run(&mut self) {
-        self.run_unreachable = false;
-        self.run_failures = 0;
-        if !self.unreachable && !self.exited {
-            self.message = None;
+    pub fn message(&self) -> Option<&str> {
+        match self {
+            HealthState::Unreachable { message, .. } => message.as_deref(),
+            HealthState::Failed { message } => Some(message),
+            HealthState::Connecting | HealthState::Online => None,
         }
-    }
-}
-
-#[derive(Default)]
-pub struct HealthSet {
-    records: HashMap<String, Record>,
-}
-
-impl HealthSet {
-    pub fn apply(&mut self, id: &str, event: HealthEvent, in_run: bool) -> bool {
-        self.records
-            .entry(id.to_owned())
-            .or_default()
-            .apply(event, in_run)
-    }
-
-    pub fn begin_run(&mut self) {
-        for record in self.records.values_mut() {
-            record.begin_run();
-        }
-    }
-
-    pub fn end_run(&mut self) {
-        for record in self.records.values_mut() {
-            record.end_run();
-        }
-    }
-
-    pub fn remove(&mut self, id: &str) {
-        self.records.remove(id);
-    }
-
-    pub fn retain(&mut self, keep: &HashSet<String>) {
-        self.records.retain(|id, _| keep.contains(id));
-    }
-
-    pub fn clear(&mut self) {
-        self.records.clear();
-    }
-
-    pub fn status(&self, id: &str) -> HealthStatus {
-        self.records
-            .get(id)
-            .map_or(HealthStatus::Connecting, Record::status)
-    }
-
-    pub fn message(&self, id: &str) -> Option<&str> {
-        self.records.get(id)?.message.as_deref()
-    }
-
-    pub fn unreachable(&self, id: &str) -> bool {
-        self.status(id).is_down()
     }
 
     /// A standing failure is retried by a run; only a failure the run itself
     /// marked keeps the bulb out of its targets.
-    pub fn run_unreachable(&self, id: &str) -> bool {
-        self.records
-            .get(id)
-            .is_some_and(|record| record.run_unreachable)
+    pub fn run_unreachable(&self) -> bool {
+        matches!(self, HealthState::Unreachable { run: true, .. })
     }
 
-    pub fn unreachable_ids(&self) -> Vec<String> {
-        let mut ids: Vec<String> = self
-            .records
-            .iter()
-            .filter(|(_, record)| record.status().is_down())
-            .map(|(id, _)| id.clone())
-            .collect();
-        ids.sort();
-        ids
+    pub fn clear_run_mark(&mut self) -> bool {
+        match self {
+            HealthState::Unreachable { run, .. } if *run => {
+                *run = false;
+                true
+            }
+            _ => false,
+        }
     }
+}
+
+/// One health transition. `run_failures` counts consecutive failures inside a
+/// run; the caller owns it so the typed state never carries a duplicate flag.
+pub fn advance_health(
+    state: &mut HealthState,
+    run_failures: &mut u8,
+    event: HealthEvent,
+    in_run: bool,
+) -> bool {
+    if matches!(state, HealthState::Failed { .. }) {
+        return false;
+    }
+    let before = state.clone();
+    match event {
+        HealthEvent::State | HealthEvent::Sent | HealthEvent::Reachable(true) => {
+            *state = HealthState::Online;
+            *run_failures = 0;
+        }
+        HealthEvent::Reachable(false) => {
+            let message = state.message().map(str::to_owned);
+            *state = HealthState::Unreachable {
+                message,
+                run: in_run,
+            };
+            *run_failures = 0;
+        }
+        HealthEvent::Error(message) => {
+            if in_run {
+                *run_failures = run_failures.saturating_add(1);
+                if *run_failures >= RUN_FAILURE_LIMIT {
+                    *state = HealthState::Unreachable {
+                        message: Some(message),
+                        run: true,
+                    };
+                } else if let HealthState::Unreachable {
+                    message: current, ..
+                } = state
+                {
+                    *current = Some(message);
+                }
+            } else {
+                *state = HealthState::Unreachable {
+                    message: Some(message),
+                    run: false,
+                };
+                *run_failures = 0;
+            }
+        }
+        HealthEvent::Exited => {
+            let message = state
+                .message()
+                .map_or_else(|| LOST_MESSAGE.to_owned(), str::to_owned);
+            *state = HealthState::Failed { message };
+        }
+    }
+    *state != before
+}
+
+pub fn end_run_health(state: &mut HealthState) -> bool {
+    state.clear_run_mark()
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{HealthEvent, HealthSet, HealthStatus};
+    use super::{HealthEvent, HealthState, HealthStatus, advance_health, end_run_health};
 
-    fn error(message: &str) -> HealthEvent {
-        HealthEvent::Error(message.to_owned())
+    fn error(state: &mut HealthState, failures: &mut u8, message: &str, in_run: bool) -> bool {
+        advance_health(
+            state,
+            failures,
+            HealthEvent::Error(message.to_owned()),
+            in_run,
+        )
     }
 
     #[test]
-    fn a_failed_call_counts_once_until_the_bulb_answers() {
-        let mut health = HealthSet::default();
-        assert_eq!(health.status("desk"), HealthStatus::Connecting);
-        assert!(health.unreachable_ids().is_empty());
+    fn one_failure_outside_a_run_is_unreachable() {
+        let mut state = HealthState::default();
+        let mut failures = 0;
 
-        assert!(health.apply("desk", error("The bulb did not answer."), false));
-        assert_eq!(health.status("desk"), HealthStatus::Unreachable);
-        assert_eq!(health.unreachable_ids(), vec!["desk".to_owned()]);
+        assert_eq!(state.status(), HealthStatus::Connecting);
+        assert!(error(&mut state, &mut failures, "no answer", false));
 
-        assert!(!health.apply("desk", error("The bulb did not answer."), false));
-        assert_eq!(health.unreachable_ids().len(), 1);
+        assert_eq!(state.status(), HealthStatus::Unreachable);
+        assert!(state.is_down());
+        assert!(!state.run_unreachable());
+        assert_eq!(state.message(), Some("no answer"));
 
-        assert!(health.apply("desk", HealthEvent::State, false));
-        assert_eq!(health.status("desk"), HealthStatus::Online);
-        assert!(health.unreachable_ids().is_empty());
-        assert_eq!(health.message("desk"), None);
+        assert!(!error(&mut state, &mut failures, "no answer", false));
     }
 
     #[test]
-    fn a_run_failure_stays_visible_after_the_run_ends() {
-        let mut health = HealthSet::default();
-        health.begin_run();
+    fn three_failures_inside_a_run_are_run_unreachable() {
+        let mut state = HealthState::Online;
+        let mut failures = 0;
 
-        health.apply("desk", error("one"), true);
-        health.apply("desk", error("two"), true);
-        assert!(!health.unreachable("desk"));
-        assert!(health.unreachable_ids().is_empty());
+        assert!(!error(&mut state, &mut failures, "one", true));
+        assert!(!error(&mut state, &mut failures, "two", true));
+        assert!(!state.is_down());
+        assert!(!state.run_unreachable());
 
-        assert!(health.apply("desk", error("three"), true));
-        assert!(health.unreachable("desk"));
-        assert!(health.run_unreachable("desk"));
-        assert_eq!(health.unreachable_ids().len(), 1);
-
-        health.end_run();
-        assert!(health.unreachable("desk"));
-        assert!(!health.run_unreachable("desk"));
-        assert_eq!(health.unreachable_ids().len(), 1);
-        assert_eq!(health.status("desk"), HealthStatus::Unreachable);
-        assert_eq!(health.message("desk"), Some("three"));
+        assert!(error(&mut state, &mut failures, "three", true));
+        assert_eq!(state.status(), HealthStatus::Unreachable);
+        assert!(state.run_unreachable());
+        assert_eq!(state.message(), Some("three"));
     }
 
     #[test]
-    fn a_failed_probe_stays_visible_after_the_run_ends() {
-        let mut health = HealthSet::default();
-        health.begin_run();
+    fn a_run_end_preserves_the_standing_failure_and_clears_only_the_mark() {
+        let mut state = HealthState::Online;
+        let mut failures = 0;
+        for message in ["one", "two", "three"] {
+            error(&mut state, &mut failures, message, true);
+        }
+        assert!(state.run_unreachable());
 
-        health.apply("desk", HealthEvent::Reachable(false), true);
-        health.end_run();
+        assert!(end_run_health(&mut state));
+        assert_eq!(state.status(), HealthStatus::Unreachable);
+        assert!(!state.run_unreachable());
+        assert_eq!(state.message(), Some("three"));
 
-        assert!(health.unreachable("desk"));
-        assert!(!health.run_unreachable("desk"));
-        assert_eq!(health.unreachable_ids().len(), 1);
+        assert!(!end_run_health(&mut state));
+    }
+
+    #[test]
+    fn a_failed_probe_inside_a_run_is_run_unreachable() {
+        let mut state = HealthState::Online;
+        let mut failures = 0;
+
+        assert!(advance_health(
+            &mut state,
+            &mut failures,
+            HealthEvent::Reachable(false),
+            true
+        ));
+        assert!(state.run_unreachable());
+
+        end_run_health(&mut state);
+        assert!(state.is_down());
+        assert!(!state.run_unreachable());
     }
 
     #[test]
     fn a_run_retries_a_standing_failure_but_keeps_it_visible() {
-        let mut health = HealthSet::default();
-        health.apply("desk", error("no answer"), false);
+        let mut state = HealthState::default();
+        let mut failures = 0;
+        error(&mut state, &mut failures, "no answer", false);
+        assert!(state.is_down());
+        assert!(!state.run_unreachable());
 
-        assert!(health.unreachable("desk"));
-        assert!(!health.run_unreachable("desk"));
+        for message in ["one", "two", "three"] {
+            error(&mut state, &mut failures, message, true);
+        }
+        assert!(state.run_unreachable());
 
-        health.begin_run();
-        health.apply("desk", error("one"), true);
-        health.apply("desk", error("two"), true);
-        health.apply("desk", error("three"), true);
-        assert!(health.run_unreachable("desk"));
-
-        health.end_run();
-        assert!(health.unreachable("desk"));
-        assert!(!health.run_unreachable("desk"));
-        assert!(health.message("desk").is_some());
+        end_run_health(&mut state);
+        assert!(state.is_down());
+        assert!(!state.run_unreachable());
+        assert_eq!(state.message(), Some("three"));
     }
 
     #[test]
     fn a_run_that_recovers_a_standing_failure_clears_it() {
-        let mut health = HealthSet::default();
-        health.apply("desk", error("no answer"), false);
+        let mut state = HealthState::default();
+        let mut failures = 0;
+        error(&mut state, &mut failures, "no answer", false);
 
-        health.begin_run();
-        health.apply("desk", HealthEvent::State, true);
-        health.end_run();
+        assert!(advance_health(
+            &mut state,
+            &mut failures,
+            HealthEvent::State,
+            true
+        ));
 
-        assert_eq!(health.status("desk"), HealthStatus::Online);
-        assert!(health.unreachable_ids().is_empty());
-        assert_eq!(health.message("desk"), None);
+        assert_eq!(state.status(), HealthStatus::Online);
+        assert!(!state.is_down());
+        assert_eq!(state.message(), None);
     }
 
     #[test]
-    fn a_recovered_bulb_leaves_the_run_count() {
-        let mut health = HealthSet::default();
-        health.begin_run();
+    fn three_failures_outside_a_run_stay_a_standing_failure() {
+        let mut state = HealthState::default();
+        let mut failures = 0;
+
         for message in ["one", "two", "three"] {
-            health.apply("desk", error(message), true);
+            error(&mut state, &mut failures, message, false);
         }
-        assert_eq!(health.unreachable_ids().len(), 1);
 
-        health.apply("desk", HealthEvent::Sent, true);
-        health.end_run();
-
-        assert!(!health.unreachable("desk"));
-        assert!(health.unreachable_ids().is_empty());
+        assert!(state.is_down());
+        assert!(!state.run_unreachable());
+        assert_eq!(state.message(), Some("three"));
     }
 
     #[test]
-    fn a_lost_worker_is_one_failure_however_often_it_is_reported() {
-        let mut health = HealthSet::default();
-        assert!(health.apply("desk", HealthEvent::Exited, false));
-        assert_eq!(health.status("desk"), HealthStatus::Failed);
-        assert_eq!(health.unreachable_ids().len(), 1);
-        assert!(health.message("desk").is_some());
+    fn a_recovered_bulb_starts_the_run_count_again() {
+        let mut state = HealthState::Online;
+        let mut failures = 0;
+        for message in ["one", "two", "three"] {
+            error(&mut state, &mut failures, message, true);
+        }
+        assert!(state.run_unreachable());
 
-        assert!(!health.apply("desk", HealthEvent::Exited, false));
-        assert_eq!(health.unreachable_ids().len(), 1);
+        advance_health(&mut state, &mut failures, HealthEvent::Sent, true);
+        assert!(!state.is_down());
 
-        health.end_run();
-        assert_eq!(health.unreachable_ids().len(), 1);
-        assert!(health.message("desk").is_some());
+        assert!(!error(&mut state, &mut failures, "one", true));
+        assert!(!error(&mut state, &mut failures, "two", true));
+        assert!(!state.is_down());
+
+        assert!(error(&mut state, &mut failures, "three", true));
+        assert!(state.run_unreachable());
     }
 
     #[test]
-    fn a_stopped_worker_can_start_again_with_a_clean_record() {
-        let mut health = HealthSet::default();
-        health.apply("desk", HealthEvent::Exited, false);
-        health.remove("desk");
+    fn a_worker_exit_is_failed_once() {
+        let mut state = HealthState::default();
+        let mut failures = 0;
 
-        assert_eq!(health.status("desk"), HealthStatus::Connecting);
-        assert!(health.unreachable_ids().is_empty());
+        assert!(advance_health(
+            &mut state,
+            &mut failures,
+            HealthEvent::Exited,
+            false
+        ));
+        assert_eq!(state.status(), HealthStatus::Failed);
+        assert!(state.message().is_some());
+
+        assert!(!advance_health(
+            &mut state,
+            &mut failures,
+            HealthEvent::Exited,
+            false
+        ));
+        assert_eq!(state.status(), HealthStatus::Failed);
     }
 
     #[test]
-    fn a_removed_bulb_leaves_the_count() {
-        let mut health = HealthSet::default();
-        health.apply("desk", error("gone"), false);
-        health.apply("shelf", error("gone"), false);
+    fn a_failed_worker_stays_failed() {
+        let mut state = HealthState::default();
+        let mut failures = 0;
+        advance_health(&mut state, &mut failures, HealthEvent::Exited, false);
 
-        health.retain(&std::collections::HashSet::from(["desk".to_owned()]));
-
-        assert_eq!(health.unreachable_ids(), vec!["desk".to_owned()]);
+        assert!(!advance_health(
+            &mut state,
+            &mut failures,
+            HealthEvent::State,
+            false
+        ));
+        assert_eq!(state.status(), HealthStatus::Failed);
+        assert!(!end_run_health(&mut state));
+        assert_eq!(state.status(), HealthStatus::Failed);
     }
 }
