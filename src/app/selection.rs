@@ -1,41 +1,48 @@
 use crate::app::App;
-use crate::app::state::{Overlay, Screen};
+use crate::app::view::{Overlay, View};
 use crate::bulb::selection::Selection;
 
 impl App {
+    pub(crate) fn overlay(&self) -> Overlay {
+        self.view.overlay()
+    }
+
     pub(crate) fn close_overlays(&mut self) {
-        self.overlay = Overlay::None;
-    }
-
-    pub(crate) fn toggle_overlay(&mut self, overlay: Overlay) {
-        self.overlay = self.overlay.toggle(overlay);
-    }
-
-    pub(crate) fn close_overlay(&mut self, overlay: Overlay) {
-        self.overlay = self.overlay.close(overlay);
-    }
-
-    pub(crate) fn leave_color(&mut self) {
-        self.close_overlays();
-        if self.color.is_open() {
-            self.cancel_color();
+        if let Some(overlay) = self.view.overlay_mut() {
+            *overlay = Overlay::None;
         }
     }
 
+    pub(crate) fn toggle_overlay(&mut self, overlay: Overlay) {
+        if let Some(current) = self.view.overlay_mut() {
+            *current = current.toggle(overlay);
+        }
+    }
+
+    pub(crate) fn close_overlay(&mut self, overlay: Overlay) {
+        if let Some(current) = self.view.overlay_mut() {
+            *current = current.close(overlay);
+        }
+    }
+
+    /// Close the popovers and the colour editor before an action that may be
+    /// refused, so a refused form does not leave them over Control.
+    pub(crate) fn leave_control(&mut self) {
+        self.cancel_color();
+        self.view.close_transients();
+    }
+
     pub(crate) fn open_overview(&mut self) {
-        self.leave_color();
-        self.set_screen(Screen::Dashboard);
+        self.navigate(View::control());
     }
 
     pub(crate) fn select_all(&mut self) {
-        self.leave_color();
         self.selection = Some(Selection::All);
-        self.set_screen(Screen::Dashboard);
+        self.navigate(View::control());
     }
 
     pub(crate) fn select_bulb(&mut self, id: &str) {
-        self.leave_color();
         self.selection = Some(Selection::Bulb(id.to_owned()));
-        self.set_screen(Screen::Dashboard);
+        self.navigate(View::control());
     }
 }

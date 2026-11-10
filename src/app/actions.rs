@@ -3,8 +3,9 @@ use std::time::{Duration, Instant};
 use rune::{TextEdit, Tx};
 
 use crate::app::App;
-use crate::app::state::{Dashboard, FormMode, FormState, Screen, Toast, ToastKind};
+use crate::app::state::{Dashboard, Toast, ToastKind};
 use crate::app::sync::run::StopStage;
+use crate::app::view::{FormMode, FormState, View};
 use crate::bulb::aggregate::AggregatePower;
 use crate::bulb::health::HealthEvent;
 use crate::bulb::model::{
@@ -63,7 +64,7 @@ impl App {
             return false;
         }
         let mut reconfigure = false;
-        let in_run = self.sync.status.is_running();
+        let in_run = self.sync.status.is_in_run();
         let changed = match event {
             WorkerEvent::State {
                 id,
@@ -80,7 +81,7 @@ impl App {
                         current.apply(&state);
                         (was_on, current.power == Some(true), current.clone())
                     };
-                    if self.sync.status.is_running()
+                    if self.sync.status.is_in_run()
                         && let Some(bulb) = self.bulbs.iter().find(|bulb| bulb.id == id)
                     {
                         reconfigure |= self.sync.restore.observe(&id, &bulb.name, &merged);
@@ -346,7 +347,7 @@ impl App {
         };
         if handle.send(command).is_err() {
             self.workers.remove(id);
-            let in_run = self.sync.status.is_running();
+            let in_run = self.sync.status.is_in_run();
             if self.health.apply(id, HealthEvent::Exited, in_run) {
                 self.notify(
                     format!("The connection to {name} stopped."),
@@ -358,7 +359,7 @@ impl App {
     }
 
     pub(crate) fn open_add(&mut self) {
-        self.leave_color();
+        self.leave_control();
         if self.startup_error.is_some() {
             self.notify(
                 "Fix or remove the unreadable config file before adding a bulb.",
@@ -369,19 +370,21 @@ impl App {
         if !self.ensure_sync_stopped("add a bulb") {
             return;
         }
-        self.form = FormState::default();
-        self.set_screen(Screen::Form(FormMode::Add));
+        self.navigate(View::Form {
+            mode: FormMode::Add,
+            state: Box::new(FormState::default()),
+        });
     }
 
     pub(crate) fn open_edit(&mut self, id: &str) {
-        self.leave_color();
+        self.leave_control();
         if !self.ensure_sync_stopped("edit a bulb") {
             return;
         }
         let Some(bulb) = self.bulbs.iter().find(|bulb| bulb.id == id) else {
             return;
         };
-        self.form = FormState {
+        let state = FormState {
             name: TextEdit::new(bulb.name.clone()),
             address: TextEdit::new(bulb.address.to_string()),
             model: TextEdit::new({
@@ -390,7 +393,10 @@ impl App {
             }),
             ..FormState::default()
         };
-        self.set_screen(Screen::Form(FormMode::Edit(id.to_owned())));
+        self.navigate(View::Form {
+            mode: FormMode::Edit(id.to_owned()),
+            state: Box::new(state),
+        });
     }
 
     pub(crate) fn edit_selected(&mut self) {
@@ -400,6 +406,18 @@ impl App {
                 self.notify("Select one bulb to edit it.", ToastKind::Info);
             }
             None => {}
+        }
+    }
+
+    pub(crate) fn form_field_mut(&mut self, field: BulbField) -> &mut TextEdit {
+        let Some(form) = self.view.form_mut() else {
+            return &mut self.empty_edit;
+        };
+        match field {
+            BulbField::Name => &mut form.name,
+            BulbField::Address => &mut form.address,
+            BulbField::Model => &mut form.model,
+            BulbField::Token => &mut form.token,
         }
     }
 
@@ -418,26 +436,36 @@ impl App {
             self.notify("Demo mode does not save bulbs.", ToastKind::Info);
             return;
         }
-        let editing = match &self.screen {
-            Screen::Form(FormMode::Edit(id)) => Some(id.clone()),
+        let (name, address, model, token) = match self.view.form() {
+            Some(form) => (
+                form.name.text.trim().to_owned(),
+                form.address.text.trim().to_owned(),
+                form.model.text.trim().to_owned(),
+                form.token.text.trim().to_owned(),
+            ),
+            None => return,
+        };
+        let editing = match &self.view {
+            View::Form {
+                mode: FormMode::Edit(id),
+                ..
+            } => Some(id.clone()),
             _ => None,
         };
         let token_required = editing.is_none();
-        let draft = match validate_draft(
-            &self.form.name.text,
-            &self.form.address.text,
-            &self.form.model.text,
-            &self.form.token.text,
-            token_required,
-        ) {
+        let draft = match validate_draft(&name, &address, &model, &token, token_required) {
             Ok(draft) => {
-                self.form.errors.clear();
+                if let Some(form) = self.view.form_mut() {
+                    form.errors.clear();
+                }
                 draft
             }
             Err(issues) => {
-                self.form.errors.clear();
-                for issue in issues {
-                    self.form.errors.insert(issue.field, issue.message);
+                if let Some(form) = self.view.form_mut() {
+                    form.errors.clear();
+                    for issue in issues {
+                        form.errors.insert(issue.field, issue.message);
+                    }
                 }
                 return;
             }
@@ -463,7 +491,7 @@ impl App {
                 self.bulbs = bulbs;
                 self.selection = Some(selection_after_add(before, &id, self.selection.as_ref()));
                 self.spawn_worker(&bulb);
-                self.set_screen(Screen::Dashboard);
+                self.navigate(View::control());
                 self.notify(format!("Added {}.", bulb.name), ToastKind::Success);
             }
             Some(id) => {
@@ -483,7 +511,7 @@ impl App {
                 };
                 self.bulbs = bulbs;
                 self.spawn_worker(&bulb);
-                self.set_screen(Screen::Dashboard);
+                self.navigate(View::control());
                 self.notify(format!("Saved {}.", bulb.name), ToastKind::Success);
             }
         }
@@ -492,28 +520,32 @@ impl App {
     fn show_save_error(&mut self, error: RegistryError, bulb: &Bulb) {
         match error {
             RegistryError::Invalid(BulbListIssue::DuplicateName { .. }) => {
-                self.form.errors.insert(
-                    BulbField::Name,
-                    format!("A bulb named {} already exists.", bulb.name),
-                );
+                if let Some(form) = self.view.form_mut() {
+                    form.errors.insert(
+                        BulbField::Name,
+                        format!("A bulb named {} already exists.", bulb.name),
+                    );
+                }
             }
             RegistryError::Invalid(BulbListIssue::DuplicateAddress { .. }) => {
-                self.form.errors.insert(
-                    BulbField::Address,
-                    format!("A bulb at {} already exists.", bulb.address),
-                );
+                if let Some(form) = self.view.form_mut() {
+                    form.errors.insert(
+                        BulbField::Address,
+                        format!("A bulb at {} already exists.", bulb.address),
+                    );
+                }
             }
             error => self.notify(error.to_string(), ToastKind::Error),
         }
     }
 
     pub(crate) fn open_remove(&mut self, id: &str) {
-        self.leave_color();
+        self.leave_control();
         if !self.ensure_sync_stopped("remove a bulb") {
             return;
         }
         if self.bulbs.iter().any(|bulb| bulb.id == id) {
-            self.set_screen(Screen::Remove(id.to_owned()));
+            self.navigate(View::Remove(id.to_owned()));
         }
     }
 
@@ -525,11 +557,12 @@ impl App {
             self.notify("Demo mode does not change bulbs.", ToastKind::Info);
             return;
         }
-        let Screen::Remove(id) = self.screen.clone() else {
-            return;
+        let id = match &self.view {
+            View::Remove(id) => id.clone(),
+            _ => return,
         };
         let Some(bulb) = self.bulbs.iter().find(|bulb| bulb.id == id).cloned() else {
-            self.set_screen(Screen::Dashboard);
+            self.navigate(View::control());
             return;
         };
         let remaining = match self.registry.remove(&self.bulbs, &id) {
@@ -548,18 +581,16 @@ impl App {
         }
         self.selection =
             crate::bulb::selection::resolve_selection(&self.bulbs, self.selection.as_ref());
-        self.set_screen(Screen::Dashboard);
+        self.navigate(View::control());
         self.notify(format!("Removed {}.", bulb.name), ToastKind::Success);
     }
 
     pub(crate) fn open_settings(&mut self) {
-        self.leave_color();
-        self.set_screen(Screen::Settings);
+        self.navigate(View::Settings);
     }
 
     pub(crate) fn open_sync(&mut self) {
-        self.leave_color();
-        self.set_screen(Screen::Sync);
+        self.navigate(View::sync());
         let sent = self
             .screen_handle
             .as_ref()
@@ -570,8 +601,7 @@ impl App {
     }
 
     pub(crate) fn back(&mut self) {
-        self.close_overlays();
-        self.set_screen(Screen::Dashboard);
+        self.navigate(View::control());
     }
 
     pub(crate) fn notify(&mut self, message: impl Into<String>, kind: ToastKind) {
@@ -644,7 +674,7 @@ impl App {
             }
         }
         let had_gone = !gone.is_empty();
-        let in_run = self.sync.status.is_running();
+        let in_run = self.sync.status.is_in_run();
         for id in gone {
             self.workers.remove(&id);
             self.health.apply(&id, HealthEvent::Exited, in_run);
@@ -655,7 +685,7 @@ impl App {
     }
 
     pub(crate) fn shutdown(&mut self) {
-        self.leave_color();
+        self.cancel_color();
         self.flush_pending();
         if self.sync.status.is_active() {
             self.stop_sync();

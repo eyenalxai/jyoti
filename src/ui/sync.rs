@@ -4,8 +4,8 @@ use rune::{Color, El, ScrollSpec, col, row, text};
 use rune_kit::{Button, ButtonVariant, ControlSize, Kit, Menu, MenuItem};
 
 use crate::app::App;
-use crate::app::state::Overlay;
 use crate::app::sync::run::RunPhase;
+use crate::app::view::Overlay;
 use crate::bulb::model::Rgb;
 use crate::screen::gain::{SYNC_GAIN_MAX, SYNC_GAIN_MIN};
 use crate::screen::intensity::intensify;
@@ -262,13 +262,13 @@ fn monitor_row(app: &App, k: &Kit, layers: &mut Vec<El>) -> El {
         240.0,
         "Monitor",
         &current,
-        app.overlay == Overlay::MonitorPicker,
+        app.overlay() == Overlay::MonitorPicker,
         None,
         |app: &mut App| app.toggle_overlay(Overlay::MonitorPicker),
     );
     let mut picker = Menu::new("monitor-picker")
         .trigger(trigger)
-        .open(app.overlay == Overlay::MonitorPicker)
+        .open(app.overlay() == Overlay::MonitorPicker)
         .min_width(300.0)
         .on_close(|app: &mut App| app.close_overlay(Overlay::MonitorPicker));
     for monitor in &app.sync.monitors {
