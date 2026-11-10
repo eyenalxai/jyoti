@@ -8,7 +8,7 @@ use rune_kit::{
 
 use crate::app::App;
 use crate::app::selected::{SelectedLight, selected_light};
-use crate::app::state::Overlay;
+use crate::app::view::Overlay;
 use crate::bulb::aggregate::{AggregatePower, LightQuality, power_of_state};
 use crate::bulb::health::HealthStatus;
 use crate::bulb::model::{
@@ -60,13 +60,13 @@ fn picker_row(app: &App, k: &Kit, layers: &mut Vec<El>, view: &SelectedLight) ->
         344.0,
         "Bulb",
         &view.name,
-        app.overlay == Overlay::BulbPicker,
+        app.overlay() == Overlay::BulbPicker,
         Some(current_tone),
         |app: &mut App| app.toggle_overlay(Overlay::BulbPicker),
     );
     let mut picker = Menu::new("bulb-picker")
         .trigger(trigger)
-        .open(app.overlay == Overlay::BulbPicker)
+        .open(app.overlay() == Overlay::BulbPicker)
         .min_width(360.0)
         .on_close(|app: &mut App| app.close_overlay(Overlay::BulbPicker));
     if show_all {
@@ -141,7 +141,7 @@ fn picker_row(app: &App, k: &Kit, layers: &mut Vec<El>, view: &SelectedLight) ->
     let single = !view.is_all();
     let menu = Menu::new("bulb-actions")
         .trigger(trigger)
-        .open(app.overlay == Overlay::BulbMenu)
+        .open(app.overlay() == Overlay::BulbMenu)
         .on_close(|app: &mut App| app.close_overlay(Overlay::BulbMenu))
         .item(
             MenuItem::new("Refresh")
@@ -251,10 +251,10 @@ fn control_deck(app: &App, k: &Kit, layers: &mut Vec<El>, view: &SelectedLight) 
         k,
         white,
         colour,
-        sync_owned || app.color.is_open(),
+        sync_owned || app.color_is_open(),
     ));
-    if white || colour || app.color.is_open() {
-        let (key, edge, block) = if white && !app.color.is_open() {
+    if white || colour || app.color_is_open() {
+        let (key, edge, block) = if white && !app.color_is_open() {
             (
                 "tuning-white",
                 Edge::Leading,
@@ -477,7 +477,7 @@ fn colour_block(
     disabled: bool,
     layers: &mut Vec<El>,
 ) -> El {
-    let session = app.color.session();
+    let session = app.color_session();
     let editing = session.is_some();
     let (color, mixed) = match session {
         Some(session) => (Some(session.preview), false),
@@ -523,7 +523,7 @@ fn colour_block(
         .placement(Placement::TopEnd)
         .gutter(8.0)
         .label("Colour editor");
-    if let Some(session) = app.color.session() {
+    if let Some(session) = app.color_session() {
         popover = popover.child(color::popover(session, k));
     }
     let trigger = popover.build(k, layers);
