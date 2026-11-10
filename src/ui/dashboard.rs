@@ -10,7 +10,7 @@ use crate::app::App;
 use crate::app::selected::{SelectedLight, selected_light};
 use crate::app::view::Overlay;
 use crate::bulb::aggregate::{AggregatePower, LightQuality, power_of_state};
-use crate::bulb::health::HealthStatus;
+use crate::bulb::health::HealthLevel;
 use crate::bulb::model::{
     Rgb, TEMPERATURE_MAX, TEMPERATURE_MIN, brightness_from_fraction, fraction_of_brightness,
     fraction_of_temperature, temperature_from_fraction,
@@ -28,7 +28,7 @@ use crate::ui::widget::{
 const STAGE_HEIGHT: f32 = 202.0;
 
 pub fn content(app: &App, k: &Kit, layers: &mut Vec<El>) -> El {
-    if app.bulbs.is_empty() {
+    if app.runtimes.is_empty() {
         return stage::empty_state(k);
     }
     let Some(view) = app.selected_light() else {
@@ -52,7 +52,7 @@ pub fn content(app: &App, k: &Kit, layers: &mut Vec<El>) -> El {
 }
 
 fn picker_row(app: &App, k: &Kit, layers: &mut Vec<El>, view: &SelectedLight) -> El {
-    let show_all = app.bulbs.len() >= 2;
+    let show_all = app.runtimes.len() >= 2;
     let all = view.is_all();
     let current_tone = power_tone(k, view.power);
     let trigger = dropdown_trigger(
@@ -70,11 +70,10 @@ fn picker_row(app: &App, k: &Kit, layers: &mut Vec<El>, view: &SelectedLight) ->
         .min_width(360.0)
         .on_close(|app: &mut App| app.close_overlay(Overlay::BulbPicker));
     if show_all {
-        let all_light =
-            match selected_light(&app.bulbs, &app.states, &app.health, Some(&Selection::All)) {
-                Some(all_light) => all_light,
-                None => view.clone(),
-            };
+        let all_light = match selected_light(&app.runtimes, Some(&Selection::All)) {
+            Some(all_light) => all_light,
+            None => view.clone(),
+        };
         picker = picker.item(
             MenuItem::new("All bulbs")
                 .checked(all)
@@ -89,20 +88,21 @@ fn picker_row(app: &App, k: &Kit, layers: &mut Vec<El>, view: &SelectedLight) ->
                 }),
         );
     }
-    for bulb in &app.bulbs {
-        let state = app.states.get(&bulb.id);
-        let health = app.health.status(&bulb.id);
+    for runtime in app.runtimes.iter() {
+        let bulb = runtime.bulb();
+        let state = runtime.state();
+        let health = runtime.status();
         let tone = if health.is_down() {
             k.c.danger.icon
         } else {
-            power_tone(k, state.map_or(AggregatePower::Unknown, power_of_state))
+            power_tone(k, power_of_state(state))
         };
         let power = if let Some(word) = health_word(health) {
             word
-        } else if health == HealthStatus::Connecting {
+        } else if health == HealthLevel::Connecting {
             "Connecting"
         } else {
-            match state.and_then(|state| state.power) {
+            match state.power {
                 Some(true) => "On",
                 Some(false) => "Off",
                 None => "Connecting",
@@ -547,7 +547,7 @@ fn colour_block(
     dim_when(trigger_row, disabled)
 }
 
-pub(super) fn health_word(status: HealthStatus) -> Option<&'static str> {
+pub(super) fn health_word(status: HealthLevel) -> Option<&'static str> {
     status.is_down().then_some("Unreachable")
 }
 

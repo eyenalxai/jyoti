@@ -42,10 +42,7 @@ const FONTS: &[&[u8]] = &[
 const SCENES: &[(&str, SceneFn)] = &[
     ("dashboard", |app| app.show_now(View::control())),
     ("empty", |app| {
-        app.bulbs.clear();
-        app.states.clear();
-        app.health.clear();
-        app.edits.clear();
+        app.runtimes.clear();
         app.selection = None;
         app.toasts.clear();
         app.show_now(View::control());
@@ -55,27 +52,28 @@ const SCENES: &[(&str, SceneFn)] = &[
         app.show_pending();
     }),
     ("edit", |app| {
-        if let Some(id) = app.bulbs.first().map(|bulb| bulb.id.clone()) {
+        if let Some(id) = app.runtimes.first().map(|runtime| runtime.id().to_owned()) {
             app.open_edit(&id);
             app.show_pending();
         }
     }),
     ("color", |app| {
         app.show_now(View::control());
-        for state in app.states.values_mut() {
-            state.mode = crate::bulb::model::ColorMode::Color;
+        for runtime in app.runtimes.iter_mut() {
+            runtime.state_mut().mode = crate::bulb::model::ColorMode::Color;
         }
         app.open_color();
     }),
     ("color-control", |app| {
         app.show_now(View::control());
-        for state in app.states.values_mut() {
+        for runtime in app.runtimes.iter_mut() {
+            let state = runtime.state_mut();
             state.mode = crate::bulb::model::ColorMode::Color;
             state.color = Some(Rgb::new(255, 96, 96));
         }
     }),
     ("remove", |app| {
-        if let Some(id) = app.bulbs.first().map(|bulb| bulb.id.clone()) {
+        if let Some(id) = app.runtimes.first().map(|runtime| runtime.id().to_owned()) {
             app.open_remove(&id);
             app.show_pending();
         }

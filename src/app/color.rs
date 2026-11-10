@@ -52,11 +52,20 @@ impl App {
         self.flush_pending();
         let first = targets
             .iter()
-            .find_map(|id| self.states.get(id).and_then(|state| state.color))
+            .find_map(|id| {
+                self.runtimes
+                    .get(id)
+                    .and_then(|runtime| runtime.state().color)
+            })
             .unwrap_or(Rgb::WHITE);
         let pre_open = targets
             .iter()
-            .map(|id| (id.clone(), self.states.get(id).cloned()))
+            .map(|id| {
+                (
+                    id.clone(),
+                    self.runtimes.get(id).map(|runtime| runtime.state().clone()),
+                )
+            })
             .collect();
         if let Some(control) = self.view.as_control_mut() {
             control.color = ColorEditor::open(targets, first, pre_open);
@@ -127,11 +136,11 @@ impl App {
         };
         let targets = session.targets.clone();
         for id in targets {
-            if let Some(state) = self.states.get_mut(&id) {
-                state.mode = ColorMode::Color;
-                state.color = Some(color);
+            if let Some(runtime) = self.runtimes.get_mut(&id) {
+                runtime.state_mut().mode = ColorMode::Color;
+                runtime.state_mut().color = Some(color);
+                runtime.touch();
             }
-            self.edits.touch(&id);
             self.dashboard.pending_color.insert(id, color);
         }
         self.mark_pending();
@@ -150,8 +159,8 @@ impl App {
             let Some(previous) = previous else {
                 continue;
             };
-            self.states.insert(id.clone(), previous.clone());
-            self.edits.touch(&id);
+            self.runtimes.set_state(&id, previous.clone());
+            self.runtimes.touch(&id);
             match restore_control(&previous) {
                 Some(RestoreControl::Color(color)) => {
                     self.send(&id, Command::SetColor(color));

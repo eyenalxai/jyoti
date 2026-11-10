@@ -32,37 +32,6 @@ pub struct Dashboard {
     pub due_at: Option<Instant>,
 }
 
-/// A worker reads a bulb's state over the network. Its reply is only current if
-/// no control moved the same bulb after the read began.
-#[derive(Default)]
-pub struct LocalEdits {
-    at: HashMap<String, Instant>,
-}
-
-impl LocalEdits {
-    pub fn touch(&mut self, id: &str) {
-        self.mark_at(id, Instant::now());
-    }
-
-    pub fn mark_at(&mut self, id: &str, at: Instant) {
-        self.at.insert(id.to_owned(), at);
-    }
-
-    pub fn accepts(&self, id: &str, observed_at: Instant) -> bool {
-        self.at
-            .get(id)
-            .is_none_or(|edited_at| observed_at >= *edited_at)
-    }
-
-    pub fn remove(&mut self, id: &str) {
-        self.at.remove(id);
-    }
-
-    pub fn clear(&mut self) {
-        self.at.clear();
-    }
-}
-
 pub struct SyncState {
     pub status: RunPhase,
     pub next_generation: u64,
@@ -140,7 +109,7 @@ pub fn toast_duration(kind: ToastKind) -> Duration {
 mod tests {
     use std::time::{Duration, Instant};
 
-    use super::{LocalEdits, STALE_AFTER, SyncState};
+    use super::{STALE_AFTER, SyncState};
     use crate::app::sync::run::{RunPhase, StopStage};
     use crate::screen::flash::FLASH_HOLD;
 
@@ -152,30 +121,6 @@ mod tests {
                 seen: false,
             },
         }
-    }
-
-    #[test]
-    fn a_state_read_that_started_before_an_edit_is_ignored() {
-        let mut edits = LocalEdits::default();
-        let read_started = Instant::now();
-        let edited = read_started + Duration::from_millis(20);
-        edits.mark_at("desk", edited);
-
-        assert!(!edits.accepts("desk", read_started));
-        assert!(edits.accepts("desk", edited));
-        assert!(edits.accepts("desk", edited + Duration::from_millis(1)));
-        assert!(edits.accepts("shelf", read_started));
-    }
-
-    #[test]
-    fn forgetting_a_bulb_drops_its_edit_stamp() {
-        let mut edits = LocalEdits::default();
-        let read_started = Instant::now();
-        edits.mark_at("desk", read_started + Duration::from_secs(1));
-
-        edits.remove("desk");
-
-        assert!(edits.accepts("desk", read_started));
     }
 
     #[test]

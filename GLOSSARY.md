@@ -74,6 +74,13 @@ The last values read from a bulb: power, brightness, colour temperature, packed
 colour and the active colour mode. State is read on launch, on refresh and after
 a command fails; it is not cached across runs.
 
+## Bulb runtime
+
+One configured bulb’s live record for this launch: the bulb metadata, last state,
+health, edit stamp and worker. The app keeps one record per configured bulb;
+removing a bulb drops its record, and refreshing rebuilds the set from the config
+file while keeping the last state a still-configured bulb reported.
+
 ## Unreachable
 
 A bulb that did not answer its hello or command before the timeout. A run marks
