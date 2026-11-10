@@ -108,18 +108,12 @@ impl App {
     }
 
     pub(crate) fn pause_sync(&mut self) {
-        if self.sync.apply(RunEvent::Pause).is_err() {
-            return;
-        }
         if let Some(handle) = &self.screen_handle {
             let _ = handle.send(ScreenCommand::Pause);
         }
     }
 
     pub(crate) fn resume_sync(&mut self) {
-        if self.sync.apply(RunEvent::Resume).is_err() {
-            return;
-        }
         self.sync.last_scene_at = Some(Instant::now());
         if let Some(handle) = &self.screen_handle {
             let _ = handle.send(ScreenCommand::Resume);
@@ -260,9 +254,11 @@ impl App {
                 }
                 self.note_frame(scene, intensify(scene.color, self.sync.colour_intensity));
             }
-            ScreenEvent::Started { generation } => {
-                self.sync.capture_error = None;
-                let _ = self.sync.apply(RunEvent::Started(generation));
+            ScreenEvent::Phase(phase) => {
+                if phase.is_running() {
+                    self.sync.capture_error = None;
+                }
+                self.sync.report(phase);
             }
             ScreenEvent::Stopped { generation, drove } => {
                 if self.sync.apply(RunEvent::Stopped(generation)).is_ok() {
@@ -320,7 +316,7 @@ impl App {
             flash_until,
             drove,
         } = frame;
-        if self.sync.apply(RunEvent::Frame).is_err() {
+        if !self.sync.status.is_running() {
             return;
         }
         self.sync.restore.record(&drove);

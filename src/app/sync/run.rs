@@ -1,6 +1,7 @@
 use std::time::Instant;
 
 use crate::app::sync::restore::RESTORE_WINDOW;
+use crate::screen::run::{CaptureEvent, CapturePhase};
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub enum RunPhase {
@@ -28,10 +29,6 @@ pub enum StopStage {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum RunEvent {
     Start(u64),
-    Started(u64),
-    Frame,
-    Pause,
-    Resume,
     Stop,
     Stopped(u64),
     Restored(u64),
@@ -67,9 +64,7 @@ impl Controls {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum RunRejection {
     NotIdle,
-    NotStarting,
     NotRunning,
-    NotPaused,
     NotStopping,
     NotRestoring,
     NotActive,
@@ -80,27 +75,11 @@ impl RunPhase {
     pub fn transition(&self, event: RunEvent) -> Result<RunPhase, RunRejection> {
         match event {
             RunEvent::Start(generation) => match self {
-                RunPhase::Idle => Ok(RunPhase::Starting(generation)),
+                RunPhase::Idle => CapturePhase::Idle
+                    .transition(CaptureEvent::Start(generation))
+                    .map(RunPhase::from)
+                    .map_err(|_| RunRejection::NotIdle),
                 _ => Err(RunRejection::NotIdle),
-            },
-            RunEvent::Started(generation) => match self {
-                RunPhase::Starting(current) if *current == generation => {
-                    Ok(RunPhase::Running(generation))
-                }
-                RunPhase::Starting(_) => Err(RunRejection::GenerationMismatch),
-                _ => Err(RunRejection::NotStarting),
-            },
-            RunEvent::Frame => match self {
-                RunPhase::Running(_) => Ok(self.clone()),
-                _ => Err(RunRejection::NotRunning),
-            },
-            RunEvent::Pause => match self {
-                RunPhase::Running(generation) => Ok(RunPhase::Paused(*generation)),
-                _ => Err(RunRejection::NotRunning),
-            },
-            RunEvent::Resume => match self {
-                RunPhase::Paused(generation) => Ok(RunPhase::Running(*generation)),
-                _ => Err(RunRejection::NotPaused),
             },
             RunEvent::Stop => match self {
                 RunPhase::Starting(generation)
@@ -208,6 +187,26 @@ impl RunPhase {
         }
     }
 
+    /// Stores the phase the capture thread reported. Starting, Running and
+    /// Paused belong to the thread; Stopping and Failed stay here. A report
+    /// for another generation, or an idle report, is ignored.
+    pub fn report(&mut self, phase: CapturePhase) {
+        if !self.is_capture_owned() {
+            return;
+        }
+        if phase.generation() != self.generation() {
+            return;
+        }
+        *self = phase.into();
+    }
+
+    fn is_capture_owned(&self) -> bool {
+        matches!(
+            self,
+            RunPhase::Starting(_) | RunPhase::Running(_) | RunPhase::Paused(_)
+        )
+    }
+
     pub fn label(&self) -> String {
         match self {
             RunPhase::Idle => "Idle".to_owned(),
@@ -278,12 +277,24 @@ impl RunPhase {
     }
 }
 
+impl From<CapturePhase> for RunPhase {
+    fn from(phase: CapturePhase) -> Self {
+        match phase {
+            CapturePhase::Idle => RunPhase::Idle,
+            CapturePhase::Starting(generation) => RunPhase::Starting(generation),
+            CapturePhase::Running(generation) => RunPhase::Running(generation),
+            CapturePhase::Paused(generation) => RunPhase::Paused(generation),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::time::{Duration, Instant};
 
     use super::{RunAdvance, RunEvent, RunPhase, RunRejection, StopStage};
     use crate::app::sync::restore::RESTORE_WINDOW;
+    use crate::screen::run::CapturePhase;
 
     fn failed() -> RunPhase {
         RunPhase::Failed {
@@ -335,26 +346,6 @@ mod tests {
                 RunEvent::Start(9),
                 Ok(RunPhase::Starting(9)),
             ),
-            (
-                RunPhase::Idle,
-                RunEvent::Started(7),
-                Err(RunRejection::NotStarting),
-            ),
-            (
-                RunPhase::Idle,
-                RunEvent::Frame,
-                Err(RunRejection::NotRunning),
-            ),
-            (
-                RunPhase::Idle,
-                RunEvent::Pause,
-                Err(RunRejection::NotRunning),
-            ),
-            (
-                RunPhase::Idle,
-                RunEvent::Resume,
-                Err(RunRejection::NotPaused),
-            ),
             (RunPhase::Idle, RunEvent::Stop, Err(RunRejection::NotActive)),
             (
                 RunPhase::Idle,
@@ -378,31 +369,6 @@ mod tests {
                 RunPhase::Starting(7),
                 RunEvent::Start(8),
                 Err(RunRejection::NotIdle),
-            ),
-            (
-                RunPhase::Starting(7),
-                RunEvent::Started(7),
-                Ok(RunPhase::Running(7)),
-            ),
-            (
-                RunPhase::Starting(7),
-                RunEvent::Started(8),
-                Err(RunRejection::GenerationMismatch),
-            ),
-            (
-                RunPhase::Starting(7),
-                RunEvent::Frame,
-                Err(RunRejection::NotRunning),
-            ),
-            (
-                RunPhase::Starting(7),
-                RunEvent::Pause,
-                Err(RunRejection::NotRunning),
-            ),
-            (
-                RunPhase::Starting(7),
-                RunEvent::Resume,
-                Err(RunRejection::NotPaused),
             ),
             (RunPhase::Starting(7), RunEvent::Stop, Ok(stopping(7))),
             (
@@ -428,26 +394,6 @@ mod tests {
                 RunEvent::Start(8),
                 Err(RunRejection::NotIdle),
             ),
-            (
-                RunPhase::Running(7),
-                RunEvent::Started(7),
-                Err(RunRejection::NotStarting),
-            ),
-            (
-                RunPhase::Running(7),
-                RunEvent::Frame,
-                Ok(RunPhase::Running(7)),
-            ),
-            (
-                RunPhase::Running(7),
-                RunEvent::Pause,
-                Ok(RunPhase::Paused(7)),
-            ),
-            (
-                RunPhase::Running(7),
-                RunEvent::Resume,
-                Err(RunRejection::NotPaused),
-            ),
             (RunPhase::Running(7), RunEvent::Stop, Ok(stopping(7))),
             (
                 RunPhase::Running(7),
@@ -468,29 +414,17 @@ mod tests {
                 Ok(failed()),
             ),
             (
+                RunPhase::Running(7),
+                RunEvent::Fail {
+                    generation: 8,
+                    message: "capture failed".to_owned(),
+                },
+                Err(RunRejection::GenerationMismatch),
+            ),
+            (
                 RunPhase::Paused(7),
                 RunEvent::Start(8),
                 Err(RunRejection::NotIdle),
-            ),
-            (
-                RunPhase::Paused(7),
-                RunEvent::Started(7),
-                Err(RunRejection::NotStarting),
-            ),
-            (
-                RunPhase::Paused(7),
-                RunEvent::Frame,
-                Err(RunRejection::NotRunning),
-            ),
-            (
-                RunPhase::Paused(7),
-                RunEvent::Pause,
-                Err(RunRejection::NotRunning),
-            ),
-            (
-                RunPhase::Paused(7),
-                RunEvent::Resume,
-                Ok(RunPhase::Running(7)),
             ),
             (RunPhase::Paused(7), RunEvent::Stop, Ok(stopping(7))),
             (
@@ -512,14 +446,6 @@ mod tests {
                 Ok(failed()),
             ),
             (stopping(7), RunEvent::Start(8), Err(RunRejection::NotIdle)),
-            (
-                stopping(7),
-                RunEvent::Started(7),
-                Err(RunRejection::NotStarting),
-            ),
-            (stopping(7), RunEvent::Frame, Err(RunRejection::NotRunning)),
-            (stopping(7), RunEvent::Pause, Err(RunRejection::NotRunning)),
-            (stopping(7), RunEvent::Resume, Err(RunRejection::NotPaused)),
             (stopping(7), RunEvent::Stop, Err(RunRejection::NotActive)),
             (stopping(7), RunEvent::Stopped(7), Ok(seen(7, None))),
             (
@@ -544,26 +470,6 @@ mod tests {
                 restoring(7, deadline),
                 RunEvent::Start(8),
                 Err(RunRejection::NotIdle),
-            ),
-            (
-                restoring(7, deadline),
-                RunEvent::Started(7),
-                Err(RunRejection::NotStarting),
-            ),
-            (
-                restoring(7, deadline),
-                RunEvent::Frame,
-                Err(RunRejection::NotRunning),
-            ),
-            (
-                restoring(7, deadline),
-                RunEvent::Pause,
-                Err(RunRejection::NotRunning),
-            ),
-            (
-                restoring(7, deadline),
-                RunEvent::Resume,
-                Err(RunRejection::NotPaused),
             ),
             (
                 restoring(7, deadline),
@@ -599,14 +505,6 @@ mod tests {
                 Err(RunRejection::NotRunning),
             ),
             (failed(), RunEvent::Start(8), Err(RunRejection::NotIdle)),
-            (
-                failed(),
-                RunEvent::Started(8),
-                Err(RunRejection::NotStarting),
-            ),
-            (failed(), RunEvent::Frame, Err(RunRejection::NotRunning)),
-            (failed(), RunEvent::Pause, Err(RunRejection::NotRunning)),
-            (failed(), RunEvent::Resume, Err(RunRejection::NotPaused)),
             (failed(), RunEvent::Stop, Ok(stopping(7))),
             (
                 failed(),
@@ -696,14 +594,10 @@ mod tests {
         assert_eq!(phase, stopping(7));
         assert_eq!(phase.advance(now), RunAdvance::Unchanged);
         assert_eq!(phase, waiting(7, until));
-        assert_eq!(
-            phase.transition(RunEvent::Started(7)),
-            Err(RunRejection::NotStarting)
-        );
-        assert_eq!(
-            phase.transition(RunEvent::Frame),
-            Err(RunRejection::NotRunning)
-        );
+        phase.report(CapturePhase::Running(7));
+        assert_eq!(phase, waiting(7, until));
+        phase.report(CapturePhase::Paused(7));
+        assert_eq!(phase, waiting(7, until));
         phase = phase
             .transition(RunEvent::Stopped(7))
             .map_err(|_| "the capture acknowledgement marks the stage seen")?;
@@ -760,6 +654,47 @@ mod tests {
         );
         assert_eq!(phase.advance(deadline), RunAdvance::RestoreDue);
         assert_eq!(phase.transition(RunEvent::Restored(7)), Ok(RunPhase::Idle));
+    }
+
+    #[test]
+    fn the_capture_report_is_stored() {
+        let mut phase = RunPhase::Starting(7);
+
+        phase.report(CapturePhase::Running(7));
+        assert_eq!(phase, RunPhase::Running(7));
+
+        phase.report(CapturePhase::Paused(7));
+        assert_eq!(phase, RunPhase::Paused(7));
+
+        phase.report(CapturePhase::Running(7));
+        assert_eq!(phase, RunPhase::Running(7));
+    }
+
+    #[test]
+    fn a_stale_generation_report_is_ignored() {
+        let mut phase = RunPhase::Running(7);
+
+        phase.report(CapturePhase::Paused(6));
+        assert_eq!(phase, RunPhase::Running(7));
+
+        phase.report(CapturePhase::Starting(8));
+        assert_eq!(phase, RunPhase::Running(7));
+
+        phase.report(CapturePhase::Idle);
+        assert_eq!(phase, RunPhase::Running(7));
+    }
+
+    #[test]
+    fn stopping_and_failed_stay_app_side() {
+        let mut phase = stopping(7);
+        phase.report(CapturePhase::Running(7));
+        assert_eq!(phase, stopping(7));
+        phase.report(CapturePhase::Idle);
+        assert_eq!(phase, stopping(7));
+
+        let mut phase = failed();
+        phase.report(CapturePhase::Running(7));
+        assert_eq!(phase, failed());
     }
 
     #[test]

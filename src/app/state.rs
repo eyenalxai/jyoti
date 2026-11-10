@@ -5,6 +5,7 @@ use crate::app::sync::restore::RestorePlan;
 use crate::app::sync::run::{Controls, RunEvent, RunPhase, RunRejection};
 use crate::bulb::model::Rgb;
 use crate::screen::monitor::{MonitorInfo, Scene};
+use crate::screen::run::CapturePhase;
 
 pub const STALE_AFTER: Duration = Duration::from_secs(5);
 
@@ -106,6 +107,10 @@ impl SyncState {
     pub fn apply(&mut self, event: RunEvent) -> Result<(), RunRejection> {
         self.status = self.status.transition(event)?;
         Ok(())
+    }
+
+    pub fn report(&mut self, phase: CapturePhase) {
+        self.status.report(phase);
     }
 
     pub fn controls(&self) -> Controls {

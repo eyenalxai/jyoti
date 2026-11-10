@@ -18,6 +18,7 @@ use crate::screen::capture::run::CaptureRun;
 use crate::screen::grid::prepare_frame;
 use crate::screen::monitor::{MonitorInfo, Scene};
 use crate::screen::reducer::{ReducerState, reduce_prepared};
+use crate::screen::run::CapturePhase;
 use crate::screen::sync::{Drove, SyncConfig, SyncFrame};
 
 const GRID_WIDTH: usize = 64;
@@ -44,7 +45,7 @@ pub enum ScreenCommand {
 pub enum ScreenEvent {
     Monitors(Vec<MonitorInfo>),
     Scene(Scene),
-    Started { generation: u64 },
+    Phase(CapturePhase),
     Stopped { generation: u64, drove: Drove },
     Error(String),
     Fatal(String),
@@ -174,13 +175,19 @@ fn run_loop<C: Capture>(
                     *slot = None;
                 }
                 let now = Instant::now();
-                let started = capture_run
-                    .start(generation, monitor, config, now)
-                    .and_then(|()| capture_run.started(generation, now));
-                match started {
+                match capture_run.start(generation, monitor, config, now) {
                     Ok(()) => {
-                        let _ = events.send(ScreenEvent::Started { generation });
-                        waker();
+                        report_phase(&events, capture_run.phase());
+                        match capture_run.started(generation, now) {
+                            Ok(()) => {
+                                report_phase(&events, capture_run.phase());
+                                waker();
+                            }
+                            Err(error) => {
+                                let _ = events.send(ScreenEvent::Fatal(error.to_string()));
+                                waker();
+                            }
+                        }
                     }
                     Err(error) => {
                         let _ = events.send(ScreenEvent::Fatal(error.to_string()));
@@ -190,16 +197,23 @@ fn run_loop<C: Capture>(
             }
             Some(ScreenCommand::Configure(config)) => capture_run.configure(config),
             Some(ScreenCommand::Pause) => {
-                let _ = capture_run.pause();
+                if capture_run.pause().is_ok() {
+                    report_phase(&events, capture_run.phase());
+                    waker();
+                }
             }
             Some(ScreenCommand::Resume) => {
-                let _ = capture_run.resume(Instant::now());
+                if capture_run.resume(Instant::now()).is_ok() {
+                    report_phase(&events, capture_run.phase());
+                    waker();
+                }
             }
             Some(ScreenCommand::SelectMonitor(name)) => {
                 capture_run.select_monitor(Some(name), Instant::now());
             }
             Some(ScreenCommand::Stop) => {
                 if let Some(stop) = capture_run.stop() {
+                    report_phase(&events, capture_run.phase());
                     let _ = events.send(ScreenEvent::Stopped {
                         generation: stop.generation,
                         drove: stop.drove,
@@ -219,6 +233,7 @@ fn run_loop<C: Capture>(
             },
             Some(ScreenCommand::Shutdown) => {
                 if let Some(stop) = capture_run.shutdown() {
+                    report_phase(&events, capture_run.phase());
                     let _ = events.send(ScreenEvent::Stopped {
                         generation: stop.generation,
                         drove: stop.drove,
@@ -242,6 +257,10 @@ fn run_loop<C: Capture>(
             },
         }
     }
+}
+
+fn report_phase(events: &Sender<ScreenEvent>, phase: CapturePhase) {
+    let _ = events.send(ScreenEvent::Phase(phase));
 }
 
 pub(crate) trait Capture {
@@ -571,6 +590,7 @@ mod tests {
         Capture, Halt, MonitorInfo, ReducerState, Scene, ScreenCommand, ScreenEvent, SyncConfig,
         run_loop,
     };
+    use crate::screen::run::CapturePhase;
 
     struct FakeCapture;
 
@@ -622,12 +642,120 @@ mod tests {
         assert!(
             events
                 .iter()
-                .any(|event| matches!(event, ScreenEvent::Started { generation: 7 }))
+                .any(|event| matches!(event, ScreenEvent::Phase(CapturePhase::Running(7))))
         );
         assert!(
             events
                 .iter()
                 .any(|event| matches!(event, ScreenEvent::Stopped { generation: 7, .. }))
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn every_accepted_command_reports_its_phase() -> Result<(), Box<dyn std::error::Error>> {
+        let (commands, inbox) = channel();
+        let (events, observed) = channel();
+        let config = SyncConfig {
+            gain: 1.0,
+            intensity: 0.0,
+            targets: Vec::new(),
+        };
+        commands.send(ScreenCommand::Start {
+            generation: 7,
+            monitor: "DP-1".to_owned(),
+            config: config.clone(),
+        })?;
+        commands.send(ScreenCommand::Pause)?;
+        commands.send(ScreenCommand::Resume)?;
+        commands.send(ScreenCommand::Stop)?;
+        commands.send(ScreenCommand::Start {
+            generation: 8,
+            monitor: "DP-1".to_owned(),
+            config,
+        })?;
+        commands.send(ScreenCommand::Shutdown)?;
+        let latest = Arc::new(Mutex::new(None));
+        let stopping = Arc::new(Halt::new());
+
+        run_loop(
+            FakeCapture,
+            inbox,
+            events,
+            Arc::new(|| {}),
+            latest,
+            stopping,
+        );
+
+        let phases: Vec<CapturePhase> = observed
+            .try_iter()
+            .filter_map(|event| match event {
+                ScreenEvent::Phase(phase) => Some(phase),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            phases,
+            vec![
+                CapturePhase::Starting(7),
+                CapturePhase::Running(7),
+                CapturePhase::Paused(7),
+                CapturePhase::Running(7),
+                CapturePhase::Idle,
+                CapturePhase::Starting(8),
+                CapturePhase::Running(8),
+                CapturePhase::Idle,
+            ]
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn a_rejected_command_reports_no_phase() -> Result<(), Box<dyn std::error::Error>> {
+        let (commands, inbox) = channel();
+        let (events, observed) = channel();
+        commands.send(ScreenCommand::Pause)?;
+        commands.send(ScreenCommand::Resume)?;
+        commands.send(ScreenCommand::Stop)?;
+        commands.send(ScreenCommand::Start {
+            generation: 7,
+            monitor: "DP-1".to_owned(),
+            config: SyncConfig {
+                gain: 1.0,
+                intensity: 0.0,
+                targets: Vec::new(),
+            },
+        })?;
+        commands.send(ScreenCommand::Pause)?;
+        commands.send(ScreenCommand::Pause)?;
+        commands.send(ScreenCommand::Shutdown)?;
+        let latest = Arc::new(Mutex::new(None));
+        let stopping = Arc::new(Halt::new());
+
+        run_loop(
+            FakeCapture,
+            inbox,
+            events,
+            Arc::new(|| {}),
+            latest,
+            stopping,
+        );
+
+        let phases: Vec<CapturePhase> = observed
+            .try_iter()
+            .filter_map(|event| match event {
+                ScreenEvent::Phase(phase) => Some(phase),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            phases,
+            vec![
+                CapturePhase::Starting(7),
+                CapturePhase::Running(7),
+                CapturePhase::Paused(7),
+                CapturePhase::Idle,
+            ]
         );
         Ok(())
     }
