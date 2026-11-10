@@ -16,7 +16,6 @@ use crate::app::state::{
     ColorEditor, Dashboard, FormState, LocalEdits, Navigation, Overlay, Screen, SyncState, Toast,
     ToastKind, nav_direction, toast_duration,
 };
-use crate::app::sync::restore::StopPhase;
 use crate::bulb::health::HealthSet;
 use crate::bulb::keyring::KeyringStore;
 use crate::bulb::model::{Bulb, BulbState, ColorMode, Rgb};
@@ -136,7 +135,7 @@ impl App {
             let ids: Vec<String> = app.states.keys().cloned().collect();
             for id in ids {
                 app.health
-                    .apply(&id, crate::bulb::health::HealthEvent::State);
+                    .apply(&id, crate::bulb::health::HealthEvent::State, false);
             }
         }
         app
@@ -253,25 +252,9 @@ impl App {
             }
         }
 
-        if self.sync.stop != StopPhase::Idle {
-            match self.sync.stop {
-                StopPhase::Waiting { until } => {
-                    if now >= until {
-                        self.start_restore();
-                        changed = true;
-                    }
-                    tx.wake_after(Duration::from_millis(100));
-                }
-                StopPhase::Restoring { deadline } => {
-                    if now >= deadline {
-                        self.finish_restore();
-                        changed = true;
-                    } else {
-                        tx.wake_after(Duration::from_millis(100));
-                    }
-                }
-                StopPhase::Idle => {}
-            }
+        changed |= self.advance_sync(now);
+        if self.sync.status.is_stopping() {
+            tx.wake_after(Duration::from_millis(100));
         }
 
         changed

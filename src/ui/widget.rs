@@ -82,7 +82,7 @@ pub static LOCK: Icon = Icon {
 pub fn sync_status_tone(k: &Kit, status: &RunPhase) -> Color {
     match status {
         RunPhase::Running(_) | RunPhase::Starting(_) => k.c.success.icon,
-        RunPhase::Paused(_) | RunPhase::Stopping(_) => k.c.warning.icon,
+        RunPhase::Paused(_) | RunPhase::Stopping { .. } => k.c.warning.icon,
         RunPhase::Failed { .. } => k.c.danger.icon,
         RunPhase::Idle => k.c.text_faint,
     }

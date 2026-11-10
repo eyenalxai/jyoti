@@ -107,12 +107,10 @@ impl Record {
 #[derive(Default)]
 pub struct HealthSet {
     records: HashMap<String, Record>,
-    in_run: bool,
 }
 
 impl HealthSet {
-    pub fn apply(&mut self, id: &str, event: HealthEvent) -> bool {
-        let in_run = self.in_run;
+    pub fn apply(&mut self, id: &str, event: HealthEvent, in_run: bool) -> bool {
         self.records
             .entry(id.to_owned())
             .or_default()
@@ -120,14 +118,12 @@ impl HealthSet {
     }
 
     pub fn begin_run(&mut self) {
-        self.in_run = true;
         for record in self.records.values_mut() {
             record.begin_run();
         }
     }
 
     pub fn end_run(&mut self) {
-        self.in_run = false;
         for record in self.records.values_mut() {
             record.end_run();
         }
@@ -143,7 +139,6 @@ impl HealthSet {
 
     pub fn clear(&mut self) {
         self.records.clear();
-        self.in_run = false;
     }
 
     pub fn status(&self, id: &str) -> HealthStatus {
@@ -194,14 +189,14 @@ mod tests {
         assert_eq!(health.status("desk"), HealthStatus::Connecting);
         assert!(health.unreachable_ids().is_empty());
 
-        assert!(health.apply("desk", error("The bulb did not answer.")));
+        assert!(health.apply("desk", error("The bulb did not answer."), false));
         assert_eq!(health.status("desk"), HealthStatus::Unreachable);
         assert_eq!(health.unreachable_ids(), vec!["desk".to_owned()]);
 
-        assert!(!health.apply("desk", error("The bulb did not answer.")));
+        assert!(!health.apply("desk", error("The bulb did not answer."), false));
         assert_eq!(health.unreachable_ids().len(), 1);
 
-        assert!(health.apply("desk", HealthEvent::State));
+        assert!(health.apply("desk", HealthEvent::State, false));
         assert_eq!(health.status("desk"), HealthStatus::Online);
         assert!(health.unreachable_ids().is_empty());
         assert_eq!(health.message("desk"), None);
@@ -212,17 +207,19 @@ mod tests {
         let mut health = HealthSet::default();
         health.begin_run();
 
-        health.apply("desk", error("one"));
-        health.apply("desk", error("two"));
+        health.apply("desk", error("one"), true);
+        health.apply("desk", error("two"), true);
         assert!(!health.unreachable("desk"));
         assert!(health.unreachable_ids().is_empty());
 
-        assert!(health.apply("desk", error("three")));
+        assert!(health.apply("desk", error("three"), true));
         assert!(health.unreachable("desk"));
+        assert!(health.run_unreachable("desk"));
         assert_eq!(health.unreachable_ids().len(), 1);
 
         health.end_run();
         assert!(health.unreachable("desk"));
+        assert!(!health.run_unreachable("desk"));
         assert_eq!(health.unreachable_ids().len(), 1);
         assert_eq!(health.status("desk"), HealthStatus::Unreachable);
         assert_eq!(health.message("desk"), Some("three"));
@@ -233,40 +230,41 @@ mod tests {
         let mut health = HealthSet::default();
         health.begin_run();
 
-        health.apply("desk", HealthEvent::Reachable(false));
+        health.apply("desk", HealthEvent::Reachable(false), true);
         health.end_run();
 
         assert!(health.unreachable("desk"));
+        assert!(!health.run_unreachable("desk"));
         assert_eq!(health.unreachable_ids().len(), 1);
     }
 
     #[test]
     fn a_run_retries_a_standing_failure_but_keeps_it_visible() {
         let mut health = HealthSet::default();
-        health.apply("desk", error("no answer"));
-
-        health.begin_run();
+        health.apply("desk", error("no answer"), false);
 
         assert!(health.unreachable("desk"));
         assert!(!health.run_unreachable("desk"));
 
-        health.apply("desk", error("one"));
-        health.apply("desk", error("two"));
-        health.apply("desk", error("three"));
+        health.begin_run();
+        health.apply("desk", error("one"), true);
+        health.apply("desk", error("two"), true);
+        health.apply("desk", error("three"), true);
         assert!(health.run_unreachable("desk"));
 
         health.end_run();
         assert!(health.unreachable("desk"));
+        assert!(!health.run_unreachable("desk"));
         assert!(health.message("desk").is_some());
     }
 
     #[test]
     fn a_run_that_recovers_a_standing_failure_clears_it() {
         let mut health = HealthSet::default();
-        health.apply("desk", error("no answer"));
+        health.apply("desk", error("no answer"), false);
 
         health.begin_run();
-        health.apply("desk", HealthEvent::State);
+        health.apply("desk", HealthEvent::State, true);
         health.end_run();
 
         assert_eq!(health.status("desk"), HealthStatus::Online);
@@ -279,11 +277,12 @@ mod tests {
         let mut health = HealthSet::default();
         health.begin_run();
         for message in ["one", "two", "three"] {
-            health.apply("desk", error(message));
+            health.apply("desk", error(message), true);
         }
         assert_eq!(health.unreachable_ids().len(), 1);
 
-        health.apply("desk", HealthEvent::Sent);
+        health.apply("desk", HealthEvent::Sent, true);
+        health.end_run();
 
         assert!(!health.unreachable("desk"));
         assert!(health.unreachable_ids().is_empty());
@@ -292,12 +291,12 @@ mod tests {
     #[test]
     fn a_lost_worker_is_one_failure_however_often_it_is_reported() {
         let mut health = HealthSet::default();
-        assert!(health.apply("desk", HealthEvent::Exited));
+        assert!(health.apply("desk", HealthEvent::Exited, false));
         assert_eq!(health.status("desk"), HealthStatus::Failed);
         assert_eq!(health.unreachable_ids().len(), 1);
         assert!(health.message("desk").is_some());
 
-        assert!(!health.apply("desk", HealthEvent::Exited));
+        assert!(!health.apply("desk", HealthEvent::Exited, false));
         assert_eq!(health.unreachable_ids().len(), 1);
 
         health.end_run();
@@ -308,7 +307,7 @@ mod tests {
     #[test]
     fn a_stopped_worker_can_start_again_with_a_clean_record() {
         let mut health = HealthSet::default();
-        health.apply("desk", HealthEvent::Exited);
+        health.apply("desk", HealthEvent::Exited, false);
         health.remove("desk");
 
         assert_eq!(health.status("desk"), HealthStatus::Connecting);
@@ -318,8 +317,8 @@ mod tests {
     #[test]
     fn a_removed_bulb_leaves_the_count() {
         let mut health = HealthSet::default();
-        health.apply("desk", error("gone"));
-        health.apply("shelf", error("gone"));
+        health.apply("desk", error("gone"), false);
+        health.apply("shelf", error("gone"), false);
 
         health.retain(&std::collections::HashSet::from(["desk".to_owned()]));
 

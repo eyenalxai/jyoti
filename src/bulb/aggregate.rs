@@ -223,8 +223,8 @@ mod tests {
         states.insert("a".to_owned(), BulbState::default());
         states.insert("c".to_owned(), BulbState::default());
         let mut health = HealthSet::default();
-        health.apply("b", HealthEvent::Error("no answer".to_owned()));
-        health.apply("c", HealthEvent::Error("no answer".to_owned()));
+        health.apply("b", HealthEvent::Error("no answer".to_owned()), false);
+        health.apply("c", HealthEvent::Error("no answer".to_owned()), false);
 
         let aggregate = aggregate_state(&bulbs, &states, &health);
 
