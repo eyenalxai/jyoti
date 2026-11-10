@@ -5,9 +5,10 @@ use std::collections::HashMap;
 use std::time::Instant;
 
 use crate::app::App;
-use crate::app::state::{Overlay, ToastKind};
+use crate::app::state::ToastKind;
 use crate::app::sync::restore::{RestorePlan, RestoreRequest};
 use crate::app::sync::run::{RunAdvance, RunEvent, StopStage};
+use crate::app::view::Overlay;
 use crate::bulb::health::HealthSet;
 use crate::bulb::model::{Bulb, BulbState, Rgb};
 use crate::bulb::worker::{Command, WorkerHandle};
@@ -148,7 +149,7 @@ impl App {
     }
 
     pub(crate) fn advance_sync(&mut self, now: Instant) -> bool {
-        match self.sync.status.advance(now) {
+        match self.sync.advance(now) {
             RunAdvance::Unchanged => false,
             RunAdvance::BeginRestore { deadline } => {
                 self.dispatch_or_finish(deadline);

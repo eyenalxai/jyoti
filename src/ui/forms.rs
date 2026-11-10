@@ -6,7 +6,7 @@ use rune_kit::{
 };
 
 use crate::app::App;
-use crate::app::state::{FormMode, Screen};
+use crate::app::view::{FormMode, View};
 use crate::bulb::model::BulbField;
 use crate::ui::widget::{ALERT, BACK, error_text, fact_row, hairline, subpage_header, surface};
 
@@ -16,7 +16,16 @@ fn submit(app: &mut App, tx: &mut Tx) {
 }
 
 pub fn form_view(app: &App, k: &Kit) -> El {
-    let editing = matches!(&app.screen, Screen::Form(FormMode::Edit(_)));
+    let Some(form) = app.view.form() else {
+        return col().w_full().h_full();
+    };
+    let editing = matches!(
+        &app.view,
+        View::Form {
+            mode: FormMode::Edit(_),
+            ..
+        }
+    );
     let title = if editing { "Edit bulb" } else { "Add bulb" };
     let description = if editing {
         "Update metadata or replace the token."
@@ -41,31 +50,31 @@ pub fn form_view(app: &App, k: &Kit) -> El {
         .build(k)
         .h(40.0);
 
-    let name = TextInput::new(&app.form.name)
+    let name = TextInput::new(&form.name)
         .label("Name")
         .placeholder("Desk lamp")
         .width(None)
-        .invalid(app.form.errors.contains_key(&BulbField::Name))
-        .on_edit(|app: &mut App| &mut app.form.name)
+        .invalid(form.errors.contains_key(&BulbField::Name))
+        .on_edit(|app: &mut App| &mut app.view.form_mut().name)
         .on_submit(submit)
         .build(k);
-    let address = TextInput::new(&app.form.address)
+    let address = TextInput::new(&form.address)
         .label("IP address")
         .placeholder("192.168.1.42")
         .width(None)
-        .invalid(app.form.errors.contains_key(&BulbField::Address))
-        .on_edit(|app: &mut App| &mut app.form.address)
+        .invalid(form.errors.contains_key(&BulbField::Address))
+        .on_edit(|app: &mut App| &mut app.view.form_mut().address)
         .on_submit(submit)
         .build(k);
-    let model = TextInput::new(&app.form.model)
+    let model = TextInput::new(&form.model)
         .label("Model")
         .placeholder("Optional")
         .width(None)
-        .invalid(app.form.errors.contains_key(&BulbField::Model))
-        .on_edit(|app: &mut App| &mut app.form.model)
+        .invalid(form.errors.contains_key(&BulbField::Model))
+        .on_edit(|app: &mut App| &mut app.view.form_mut().model)
         .on_submit(submit)
         .build(k);
-    let token = TextInput::new(&app.form.token)
+    let token = TextInput::new(&form.token)
         .label("Token")
         .placeholder(if editing {
             "Leave blank to keep"
@@ -74,16 +83,19 @@ pub fn form_view(app: &App, k: &Kit) -> El {
         })
         .width(None)
         .secure()
-        .revealed(app.form.reveal)
-        .invalid(app.form.errors.contains_key(&BulbField::Token))
-        .on_edit(|app: &mut App| &mut app.form.token)
+        .revealed(form.reveal)
+        .invalid(form.errors.contains_key(&BulbField::Token))
+        .on_edit(|app: &mut App| &mut app.view.form_mut().token)
         .on_submit(submit)
         .build(k);
     let reveal = row().w_full().justify_end().child(
-        Switch::new(app.form.reveal)
+        Switch::new(form.reveal)
             .control_size(ControlSize::Regular)
             .label("Show token")
-            .on_toggle(|app: &mut App| app.form.reveal = !app.form.reveal)
+            .on_toggle(|app: &mut App| {
+                let form = app.view.form_mut();
+                form.reveal = !form.reveal;
+            })
             .build(k)
             .padding(6.0),
     );
@@ -96,21 +108,21 @@ pub fn form_view(app: &App, k: &Kit) -> El {
             "Name",
             "Shown in the bulb selector.",
             name,
-            app.form.errors.get(&BulbField::Name),
+            form.errors.get(&BulbField::Name),
         ))
         .child(field(
             k,
             "IP address",
             "The address on this LAN.",
             address,
-            app.form.errors.get(&BulbField::Address),
+            form.errors.get(&BulbField::Address),
         ))
         .child(field(
             k,
             "Model",
             "Optional label.",
             model,
-            app.form.errors.get(&BulbField::Model),
+            form.errors.get(&BulbField::Model),
         ))
         .child(
             col()
@@ -121,7 +133,7 @@ pub fn form_view(app: &App, k: &Kit) -> El {
                     "Token",
                     "Stored in the OS keyring.",
                     token,
-                    app.form.errors.get(&BulbField::Token),
+                    form.errors.get(&BulbField::Token),
                 ))
                 .child(reveal),
         );
@@ -153,8 +165,8 @@ pub fn form_view(app: &App, k: &Kit) -> El {
 }
 
 pub fn remove_view(app: &App, k: &Kit) -> El {
-    let id = match &app.screen {
-        Screen::Remove(id) => Some(id),
+    let id = match &app.view {
+        View::Remove(id) => Some(id),
         _ => None,
     };
     let bulb = id.and_then(|id| app.bulbs.iter().find(|bulb| &bulb.id == id));

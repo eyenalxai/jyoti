@@ -12,17 +12,17 @@ use rune::{Cx, El};
 use rune_kit::Kit;
 
 use crate::app::App;
-use crate::app::state::Screen;
+use crate::app::view::View;
 
 pub fn view(app: &App, cx: &mut Cx<App>) -> El {
     let k: &Kit = theme::kit(app.appearance.dark(cx.system_dark()));
     let mut layers = Vec::new();
-    let page = match &app.screen {
-        Screen::Dashboard => dashboard::content(app, k, &mut layers),
-        Screen::Sync => sync::view(app, k, &mut layers),
-        Screen::Settings => settings::view(app, k),
-        Screen::Form(_) => forms::form_view(app, k),
-        Screen::Remove(_) => forms::remove_view(app, k),
+    let page = match &app.view {
+        View::Control(_) => dashboard::content(app, k, &mut layers),
+        View::Sync => sync::view(app, k, &mut layers),
+        View::Settings => settings::view(app, k),
+        View::Form { .. } => forms::form_view(app, k),
+        View::Remove(_) => forms::remove_view(app, k),
     };
     let shell = shell::view(app, cx, k, page);
     if !app.toasts.is_empty() {

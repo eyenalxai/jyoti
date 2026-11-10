@@ -11,8 +11,9 @@ use std::time::Instant;
 use rune::{AppSpec, Tx, Waker};
 
 use crate::app::App;
-use crate::app::state::{FormMode, Overlay, Screen, ToastKind};
+use crate::app::state::ToastKind;
 use crate::app::sync::run::RunPhase;
+use crate::app::view::{Overlay, View};
 use crate::bulb::model::Rgb;
 use crate::screen::monitor::{MonitorInfo, Scene};
 
@@ -39,7 +40,7 @@ const FONTS: &[&[u8]] = &[
 ];
 
 const SCENES: &[(&str, SceneFn)] = &[
-    ("dashboard", |app| app.screen = Screen::Dashboard),
+    ("dashboard", |app| app.show_now(View::control())),
     ("empty", |app| {
         app.bulbs.clear();
         app.states.clear();
@@ -47,26 +48,27 @@ const SCENES: &[(&str, SceneFn)] = &[
         app.edits.clear();
         app.selection = None;
         app.toasts.clear();
-        app.screen = Screen::Dashboard;
+        app.show_now(View::control());
     }),
     ("form", |app| {
         app.open_add();
-        app.show_now(Screen::Form(FormMode::Add));
+        app.show_pending();
     }),
     ("edit", |app| {
         if let Some(id) = app.bulbs.first().map(|bulb| bulb.id.clone()) {
             app.open_edit(&id);
-            app.show_now(Screen::Form(FormMode::Edit(id)));
+            app.show_pending();
         }
     }),
     ("color", |app| {
+        app.show_now(View::control());
         for state in app.states.values_mut() {
             state.mode = crate::bulb::model::ColorMode::Color;
         }
         app.open_color();
     }),
     ("color-control", |app| {
-        app.screen = Screen::Dashboard;
+        app.show_now(View::control());
         for state in app.states.values_mut() {
             state.mode = crate::bulb::model::ColorMode::Color;
             state.color = Some(Rgb::new(255, 96, 96));
@@ -75,12 +77,12 @@ const SCENES: &[(&str, SceneFn)] = &[
     ("remove", |app| {
         if let Some(id) = app.bulbs.first().map(|bulb| bulb.id.clone()) {
             app.open_remove(&id);
-            app.show_now(Screen::Remove(id));
+            app.show_pending();
         }
     }),
-    ("sync-live", |app| app.screen = Screen::Sync),
+    ("sync-live", |app| app.show_now(View::Sync)),
     ("sync", |app| {
-        app.screen = Screen::Sync;
+        app.show_now(View::Sync);
         app.sync.monitors = vec![
             MonitorInfo {
                 name: "eDP-1".to_owned(),
@@ -111,18 +113,18 @@ const SCENES: &[(&str, SceneFn)] = &[
         app.sync.last_scene_at = Some(Instant::now());
     }),
     ("picker", |app| {
-        app.screen = Screen::Dashboard;
-        app.overlay = Overlay::BulbPicker;
+        app.show_now(View::control());
+        app.toggle_overlay(Overlay::BulbPicker);
     }),
     ("menu", |app| {
-        app.screen = Screen::Dashboard;
-        app.overlay = Overlay::BulbMenu;
+        app.show_now(View::control());
+        app.toggle_overlay(Overlay::BulbMenu);
     }),
     ("toast", |app| {
-        app.screen = Screen::Dashboard;
+        app.show_now(View::control());
         app.notify("The bulb at 192.168.1.42 did not answer.", ToastKind::Error);
     }),
-    ("settings", |app| app.screen = Screen::Settings),
+    ("settings", |app| app.show_now(View::Settings)),
 ];
 
 fn main() {
