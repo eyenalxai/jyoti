@@ -8,20 +8,20 @@ impl App {
     }
 
     pub(crate) fn close_overlays(&mut self) {
-        if let Some(control) = self.view.as_control_mut() {
-            control.overlay = Overlay::None;
+        if let Some(overlay) = self.view.overlay_mut() {
+            *overlay = Overlay::None;
         }
     }
 
     pub(crate) fn toggle_overlay(&mut self, overlay: Overlay) {
-        if let Some(control) = self.view.as_control_mut() {
-            control.overlay = control.overlay.toggle(overlay);
+        if let Some(current) = self.view.overlay_mut() {
+            *current = current.toggle(overlay);
         }
     }
 
     pub(crate) fn close_overlay(&mut self, overlay: Overlay) {
-        if let Some(control) = self.view.as_control_mut() {
-            control.overlay = control.overlay.close(overlay);
+        if let Some(current) = self.view.overlay_mut() {
+            *current = current.close(overlay);
         }
     }
 

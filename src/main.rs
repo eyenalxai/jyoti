@@ -80,9 +80,9 @@ const SCENES: &[(&str, SceneFn)] = &[
             app.show_pending();
         }
     }),
-    ("sync-live", |app| app.show_now(View::Sync)),
+    ("sync-live", |app| app.show_now(View::sync())),
     ("sync", |app| {
-        app.show_now(View::Sync);
+        app.show_now(View::sync());
         app.sync.monitors = vec![
             MonitorInfo {
                 name: "eDP-1".to_owned(),

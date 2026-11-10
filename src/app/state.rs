@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
 use crate::app::sync::restore::RestorePlan;
-use crate::app::sync::run::{Controls, RunAdvance, RunEvent, RunPhase, RunRejection};
+use crate::app::sync::run::{Controls, RunEvent, RunPhase, RunRejection};
 use crate::bulb::model::Rgb;
 use crate::screen::monitor::{MonitorInfo, Scene};
 
@@ -106,10 +106,6 @@ impl SyncState {
     pub fn apply(&mut self, event: RunEvent) -> Result<(), RunRejection> {
         self.status = self.status.transition(event)?;
         Ok(())
-    }
-
-    pub fn advance(&mut self, now: Instant) -> RunAdvance {
-        self.status.advance(now)
     }
 
     pub fn controls(&self) -> Controls {

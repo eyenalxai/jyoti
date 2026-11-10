@@ -19,7 +19,7 @@ pub fn view(app: &App, cx: &mut Cx<App>) -> El {
     let mut layers = Vec::new();
     let page = match &app.view {
         View::Control(_) => dashboard::content(app, k, &mut layers),
-        View::Sync => sync::view(app, k, &mut layers),
+        View::Sync(_) => sync::view(app, k, &mut layers),
         View::Settings => settings::view(app, k),
         View::Form { .. } => forms::form_view(app, k),
         View::Remove(_) => forms::remove_view(app, k),

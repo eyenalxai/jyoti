@@ -149,7 +149,7 @@ impl App {
     }
 
     pub(crate) fn advance_sync(&mut self, now: Instant) -> bool {
-        match self.sync.advance(now) {
+        match self.sync.status.advance(now) {
             RunAdvance::Unchanged => false,
             RunAdvance::BeginRestore { deadline } => {
                 self.dispatch_or_finish(deadline);

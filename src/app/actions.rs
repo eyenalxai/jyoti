@@ -409,6 +409,18 @@ impl App {
         }
     }
 
+    pub(crate) fn form_field_mut(&mut self, field: BulbField) -> &mut TextEdit {
+        let Some(form) = self.view.form_mut() else {
+            return &mut self.empty_edit;
+        };
+        match field {
+            BulbField::Name => &mut form.name,
+            BulbField::Address => &mut form.address,
+            BulbField::Model => &mut form.model,
+            BulbField::Token => &mut form.token,
+        }
+    }
+
     pub(crate) fn save_form(&mut self) {
         if self.startup_error.is_some() {
             self.notify(
@@ -442,7 +454,9 @@ impl App {
         };
         let token_required = editing.is_none();
         let issues = validate_draft(&name, &address, &model, &token, token_required);
-        let form = self.view.form_mut();
+        let Some(form) = self.view.form_mut() else {
+            return;
+        };
         form.errors.clear();
         if !issues.is_empty() {
             for issue in issues {
@@ -500,16 +514,20 @@ impl App {
     fn show_save_error(&mut self, error: RegistryError, bulb: &Bulb) {
         match error {
             RegistryError::Invalid(BulbListIssue::DuplicateName { .. }) => {
-                self.view.form_mut().errors.insert(
-                    BulbField::Name,
-                    format!("A bulb named {} already exists.", bulb.name),
-                );
+                if let Some(form) = self.view.form_mut() {
+                    form.errors.insert(
+                        BulbField::Name,
+                        format!("A bulb named {} already exists.", bulb.name),
+                    );
+                }
             }
             RegistryError::Invalid(BulbListIssue::DuplicateAddress { .. }) => {
-                self.view.form_mut().errors.insert(
-                    BulbField::Address,
-                    format!("A bulb at {} already exists.", bulb.address),
-                );
+                if let Some(form) = self.view.form_mut() {
+                    form.errors.insert(
+                        BulbField::Address,
+                        format!("A bulb at {} already exists.", bulb.address),
+                    );
+                }
             }
             error => self.notify(error.to_string(), ToastKind::Error),
         }
@@ -566,7 +584,7 @@ impl App {
     }
 
     pub(crate) fn open_sync(&mut self) {
-        self.navigate(View::Sync);
+        self.navigate(View::sync());
         let sent = self
             .screen_handle
             .as_ref()

@@ -47,8 +47,8 @@ pub struct App {
     pub screen_handle: Option<ScreenHandle>,
     pub waker: Option<Waker>,
     pub preferences_due: Option<Instant>,
-    // The hex input binds to a `&mut TextEdit`; off Control there is no editor,
-    // so the binding keeps an empty scratch buffer.
+    // The text inputs bind to a `&mut TextEdit`; off their view a shared
+    // scratch buffer serves the binding.
     pub empty_edit: TextEdit,
     pub started: bool,
     pub startup_error: Option<String>,
@@ -189,7 +189,7 @@ impl App {
         let now = Instant::now();
         if let Some((view, due)) = self.navigation.pending.take() {
             if now >= due {
-                self.view.navigate(view);
+                self.apply_view(view);
                 self.navigation.entering_until = Some(now + Duration::from_millis(16));
                 changed = true;
             } else {
@@ -244,7 +244,7 @@ impl App {
                 self.sync.last_probe = now;
             }
             tx.wake_after(Duration::from_secs(1));
-            if matches!(self.view, View::Sync) {
+            if matches!(self.view, View::Sync(_)) {
                 changed = true;
             }
         }
@@ -285,23 +285,30 @@ impl App {
     pub(crate) fn show_now(&mut self, view: View) {
         self.navigation.pending = None;
         self.navigation.entering_until = None;
-        self.view.navigate(view);
+        self.apply_view(view);
     }
 
     pub(crate) fn show_pending(&mut self) {
         self.navigation.entering_until = None;
         if let Some((view, _)) = self.navigation.pending.take() {
-            self.view.navigate(view);
+            self.apply_view(view);
         }
     }
 
-    /// The one navigation transition. The Control overlay and colour editor
-    /// close before the destination renders; the editor restores its preview.
+    fn apply_view(&mut self, view: View) {
+        self.cancel_color();
+        self.view.close_transients();
+        self.view.navigate(view);
+    }
+
+    /// The one navigation transition. The Control overlay, colour editor and
+    /// Sync overlay close before the destination renders; the editor reverts
+    /// to its pre-open values.
     pub(crate) fn navigate(&mut self, next: View) {
         self.cancel_color();
         self.view.close_transients();
         if self.view.same_place(&next) {
-            self.view.navigate(next);
+            self.apply_view(next);
             self.navigation.pending = None;
             self.navigation.entering_until = None;
             return;

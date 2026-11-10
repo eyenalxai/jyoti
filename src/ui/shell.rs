@@ -94,7 +94,7 @@ fn sync_status(app: &App, k: &Kit) -> Option<El> {
 fn nav(app: &App, k: &Kit) -> El {
     let selected = match &app.view {
         View::Control(_) | View::Form { .. } | View::Remove(_) => Some(0),
-        View::Sync => Some(1),
+        View::Sync(_) => Some(1),
         View::Settings => Some(2),
     };
     let labels = ["Control", "Sync", "Settings"];

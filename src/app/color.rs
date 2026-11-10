@@ -25,10 +25,13 @@ impl App {
         self.view.as_control_mut().map(|control| &mut control.color)
     }
 
-    // The hex input binds to a `&mut TextEdit` even while the editor is closed.
     pub(crate) fn color_hex_mut(&mut self) -> &mut TextEdit {
-        if let Some(control) = self.view.as_control_mut() {
-            return control.color.hex_mut();
+        if let Some(session) = self
+            .view
+            .as_control_mut()
+            .and_then(|control| control.color.session_mut())
+        {
+            return &mut session.hex;
         }
         &mut self.empty_edit
     }

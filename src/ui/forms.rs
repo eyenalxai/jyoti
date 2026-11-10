@@ -55,7 +55,7 @@ pub fn form_view(app: &App, k: &Kit) -> El {
         .placeholder("Desk lamp")
         .width(None)
         .invalid(form.errors.contains_key(&BulbField::Name))
-        .on_edit(|app: &mut App| &mut app.view.form_mut().name)
+        .on_edit(|app: &mut App| app.form_field_mut(BulbField::Name))
         .on_submit(submit)
         .build(k);
     let address = TextInput::new(&form.address)
@@ -63,7 +63,7 @@ pub fn form_view(app: &App, k: &Kit) -> El {
         .placeholder("192.168.1.42")
         .width(None)
         .invalid(form.errors.contains_key(&BulbField::Address))
-        .on_edit(|app: &mut App| &mut app.view.form_mut().address)
+        .on_edit(|app: &mut App| app.form_field_mut(BulbField::Address))
         .on_submit(submit)
         .build(k);
     let model = TextInput::new(&form.model)
@@ -71,7 +71,7 @@ pub fn form_view(app: &App, k: &Kit) -> El {
         .placeholder("Optional")
         .width(None)
         .invalid(form.errors.contains_key(&BulbField::Model))
-        .on_edit(|app: &mut App| &mut app.view.form_mut().model)
+        .on_edit(|app: &mut App| app.form_field_mut(BulbField::Model))
         .on_submit(submit)
         .build(k);
     let token = TextInput::new(&form.token)
@@ -85,7 +85,7 @@ pub fn form_view(app: &App, k: &Kit) -> El {
         .secure()
         .revealed(form.reveal)
         .invalid(form.errors.contains_key(&BulbField::Token))
-        .on_edit(|app: &mut App| &mut app.view.form_mut().token)
+        .on_edit(|app: &mut App| app.form_field_mut(BulbField::Token))
         .on_submit(submit)
         .build(k);
     let reveal = row().w_full().justify_end().child(
@@ -93,8 +93,9 @@ pub fn form_view(app: &App, k: &Kit) -> El {
             .control_size(ControlSize::Regular)
             .label("Show token")
             .on_toggle(|app: &mut App| {
-                let form = app.view.form_mut();
-                form.reveal = !form.reveal;
+                if let Some(form) = app.view.form_mut() {
+                    form.reveal = !form.reveal;
+                }
             })
             .build(k)
             .padding(6.0),

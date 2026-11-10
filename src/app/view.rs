@@ -68,7 +68,7 @@ impl Overlay {
 }
 
 pub enum ColorEditor {
-    Closed(Box<TextEdit>),
+    Closed,
     Open(Box<ColorSession>),
 }
 
@@ -113,7 +113,7 @@ impl ColorEditor {
     }
 
     fn closed() -> Self {
-        Self::Closed(Box::new(TextEdit::new("")))
+        Self::Closed
     }
 
     pub fn is_open(&self) -> bool {
@@ -122,31 +122,22 @@ impl ColorEditor {
 
     pub fn session(&self) -> Option<&ColorSession> {
         match self {
-            Self::Closed(_) => None,
+            Self::Closed => None,
             Self::Open(session) => Some(session),
         }
     }
 
     pub fn session_mut(&mut self) -> Option<&mut ColorSession> {
         match self {
-            Self::Closed(_) => None,
+            Self::Closed => None,
             Self::Open(session) => Some(session),
-        }
-    }
-
-    // The text input binds to a `&mut TextEdit`; a closed editor keeps an empty
-    // buffer for that binding, but no targets or pre-open values.
-    pub fn hex_mut(&mut self) -> &mut TextEdit {
-        match self {
-            Self::Closed(hex) => hex.as_mut(),
-            Self::Open(session) => &mut session.hex,
         }
     }
 
     pub fn take(&mut self) -> Option<ColorSession> {
         match std::mem::take(self) {
             Self::Open(session) => Some(*session),
-            Self::Closed(_) => None,
+            Self::Closed => None,
         }
     }
 
@@ -177,9 +168,21 @@ impl Default for ControlView {
     }
 }
 
+pub struct SyncView {
+    pub overlay: Overlay,
+}
+
+impl Default for SyncView {
+    fn default() -> Self {
+        Self {
+            overlay: Overlay::None,
+        }
+    }
+}
+
 pub enum View {
     Control(ControlView),
-    Sync,
+    Sync(SyncView),
     Settings,
     Form {
         mode: FormMode,
@@ -193,10 +196,14 @@ impl View {
         Self::Control(ControlView::default())
     }
 
+    pub fn sync() -> Self {
+        Self::Sync(SyncView::default())
+    }
+
     pub fn element_key(&self) -> &'static str {
         match self {
-            Self::Control(_) => "dashboard",
-            Self::Sync => "sync",
+            Self::Control(_) => "control",
+            Self::Sync(_) => "sync",
             Self::Settings => "settings",
             Self::Form { .. } => "form",
             Self::Remove(_) => "remove",
@@ -206,7 +213,7 @@ impl View {
     fn rank(&self) -> u8 {
         match self {
             Self::Control(_) => 0,
-            Self::Sync => 1,
+            Self::Sync(_) => 1,
             Self::Settings => 2,
             Self::Form { .. } | Self::Remove(_) => 3,
         }
@@ -215,7 +222,7 @@ impl View {
     pub fn same_place(&self, other: &Self) -> bool {
         match (self, other) {
             (Self::Control(_), Self::Control(_))
-            | (Self::Sync, Self::Sync)
+            | (Self::Sync(_), Self::Sync(_))
             | (Self::Settings, Self::Settings) => true,
             (Self::Form { mode: left, .. }, Self::Form { mode: right, .. }) => left == right,
             (Self::Remove(left), Self::Remove(right)) => left == right,
@@ -238,8 +245,19 @@ impl View {
     }
 
     pub fn overlay(&self) -> Overlay {
-        self.as_control()
-            .map_or(Overlay::None, |control| control.overlay)
+        match self {
+            Self::Control(control) => control.overlay,
+            Self::Sync(sync) => sync.overlay,
+            _ => Overlay::None,
+        }
+    }
+
+    pub fn overlay_mut(&mut self) -> Option<&mut Overlay> {
+        match self {
+            Self::Control(control) => Some(&mut control.overlay),
+            Self::Sync(sync) => Some(&mut sync.overlay),
+            _ => None,
+        }
     }
 
     pub fn color(&self) -> Option<&ColorEditor> {
@@ -253,29 +271,31 @@ impl View {
         }
     }
 
-    pub fn form_mut(&mut self) -> &mut FormState {
-        let Self::Form { state, .. } = self else {
-            *self = Self::Form {
-                mode: FormMode::Add,
-                state: Box::new(FormState::default()),
-            };
-            return self.form_mut();
-        };
-        state.as_mut()
-    }
-
-    pub fn close_transients(&mut self) {
-        if let Self::Control(control) = self {
-            control.overlay = Overlay::None;
-            control.color = ColorEditor::default();
+    pub fn form_mut(&mut self) -> Option<&mut FormState> {
+        match self {
+            Self::Form { state, .. } => Some(state.as_mut()),
+            _ => None,
         }
     }
 
-    /// Navigation closes the Control overlay and colour editor. A Control
-    /// destination always starts closed, even when it is the current screen.
+    pub fn close_transients(&mut self) {
+        match self {
+            Self::Control(control) => {
+                control.overlay = Overlay::None;
+                control.color = ColorEditor::default();
+            }
+            Self::Sync(sync) => sync.overlay = Overlay::None,
+            _ => {}
+        }
+    }
+
+    /// Navigation closes the Control overlay and colour editor, and the Sync
+    /// overlay. A Control or Sync destination starts closed, even when it is
+    /// the current screen.
     pub fn navigate(&mut self, next: Self) {
         *self = match next {
             Self::Control(_) => Self::control(),
+            Self::Sync(_) => Self::sync(),
             view => view,
         };
     }
@@ -322,7 +342,7 @@ mod tests {
     #[test]
     fn navigating_from_control_closes_the_overlay_and_colour_editor() {
         let destinations = [
-            View::Sync,
+            View::sync(),
             View::Settings,
             View::Form {
                 mode: FormMode::Add,
@@ -352,7 +372,7 @@ mod tests {
     #[test]
     fn only_control_carries_the_overlay_and_colour_editor() {
         let views = [
-            View::Sync,
+            View::sync(),
             View::Settings,
             View::Form {
                 mode: FormMode::Add,
@@ -420,17 +440,17 @@ mod tests {
         };
 
         assert!(typed.same_place(&fresh));
-        assert!(!typed.same_place(&View::Sync));
+        assert!(!typed.same_place(&View::sync()));
     }
 
     #[test]
     fn section_changes_push_in_tab_order() {
         assert_eq!(
-            nav_direction(&View::control(), &View::Sync),
+            nav_direction(&View::control(), &View::sync()),
             NavDirection::Forward
         );
         assert_eq!(
-            nav_direction(&View::Sync, &View::Settings),
+            nav_direction(&View::sync(), &View::Settings),
             NavDirection::Forward
         );
         assert_eq!(
@@ -471,7 +491,7 @@ mod tests {
             mode: FormMode::Add,
             state: Box::new(FormState::default()),
         };
-        assert_eq!(nav_direction(&form, &View::Sync), NavDirection::Forward);
+        assert_eq!(nav_direction(&form, &View::sync()), NavDirection::Forward);
         assert_eq!(nav_direction(&form, &View::Settings), NavDirection::Forward);
         assert_eq!(
             nav_direction(&form, &View::control()),
