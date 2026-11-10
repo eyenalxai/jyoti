@@ -65,3 +65,47 @@ fn as_mode(value: Option<&Value>) -> ColorMode {
         _ => ColorMode::Unknown,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::miio::reply::{MiioReply, MiioResultItem};
+
+    #[test]
+    fn a_reply_without_a_mode_or_colour_keeps_the_known_values() {
+        let reply = MiioReply {
+            id: Some(1),
+            result: Some(vec![
+                MiioResultItem {
+                    siid: SIID_LIGHT,
+                    piid: PIID_POWER,
+                    value: Some(serde_json::json!(true)),
+                    code: Some(0),
+                },
+                MiioResultItem {
+                    siid: SIID_LIGHT,
+                    piid: PIID_BRIGHTNESS,
+                    value: Some(serde_json::json!(55)),
+                    code: Some(0),
+                },
+            ]),
+            error: None,
+        };
+        let patch = state_from_reply(&reply);
+        let mut state = BulbState {
+            power: Some(false),
+            brightness: Some(40),
+            temperature: Some(3_000),
+            color: Some(Rgb::new(255, 0, 0)),
+            mode: ColorMode::Color,
+        };
+
+        state.apply(&patch);
+
+        assert_eq!(state.power, Some(true));
+        assert_eq!(state.brightness, Some(55));
+        assert_eq!(state.temperature, Some(3_000));
+        assert_eq!(state.color, Some(Rgb::new(255, 0, 0)));
+        assert_eq!(state.mode, ColorMode::Color);
+    }
+}

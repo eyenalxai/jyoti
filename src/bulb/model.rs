@@ -124,6 +124,29 @@ pub struct BulbState {
     pub mode: ColorMode,
 }
 
+impl BulbState {
+    /// Merge a reply into the last known state. A field the reply did not
+    /// carry keeps its known value; `Unknown` mode means the reply did not
+    /// report the mode.
+    pub fn apply(&mut self, patch: &BulbState) {
+        if let Some(power) = patch.power {
+            self.power = Some(power);
+        }
+        if let Some(brightness) = patch.brightness {
+            self.brightness = Some(brightness);
+        }
+        if let Some(temperature) = patch.temperature {
+            self.temperature = Some(temperature);
+        }
+        if let Some(color) = patch.color {
+            self.color = Some(color);
+        }
+        if patch.mode != ColorMode::Unknown {
+            self.mode = patch.mode;
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum ColorMode {
     Color,
@@ -414,5 +437,55 @@ mod tests {
                 address: "0:0:0:0:0:0:0:1".to_owned()
             })
         );
+    }
+
+    fn known_state() -> BulbState {
+        BulbState {
+            power: Some(true),
+            brightness: Some(40),
+            temperature: Some(3_000),
+            color: Some(Rgb::new(255, 0, 0)),
+            mode: ColorMode::Temperature,
+        }
+    }
+
+    #[test]
+    fn a_partial_state_keeps_the_known_values() {
+        let mut state = known_state();
+        let patch = BulbState {
+            power: Some(false),
+            color: Some(Rgb::new(0, 0, 255)),
+            ..BulbState::default()
+        };
+
+        state.apply(&patch);
+
+        assert_eq!(state.power, Some(false));
+        assert_eq!(state.brightness, Some(40));
+        assert_eq!(state.temperature, Some(3_000));
+        assert_eq!(state.color, Some(Rgb::new(0, 0, 255)));
+        assert_eq!(state.mode, ColorMode::Temperature);
+    }
+
+    #[test]
+    fn an_empty_state_patch_changes_nothing() {
+        let mut state = known_state();
+
+        state.apply(&BulbState::default());
+
+        assert_eq!(state, known_state());
+    }
+
+    #[test]
+    fn an_unreported_mode_does_not_clear_the_mode() {
+        let mut state = known_state();
+        let patch = BulbState {
+            mode: ColorMode::Unknown,
+            ..BulbState::default()
+        };
+
+        state.apply(&patch);
+
+        assert_eq!(state.mode, ColorMode::Temperature);
     }
 }

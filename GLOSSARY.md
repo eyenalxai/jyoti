@@ -53,11 +53,15 @@ A selection that stands for every configured bulb at once. It is not a bulb: it
 has no ID, address, token or stored state, so edit and remove do not act on it.
 The bulb selector lists it first. It is the default selection when two or more
 bulbs exist. Its state is the aggregate of the bulbs:
-power is on, off or mixed; quality is White or Colour when every reachable bulb
-agrees and mixed when they do not. When the bulbs disagree on the mode the mode
-switch shows mixed and no mode’s settings are drawn; choosing White or Colour
-applies that mode to every bulb. Power uses a quorum: if every reachable bulb is
-on, one toggle turns them all off; otherwise it turns them all on. Brightness
+power is on, off, mixed or unknown until a reachable bulb reports; quality is
+White or Colour when every reachable bulb agrees and mixed when they do not. A
+reachable bulb that has not reported a value counts as disagreement when another
+reachable bulb has reported, so the aggregate is mixed until every reachable bulb
+reports. When no reachable bulb has reported, the aggregate is unknown. When the
+bulbs disagree on the mode the mode switch shows mixed and no mode's settings are
+drawn; choosing White or Colour applies that mode to every bulb. Power uses a
+quorum: if every reachable bulb is on, one toggle turns them all off; otherwise
+it turns them all on. Brightness
 and warmth apply one absolute value to every selected bulb; the control screen
 shows the aggregate span and starts each slider at its high end. Colour applies one
 packed colour to every bulb. Each bulb is addressed independently,
@@ -72,9 +76,12 @@ a command fails; it is not cached across runs.
 
 ## Unreachable
 
-A bulb that did not answer its hello or command before the timeout. The control
-screen keeps the bulb and its metadata, the selector shows its state, the control
-deck shows the failure inline, and Refresh retries.
+A bulb that did not answer its hello or command before the timeout. A run marks
+a bulb unreachable after three consecutive failed sends or a failed probe, and
+the status stays after the run ends. The control screen keeps the bulb and its
+metadata, the
+selector shows its state, the control deck shows the failure inline, and Refresh
+retries. The next run retries the bulb.
 
 ## Restored
 
@@ -134,7 +141,8 @@ white when it has none.
 
 ## Mixed
 
-The aggregate state when the selected bulbs disagree on power, mode or colour.
+The aggregate state when the selected bulbs disagree on power, mode or colour,
+or when some reachable bulbs have reported a value and others have not.
 
 ## Aggregate
 
