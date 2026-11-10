@@ -1,7 +1,6 @@
 use std::collections::HashSet;
 use std::fmt::{self, Display, Formatter};
 use std::net::IpAddr;
-use std::str::FromStr;
 
 use serde::{Deserialize, Serialize};
 
@@ -23,7 +22,7 @@ pub const PIID_COLOR_MODE: u32 = 6;
 pub struct Bulb {
     pub id: String,
     pub name: String,
-    pub address: String,
+    pub address: IpAddr,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
 }
@@ -86,8 +85,7 @@ pub fn validate_bulbs(bulbs: &[Bulb]) -> Result<(), BulbListIssue> {
         }
 
         let name = bulb.name.trim();
-        let address = bulb.address.trim();
-        if name.is_empty() || address.is_empty() {
+        if name.is_empty() {
             return Err(BulbListIssue::MissingNameOrAddress {
                 id: bulb.id.clone(),
             });
@@ -101,13 +99,9 @@ pub fn validate_bulbs(bulbs: &[Bulb]) -> Result<(), BulbListIssue> {
                 name: name.to_owned(),
             });
         }
-        let address_key = match address.parse::<IpAddr>() {
-            Ok(address) => address.to_string(),
-            Err(_) => address.to_owned(),
-        };
-        if !addresses.insert(address_key) {
+        if !addresses.insert(bulb.address) {
             return Err(BulbListIssue::DuplicateAddress {
-                address: address.to_owned(),
+                address: bulb.address.to_string(),
             });
         }
     }
@@ -253,6 +247,15 @@ pub fn token_bytes(value: &str) -> Option<[u8; 16]> {
     Some(bytes)
 }
 
+pub fn parse_address(value: &str) -> Result<IpAddr, FieldIssue> {
+    value.trim().parse().map_err(|_| {
+        FieldIssue::new(
+            BulbField::Address,
+            "Use an IPv4 or IPv6 address, for example 192.168.1.42.",
+        )
+    })
+}
+
 pub fn validate_draft(
     name: &str,
     address: &str,
@@ -280,11 +283,8 @@ pub fn validate_draft(
             BulbField::Address,
             "Enter the bulb's IP address.",
         ));
-    } else if IpAddr::from_str(address).is_err() {
-        issues.push(FieldIssue::new(
-            BulbField::Address,
-            "Use an IPv4 or IPv6 address, for example 192.168.1.42.",
-        ));
+    } else if let Err(issue) = parse_address(address) {
+        issues.push(issue);
     }
 
     if model.chars().count() > 60 {
@@ -386,11 +386,11 @@ mod tests {
         assert!(issues.iter().any(|issue| issue.field == BulbField::Token));
     }
 
-    fn bulb(id: &str, name: &str, address: &str) -> Bulb {
+    fn bulb(id: &str, name: &str, address: IpAddr) -> Bulb {
         Bulb {
             id: id.to_owned(),
             name: name.to_owned(),
-            address: address.to_owned(),
+            address,
             model: None,
         }
     }
@@ -400,14 +400,14 @@ mod tests {
         let desk = bulb(
             "00000000-0000-4000-8000-000000000001",
             "Desk lamp",
-            "192.168.1.42",
+            IpAddr::from([192, 168, 1, 42]),
         );
         assert!(validate_bulbs(std::slice::from_ref(&desk)).is_ok());
 
         let mut same_name = bulb(
             "00000000-0000-4000-8000-000000000002",
             " desk LAMP ",
-            "192.168.1.43",
+            IpAddr::from([192, 168, 1, 43]),
         );
         assert_eq!(
             validate_bulbs(&[desk.clone(), same_name.clone()]),
@@ -417,7 +417,7 @@ mod tests {
         );
 
         same_name.name = "Shelf lamp".to_owned();
-        same_name.address = " 192.168.1.42 ".to_owned();
+        same_name.address = IpAddr::from([192, 168, 1, 42]);
         assert_eq!(
             validate_bulbs(&[desk.clone(), same_name]),
             Err(BulbListIssue::DuplicateAddress {
@@ -425,16 +425,20 @@ mod tests {
             })
         );
 
-        let loopback = bulb("00000000-0000-4000-8000-000000000003", "Loopback", "::1");
+        let loopback = bulb(
+            "00000000-0000-4000-8000-000000000003",
+            "Loopback",
+            IpAddr::from(std::net::Ipv6Addr::LOCALHOST),
+        );
         let expanded_loopback = bulb(
             "00000000-0000-4000-8000-000000000004",
             "Expanded loopback",
-            "0:0:0:0:0:0:0:1",
+            IpAddr::from(std::net::Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 1)),
         );
         assert_eq!(
             validate_bulbs(&[loopback, expanded_loopback]),
             Err(BulbListIssue::DuplicateAddress {
-                address: "0:0:0:0:0:0:0:1".to_owned()
+                address: "::1".to_owned()
             })
         );
     }

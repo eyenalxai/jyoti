@@ -175,6 +175,7 @@ impl<M: MetadataStore, T: TokenStore> BulbRegistry<M, T> {
 mod tests {
     use std::cell::{Cell, RefCell};
     use std::collections::HashMap;
+    use std::net::IpAddr;
     use std::rc::Rc;
 
     use super::{BulbRegistry, MetadataStore, RegistryError, TokenStore};
@@ -260,21 +261,21 @@ mod tests {
         }
     }
 
-    fn bulb(id: &str, name: &str, address: &str) -> Bulb {
+    fn bulb(id: &str, name: &str, address: IpAddr) -> Bulb {
         Bulb {
             id: id.to_owned(),
             name: name.to_owned(),
-            address: address.to_owned(),
+            address,
             model: None,
         }
     }
 
     fn desk() -> Bulb {
-        bulb(DESK_ID, "Desk lamp", "192.168.1.42")
+        bulb(DESK_ID, "Desk lamp", IpAddr::from([192, 168, 1, 42]))
     }
 
     fn shelf() -> Bulb {
-        bulb(SHELF_ID, "Shelf lamp", "192.168.1.43")
+        bulb(SHELF_ID, "Shelf lamp", IpAddr::from([192, 168, 1, 43]))
     }
 
     fn registry() -> (
@@ -517,7 +518,7 @@ mod tests {
         ));
 
         let mut duplicate_address = shelf();
-        duplicate_address.address = "192.168.1.42".to_owned();
+        duplicate_address.address = IpAddr::from([192, 168, 1, 42]);
         assert!(matches!(
             registry.add(&bulbs, &duplicate_address, TOKEN),
             Err(RegistryError::Invalid(
@@ -536,7 +537,7 @@ mod tests {
         let missing = bulb(
             "00000000-0000-4000-8000-000000000099",
             "Missing",
-            "192.168.1.99",
+            IpAddr::from([192, 168, 1, 99]),
         );
 
         assert!(matches!(

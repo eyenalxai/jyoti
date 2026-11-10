@@ -231,6 +231,8 @@ fn write_text(path: &Path, text: &str) -> Result<(), StoreError> {
 
 #[cfg(test)]
 mod tests {
+    use std::net::IpAddr;
+
     use super::*;
     use crate::bulb::model::Bulb;
 
@@ -242,7 +244,7 @@ mod tests {
         let bulb = Bulb {
             id: "00000000-0000-4000-8000-000000000001".to_owned(),
             name: "Desk lamp".to_owned(),
-            address: "192.168.1.42".to_owned(),
+            address: IpAddr::from([192, 168, 1, 42]),
             model: Some("yeelink.light.color3".to_owned()),
         };
 
@@ -275,6 +277,75 @@ mod tests {
             r#"{"version":1,"bulbs":[],"token":"0123456789abcdef0123456789abcdef"}"#,
         )?;
         assert!(matches!(store.load(), Err(StoreError::Decode { .. })));
+        Ok(())
+    }
+
+    #[test]
+    fn a_file_with_a_hostname_or_malformed_address_is_rejected()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let directory = tempfile::tempdir()?;
+        let path = directory.path().join("bulbs.json");
+        let store = BulbStore::new(path.clone());
+
+        std::fs::write(
+            &path,
+            r#"{"version":1,"bulbs":[{"id":"00000000-0000-4000-8000-000000000001","name":"Desk lamp","address":"office.local"}]}"#,
+        )?;
+        assert!(matches!(
+            store.load(),
+            Err(error @ StoreError::Decode { .. })
+                if error.to_string().contains("invalid IP address syntax")
+        ));
+
+        std::fs::write(
+            &path,
+            r#"{"version":1,"bulbs":[{"id":"00000000-0000-4000-8000-000000000001","name":"Desk lamp","address":"192.168.1.999"}]}"#,
+        )?;
+        assert!(matches!(store.load(), Err(StoreError::Decode { .. })));
+        Ok(())
+    }
+
+    #[test]
+    fn ipv4_and_ipv6_addresses_round_trip_through_the_store()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let directory = tempfile::tempdir()?;
+        let path = directory.path().join("bulbs.json");
+        let store = BulbStore::new(path.clone());
+        let bulbs = vec![
+            Bulb {
+                id: "00000000-0000-4000-8000-000000000001".to_owned(),
+                name: "Desk lamp".to_owned(),
+                address: "192.168.1.42".parse()?,
+                model: None,
+            },
+            Bulb {
+                id: "00000000-0000-4000-8000-000000000002".to_owned(),
+                name: "Shelf lamp".to_owned(),
+                address: "0:0:0:0:0:0:0:1".parse()?,
+                model: None,
+            },
+        ];
+
+        store.save(&bulbs)?;
+        let text = std::fs::read_to_string(&path)?;
+        assert!(text.contains("\"version\": 1"));
+        assert_eq!(store.load()?, bulbs);
+        Ok(())
+    }
+
+    #[test]
+    fn duplicate_canonical_addresses_are_rejected() -> Result<(), Box<dyn std::error::Error>> {
+        let directory = tempfile::tempdir()?;
+        let path = directory.path().join("bulbs.json");
+        let store = BulbStore::new(path.clone());
+        std::fs::write(
+            &path,
+            r#"{"version":1,"bulbs":[{"id":"00000000-0000-4000-8000-000000000001","name":"Loopback","address":"::1"},{"id":"00000000-0000-4000-8000-000000000002","name":"Expanded loopback","address":"0:0:0:0:0:0:0:1"}]}"#,
+        )?;
+        assert!(matches!(
+            store.load(),
+            Err(StoreError::Invalid { message, .. }) if message.contains("two bulbs at ::1")
+        ));
         Ok(())
     }
 

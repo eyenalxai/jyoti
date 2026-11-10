@@ -205,7 +205,7 @@ fn run_worker(
                 worker,
                 id: id.clone(),
                 error: MiioError::Token {
-                    address: bulb.address.clone(),
+                    address: bulb.address.to_string(),
                 },
             });
             waker();
@@ -216,7 +216,7 @@ fn run_worker(
                 worker,
                 id: id.clone(),
                 error: MiioError::Network {
-                    address: bulb.address.clone(),
+                    address: bulb.address.to_string(),
                     message: error.to_string(),
                 },
             });
@@ -225,7 +225,7 @@ fn run_worker(
         }
     };
     let mut session =
-        match MiioSession::open(&bulb.address, &token, config.miio_port, config.miio_timeout) {
+        match MiioSession::open(bulb.address, &token, config.miio_port, config.miio_timeout) {
             Ok(session) => session,
             Err(error) => {
                 let _ = events.send(WorkerEvent::Error {

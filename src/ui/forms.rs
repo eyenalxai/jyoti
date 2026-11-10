@@ -159,7 +159,10 @@ pub fn remove_view(app: &App, k: &Kit) -> El {
     };
     let bulb = id.and_then(|id| app.bulbs.iter().find(|bulb| &bulb.id == id));
     let name = bulb.map_or_else(|| "this bulb".to_owned(), |bulb| bulb.name.clone());
-    let address = bulb.map_or_else(|| "Unknown address".to_owned(), |bulb| bulb.address.clone());
+    let address = bulb.map_or_else(
+        || "Unknown address".to_owned(),
+        |bulb| bulb.address.to_string(),
+    );
     let back = IconButton::new(&BACK)
         .variant(IconButtonVariant::GhostMuted)
         .control_size(ControlSize::ExtraLarge)

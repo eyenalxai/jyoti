@@ -9,7 +9,7 @@ use crate::bulb::aggregate::AggregatePower;
 use crate::bulb::health::HealthEvent;
 use crate::bulb::model::{
     Bulb, BulbField, BulbListIssue, BulbState, ColorMode, NEUTRAL_TEMPERATURE, Rgb, new_id,
-    trim_model, validate_draft,
+    parse_address, trim_model, validate_draft,
 };
 use crate::bulb::registry::RegistryError;
 use crate::bulb::selection::{Selection, resolve_selection, selection_after_add};
@@ -373,7 +373,7 @@ impl App {
         };
         self.form = FormState {
             name: TextEdit::new(bulb.name.clone()),
-            address: TextEdit::new(bulb.address.clone()),
+            address: TextEdit::new(bulb.address.to_string()),
             model: TextEdit::new({
                 let empty = String::new();
                 bulb.model.clone().unwrap_or(empty)
@@ -425,6 +425,13 @@ impl App {
             }
             return;
         }
+        let address = match parse_address(&address) {
+            Ok(address) => address,
+            Err(issue) => {
+                self.form.errors.insert(issue.field, issue.message);
+                return;
+            }
+        };
 
         match editing {
             None => {

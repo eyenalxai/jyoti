@@ -36,22 +36,21 @@ pub struct MiioSession {
 
 impl MiioSession {
     pub fn open(
-        address: &str,
+        address: IpAddr,
         token: &str,
         port: u16,
         timeout: Duration,
     ) -> Result<Self, MiioError> {
-        let ip: IpAddr = address.parse().map_err(|_| MiioError::Address {
-            address: address.to_owned(),
-            message: format!(
-                "\"{address}\" is not a valid IP address. Edit the bulb and enter its IP."
-            ),
-        })?;
+        let target = SocketAddr::new(address, port);
+        let bind_address = if address.is_ipv6() {
+            "[::]:0"
+        } else {
+            "0.0.0.0:0"
+        };
+        let address = address.to_string();
         token_bytes(token).ok_or_else(|| MiioError::Token {
-            address: address.to_owned(),
+            address: address.clone(),
         })?;
-
-        let bind_address = if ip.is_ipv6() { "[::]:0" } else { "0.0.0.0:0" };
         let socket = UdpSocket::bind(bind_address).map_err(|error| MiioError::Network {
             address: address.to_owned(),
             message: error.to_string(),
@@ -65,7 +64,7 @@ impl MiioSession {
 
         Ok(Self {
             socket,
-            target: SocketAddr::new(ip, port),
+            target,
             address: address.to_owned(),
             token: token.to_owned(),
             device_id: None,
@@ -300,5 +299,29 @@ impl MiioSession {
 fn timeout(address: &str) -> MiioError {
     MiioError::Timeout {
         address: address.to_owned(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::net::{IpAddr, Ipv6Addr};
+    use std::time::Duration;
+
+    use super::MiioSession;
+    use crate::error::MiioError;
+
+    #[test]
+    fn a_session_reports_the_parsed_address_on_a_bad_token() {
+        let error = MiioSession::open(
+            IpAddr::from(Ipv6Addr::LOCALHOST),
+            "short",
+            54_321,
+            Duration::from_secs(1),
+        );
+
+        assert!(matches!(
+            error,
+            Err(MiioError::Token { address }) if address == "::1"
+        ));
     }
 }
