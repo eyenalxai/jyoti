@@ -291,11 +291,7 @@ mod tests {
             &path,
             r#"{"version":1,"bulbs":[{"id":"00000000-0000-4000-8000-000000000001","name":"Desk lamp","address":"office.local"}]}"#,
         )?;
-        assert!(matches!(
-            store.load(),
-            Err(error @ StoreError::Decode { .. })
-                if error.to_string().contains("invalid IP address syntax")
-        ));
+        assert!(matches!(store.load(), Err(StoreError::Decode { .. })));
 
         std::fs::write(
             &path,

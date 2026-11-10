@@ -47,25 +47,25 @@ impl MiioSession {
         } else {
             "0.0.0.0:0"
         };
-        let address = address.to_string();
+        let address_text = address.to_string();
         token_bytes(token).ok_or_else(|| MiioError::Token {
-            address: address.clone(),
+            address: address_text.clone(),
         })?;
         let socket = UdpSocket::bind(bind_address).map_err(|error| MiioError::Network {
-            address: address.to_owned(),
+            address: address_text.clone(),
             message: error.to_string(),
         })?;
         socket
             .set_read_timeout(Some(STREAM_TIMEOUT))
             .map_err(|error| MiioError::Network {
-                address: address.to_owned(),
+                address: address_text.clone(),
                 message: error.to_string(),
             })?;
 
         Ok(Self {
             socket,
             target,
-            address: address.to_owned(),
+            address: address_text,
             token: token.to_owned(),
             device_id: None,
             stamp: None,

@@ -9,7 +9,7 @@ use crate::bulb::aggregate::AggregatePower;
 use crate::bulb::health::HealthEvent;
 use crate::bulb::model::{
     Bulb, BulbField, BulbListIssue, BulbState, ColorMode, NEUTRAL_TEMPERATURE, Rgb, new_id,
-    parse_address, trim_model, validate_draft,
+    validate_draft,
 };
 use crate::bulb::registry::RegistryError;
 use crate::bulb::selection::{Selection, resolve_selection, selection_after_add};
@@ -408,27 +408,27 @@ impl App {
             self.notify("Demo mode does not save bulbs.", ToastKind::Info);
             return;
         }
-        let name = self.form.name.text.trim().to_owned();
-        let address = self.form.address.text.trim().to_owned();
-        let model = self.form.model.text.trim().to_owned();
-        let token = self.form.token.text.trim().to_owned();
         let editing = match &self.screen {
             Screen::Form(FormMode::Edit(id)) => Some(id.clone()),
             _ => None,
         };
         let token_required = editing.is_none();
-        let issues = validate_draft(&name, &address, &model, &token, token_required);
-        self.form.errors.clear();
-        if !issues.is_empty() {
-            for issue in issues {
-                self.form.errors.insert(issue.field, issue.message);
+        let draft = match validate_draft(
+            &self.form.name.text,
+            &self.form.address.text,
+            &self.form.model.text,
+            &self.form.token.text,
+            token_required,
+        ) {
+            Ok(draft) => {
+                self.form.errors.clear();
+                draft
             }
-            return;
-        }
-        let address = match parse_address(&address) {
-            Ok(address) => address,
-            Err(issue) => {
-                self.form.errors.insert(issue.field, issue.message);
+            Err(issues) => {
+                self.form.errors.clear();
+                for issue in issues {
+                    self.form.errors.insert(issue.field, issue.message);
+                }
                 return;
             }
         };
@@ -437,11 +437,11 @@ impl App {
             None => {
                 let bulb = Bulb {
                     id: new_id(),
-                    name,
-                    address,
-                    model: trim_model(&model),
+                    name: draft.name,
+                    address: draft.address,
+                    model: draft.model,
                 };
-                let bulbs = match self.registry.add(&self.bulbs, &bulb, &token) {
+                let bulbs = match self.registry.add(&self.bulbs, &bulb, &draft.token) {
                     Ok(bulbs) => bulbs,
                     Err(error) => {
                         self.show_save_error(error, &bulb);
@@ -459,11 +459,11 @@ impl App {
             Some(id) => {
                 let bulb = Bulb {
                     id,
-                    name,
-                    address,
-                    model: trim_model(&model),
+                    name: draft.name,
+                    address: draft.address,
+                    model: draft.model,
                 };
-                let new_token = (!token.is_empty()).then_some(token.as_str());
+                let new_token = (!draft.token.is_empty()).then_some(draft.token.as_str());
                 let bulbs = match self.registry.update(&self.bulbs, &bulb, new_token) {
                     Ok(bulbs) => bulbs,
                     Err(error) => {
