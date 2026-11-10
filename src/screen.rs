@@ -8,4 +8,5 @@ pub mod intensity;
 pub mod kmeans;
 pub mod monitor;
 pub mod reducer;
+pub mod run;
 pub mod sync;

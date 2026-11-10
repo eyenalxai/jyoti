@@ -64,7 +64,7 @@ impl App {
             return false;
         }
         let mut reconfigure = false;
-        let in_run = self.sync.status.is_running();
+        let in_run = self.sync.status.is_in_run();
         let changed = match event {
             WorkerEvent::State {
                 id,
@@ -81,7 +81,7 @@ impl App {
                         current.apply(&state);
                         (was_on, current.power == Some(true), current.clone())
                     };
-                    if self.sync.status.is_running()
+                    if self.sync.status.is_in_run()
                         && let Some(bulb) = self.bulbs.iter().find(|bulb| bulb.id == id)
                     {
                         reconfigure |= self.sync.restore.observe(&id, &bulb.name, &merged);
@@ -347,7 +347,7 @@ impl App {
         };
         if handle.send(command).is_err() {
             self.workers.remove(id);
-            let in_run = self.sync.status.is_running();
+            let in_run = self.sync.status.is_in_run();
             if self.health.apply(id, HealthEvent::Exited, in_run) {
                 self.notify(
                     format!("The connection to {name} stopped."),
@@ -668,7 +668,7 @@ impl App {
             }
         }
         let had_gone = !gone.is_empty();
-        let in_run = self.sync.status.is_running();
+        let in_run = self.sync.status.is_in_run();
         for id in gone {
             self.workers.remove(&id);
             self.health.apply(&id, HealthEvent::Exited, in_run);

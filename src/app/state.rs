@@ -5,6 +5,7 @@ use crate::app::sync::restore::RestorePlan;
 use crate::app::sync::run::{Controls, RunEvent, RunPhase, RunRejection};
 use crate::bulb::model::Rgb;
 use crate::screen::monitor::{MonitorInfo, Scene};
+use crate::screen::run::CapturePhase;
 
 pub const STALE_AFTER: Duration = Duration::from_secs(5);
 
@@ -108,12 +109,16 @@ impl SyncState {
         Ok(())
     }
 
+    pub fn report(&mut self, phase: CapturePhase) -> bool {
+        self.status.report(phase)
+    }
+
     pub fn controls(&self) -> Controls {
         self.status.controls()
     }
 
     pub fn flashing_at(&self, now: Instant) -> bool {
-        self.status.is_running() && self.flash_until.is_some_and(|until| now < until)
+        self.status.is_in_run() && self.flash_until.is_some_and(|until| now < until)
     }
 
     pub fn stale_at(&self, now: Instant) -> bool {

@@ -3,6 +3,7 @@ use std::time::{Duration, Instant};
 
 use crate::screen::monitor::Scene;
 use crate::screen::reducer::ReducerState;
+use crate::screen::run::{CaptureEvent, CapturePhase, CaptureRejection};
 use crate::screen::sync::{Drove, SyncConfig, SyncFrame, SyncRun};
 
 use super::{Capture, Halt};
@@ -14,46 +15,6 @@ const NO_MONITOR: &str = "No monitor is selected.";
 fn immediate(now: Instant) -> Instant {
     now.checked_sub(TICK).unwrap_or(now)
 }
-
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) enum CapturePhase {
-    #[default]
-    Idle,
-    Starting(u64),
-    Running(u64),
-    Paused(u64),
-}
-
-impl CapturePhase {
-    pub fn is_running(self) -> bool {
-        matches!(self, CapturePhase::Running(_))
-    }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum CaptureRejection {
-    NotIdle,
-    NotStarting,
-    NotRunning,
-    NotPaused,
-    GenerationMismatch,
-}
-
-impl std::fmt::Display for CaptureRejection {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            CaptureRejection::NotIdle => formatter.write_str("Screen capture is already active."),
-            CaptureRejection::NotStarting => formatter.write_str("Screen capture has not started."),
-            CaptureRejection::NotRunning => formatter.write_str("Screen capture is not running."),
-            CaptureRejection::NotPaused => formatter.write_str("Screen capture is not paused."),
-            CaptureRejection::GenerationMismatch => {
-                formatter.write_str("Screen capture generation does not match.")
-            }
-        }
-    }
-}
-
-impl std::error::Error for CaptureRejection {}
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct CaptureStop {
@@ -82,7 +43,6 @@ impl CaptureRun {
         }
     }
 
-    #[cfg(test)]
     pub fn phase(&self) -> CapturePhase {
         self.phase
     }
@@ -104,10 +64,8 @@ impl CaptureRun {
         config: SyncConfig,
         now: Instant,
     ) -> Result<(), CaptureRejection> {
-        if self.phase != CapturePhase::Idle {
-            return Err(CaptureRejection::NotIdle);
-        }
-        self.phase = CapturePhase::Starting(generation);
+        let phase = self.phase.transition(CaptureEvent::Start(generation))?;
+        self.phase = phase;
         self.selected = Some(monitor);
         self.run = Some(SyncRun::new(config));
         self.last_capture = Some(now);
@@ -116,36 +74,20 @@ impl CaptureRun {
     }
 
     pub fn started(&mut self, generation: u64, now: Instant) -> Result<(), CaptureRejection> {
-        match self.phase {
-            CapturePhase::Starting(current) if current == generation => {
-                self.phase = CapturePhase::Running(generation);
-                self.last_capture = Some(immediate(now));
-                Ok(())
-            }
-            CapturePhase::Starting(_) => Err(CaptureRejection::GenerationMismatch),
-            _ => Err(CaptureRejection::NotStarting),
-        }
+        self.phase = self.phase.transition(CaptureEvent::Started(generation))?;
+        self.last_capture = Some(immediate(now));
+        Ok(())
     }
 
     pub fn pause(&mut self) -> Result<(), CaptureRejection> {
-        match self.phase {
-            CapturePhase::Running(generation) => {
-                self.phase = CapturePhase::Paused(generation);
-                Ok(())
-            }
-            _ => Err(CaptureRejection::NotRunning),
-        }
+        self.phase = self.phase.transition(CaptureEvent::Pause)?;
+        Ok(())
     }
 
     pub fn resume(&mut self, now: Instant) -> Result<(), CaptureRejection> {
-        match self.phase {
-            CapturePhase::Paused(generation) => {
-                self.phase = CapturePhase::Running(generation);
-                self.last_capture = Some(immediate(now));
-                Ok(())
-            }
-            _ => Err(CaptureRejection::NotPaused),
-        }
+        self.phase = self.phase.transition(CaptureEvent::Resume)?;
+        self.last_capture = Some(immediate(now));
+        Ok(())
     }
 
     pub fn configure(&mut self, config: SyncConfig) {
@@ -163,13 +105,8 @@ impl CaptureRun {
     }
 
     fn finish_active(&mut self) -> Option<CaptureStop> {
-        let generation = match self.phase {
-            CapturePhase::Starting(generation)
-            | CapturePhase::Running(generation)
-            | CapturePhase::Paused(generation) => generation,
-            CapturePhase::Idle => return None,
-        };
-        self.phase = CapturePhase::Idle;
+        let generation = self.phase.generation()?;
+        self.phase = self.phase.transition(CaptureEvent::Stop).ok()?;
         let drove = match self.run.take() {
             Some(run) => run.drove(),
             None => Drove::default(),
@@ -226,11 +163,12 @@ mod tests {
     use std::sync::Arc;
     use std::time::{Duration, Instant};
 
-    use super::{CapturePhase, CaptureRejection, CaptureRun, Halt, TICK};
+    use super::{CaptureRun, Halt, TICK};
     use crate::bulb::model::Rgb;
     use crate::screen::capture::Capture;
     use crate::screen::monitor::{MonitorInfo, Scene};
     use crate::screen::reducer::ReducerState;
+    use crate::screen::run::{CapturePhase, CaptureRejection};
     use crate::screen::sync::SyncConfig;
 
     struct FakeCapture {
@@ -348,6 +286,24 @@ mod tests {
 
         assert_eq!(stop.generation, 7);
         assert_eq!(run.phase(), CapturePhase::Idle);
+        Ok(())
+    }
+
+    #[test]
+    fn a_rejected_command_leaves_the_phase_unchanged() -> Result<(), Box<dyn std::error::Error>> {
+        let now = Instant::now();
+        let mut run = CaptureRun::new(Arc::new(Halt::new()));
+
+        assert_eq!(run.pause(), Err(CaptureRejection::NotRunning));
+        assert_eq!(run.phase(), CapturePhase::Idle);
+        assert_eq!(run.resume(now), Err(CaptureRejection::NotPaused));
+        assert_eq!(run.phase(), CapturePhase::Idle);
+        assert!(run.stop().is_none());
+        assert_eq!(run.phase(), CapturePhase::Idle);
+
+        run.start(7, "DP-1".to_owned(), config(), now)?;
+        assert_eq!(run.pause(), Err(CaptureRejection::NotRunning));
+        assert_eq!(run.phase(), CapturePhase::Starting(7));
         Ok(())
     }
 
