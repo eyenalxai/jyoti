@@ -3,8 +3,8 @@ use std::time::{Duration, Instant};
 
 use rune::TextEdit;
 
-use crate::app::sync::restore::{RestorePlan, StopPhase};
-use crate::app::sync::run::{Controls, RunEvent, RunPhase, RunRejection};
+use crate::app::sync::restore::RestorePlan;
+use crate::app::sync::run::{Controls, RunAdvance, RunEvent, RunPhase, RunRejection};
 use crate::bulb::model::{BulbField, BulbState, Rgb};
 use crate::screen::color::rgb_to_hsb;
 use crate::screen::monitor::{MonitorInfo, Scene};
@@ -284,8 +284,6 @@ pub struct SyncState {
     pub flash_until: Option<Instant>,
     pub restore: RestorePlan,
     pub last_probe: Instant,
-    pub stop: StopPhase,
-    pub stop_seen: bool,
 }
 
 impl Default for SyncState {
@@ -306,8 +304,6 @@ impl Default for SyncState {
             flash_until: None,
             restore: RestorePlan::default(),
             last_probe: Instant::now(),
-            stop: StopPhase::Idle,
-            stop_seen: false,
         }
     }
 }
@@ -316,6 +312,10 @@ impl SyncState {
     pub fn apply(&mut self, event: RunEvent) -> Result<(), RunRejection> {
         self.status = self.status.transition(event)?;
         Ok(())
+    }
+
+    pub fn advance(&mut self, now: Instant) -> RunAdvance {
+        self.status.advance(now)
     }
 
     pub fn controls(&self) -> Controls {
@@ -350,9 +350,19 @@ mod tests {
         ColorEditor, FormMode, LocalEdits, NavDirection, Overlay, STALE_AFTER, Screen, SyncState,
         nav_direction,
     };
-    use crate::app::sync::run::RunPhase;
+    use crate::app::sync::run::{RunPhase, StopStage};
     use crate::bulb::model::{BulbState, ColorMode, Rgb};
     use crate::screen::flash::FLASH_HOLD;
+
+    fn stopping(generation: u64) -> RunPhase {
+        RunPhase::Stopping {
+            generation,
+            stage: StopStage::AwaitingCapture {
+                until: Instant::now(),
+                seen: false,
+            },
+        }
+    }
 
     #[test]
     fn a_state_read_that_started_before_an_edit_is_ignored() {
@@ -413,7 +423,7 @@ mod tests {
         state.status = RunPhase::Paused(1);
         assert!(!state.stale_at(later));
 
-        state.status = RunPhase::Stopping(1);
+        state.status = stopping(1);
         assert!(!state.stale_at(later));
     }
 

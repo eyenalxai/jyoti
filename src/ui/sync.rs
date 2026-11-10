@@ -432,7 +432,7 @@ fn padded_notice(
 fn sync_status_ink(status: &RunPhase) -> Color {
     match status {
         RunPhase::Running(_) | RunPhase::Starting(_) => theme::positive_on_plate(),
-        RunPhase::Paused(_) | RunPhase::Stopping(_) => theme::warning_on_plate(),
+        RunPhase::Paused(_) | RunPhase::Stopping { .. } => theme::warning_on_plate(),
         RunPhase::Failed { .. } => theme::danger_on_plate(),
         RunPhase::Idle => theme::quiet_on_plate(),
     }

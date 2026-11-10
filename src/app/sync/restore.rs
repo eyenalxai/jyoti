@@ -1,22 +1,10 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap};
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use crate::bulb::model::{Bulb, BulbState, ColorMode, Rgb};
 use crate::screen::sync::Drove;
 
 pub const RESTORE_WINDOW: Duration = Duration::from_millis(2_000);
-
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub enum StopPhase {
-    #[default]
-    Idle,
-    Waiting {
-        until: Instant,
-    },
-    Restoring {
-        deadline: Instant,
-    },
-}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum RestoreControl {

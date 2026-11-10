@@ -6,8 +6,8 @@ use std::time::Instant;
 
 use crate::app::App;
 use crate::app::state::{Overlay, ToastKind};
-use crate::app::sync::restore::{RESTORE_WINDOW, RestorePlan, RestoreRequest, StopPhase};
-use crate::app::sync::run::RunEvent;
+use crate::app::sync::restore::{RestorePlan, RestoreRequest};
+use crate::app::sync::run::{RunAdvance, RunEvent, StopStage};
 use crate::bulb::health::HealthSet;
 use crate::bulb::model::{Bulb, BulbState, Rgb};
 use crate::bulb::worker::{Command, WorkerHandle};
@@ -42,7 +42,6 @@ impl App {
         if self.sync.apply(RunEvent::Start(generation)).is_err() {
             return;
         }
-        self.health.begin_run();
         self.flush_pending();
         self.sync.restore.begin(&self.bulbs, &self.states);
 
@@ -51,8 +50,6 @@ impl App {
         self.sync.derived = None;
         self.sync.brightness = 0;
         self.sync.flash_until = None;
-        self.sync.stop = StopPhase::Idle;
-        self.sync.stop_seen = false;
         self.sync.capture_error = None;
         self.sync.capture_failed = false;
 
@@ -80,7 +77,6 @@ impl App {
                 generation,
                 message: message.clone(),
             });
-            self.health.end_run();
             self.notify(message, ToastKind::Error);
         }
     }
@@ -128,36 +124,43 @@ impl App {
     }
 
     pub(crate) fn stop_sync(&mut self) {
-        if self.sync.apply(RunEvent::Stop).is_err() {
+        let now = Instant::now();
+        if self.sync.apply(RunEvent::Stop(now)).is_err() {
             return;
         }
-        self.begin_restore();
+        self.request_capture_stop();
+        self.advance_sync(now);
     }
 
-    pub(crate) fn begin_restore(&mut self) {
-        self.sync.stop = StopPhase::Waiting {
-            until: Instant::now() + RESTORE_WINDOW,
+    fn request_capture_stop(&mut self) {
+        let Some(generation) = self.sync.status.generation() else {
+            return;
         };
-        self.sync.stop_seen = false;
-
-        let generation = self.sync.status.generation().unwrap_or(0);
         let sent = self.screen_handle.as_ref().is_some_and(|handle| {
             handle.halt(generation);
             handle.send(ScreenCommand::Stop)
         });
         if !sent {
-            self.sync.stop_seen = true;
-            self.start_restore();
+            let _ = self.sync.apply(RunEvent::Stopped(generation));
         }
     }
 
-    pub(crate) fn start_restore(&mut self) {
-        if !matches!(self.sync.stop, StopPhase::Waiting { .. }) {
-            return;
+    pub(crate) fn advance_sync(&mut self, now: Instant) -> bool {
+        match self.sync.advance(now) {
+            RunAdvance::Unchanged => false,
+            RunAdvance::BeginRestore { deadline } => {
+                self.dispatch_restore(deadline);
+                if self.sync.restore.is_open() {
+                    return false;
+                }
+                self.finish_restore();
+                true
+            }
+            RunAdvance::Restored => {
+                self.finish_restore();
+                true
+            }
         }
-        let deadline = Instant::now() + RESTORE_WINDOW;
-        self.sync.stop = StopPhase::Restoring { deadline };
-        self.dispatch_restore(deadline);
     }
 
     fn dispatch_restore(&mut self, deadline: Instant) {
@@ -188,21 +191,21 @@ impl App {
                 RestoreRequest::MissingValue { id } => self.sync.restore.mark_failed(&id),
             }
         }
-        if self.sync.stop_seen
-            && !self.sync.restore.is_open()
-            && matches!(self.sync.stop, StopPhase::Restoring { .. })
-        {
-            self.finish_restore();
-        }
     }
 
     pub(crate) fn finish_restore(&mut self) {
-        if self.sync.stop == StopPhase::Idle {
+        let Some(generation) = self.sync.status.generation() else {
+            return;
+        };
+        if !matches!(
+            self.sync.status.stop_stage(),
+            Some(StopStage::Restoring { .. })
+        ) {
             return;
         }
-        self.sync.stop = StopPhase::Idle;
-        let _ = self.sync.apply(RunEvent::Restored);
-        self.health.end_run();
+        if self.sync.apply(RunEvent::Restored(generation)).is_err() {
+            return;
+        }
         let report = self.sync.restore.finish();
         let kind = if report.not_restored.is_empty() {
             ToastKind::Success
@@ -262,12 +265,18 @@ impl App {
             }
             ScreenEvent::Stopped { generation, drove } => {
                 if self.sync.apply(RunEvent::Stopped(generation)).is_ok() {
-                    self.sync.stop_seen = true;
                     self.sync.restore.record(&drove);
-                    match self.sync.stop {
-                        StopPhase::Waiting { .. } => self.start_restore(),
-                        StopPhase::Restoring { deadline } => self.dispatch_restore(deadline),
-                        StopPhase::Idle => {}
+                    match self.sync.status.stop_stage() {
+                        Some(StopStage::AwaitingCapture { .. }) => {
+                            self.advance_sync(Instant::now());
+                        }
+                        Some(StopStage::Restoring { deadline }) => {
+                            self.dispatch_restore(deadline);
+                            if !self.sync.restore.is_open() {
+                                self.finish_restore();
+                            }
+                        }
+                        None => {}
                     }
                 }
             }
@@ -297,8 +306,6 @@ impl App {
                 }
                 if !failed {
                     self.sync.capture_error = Some(message.clone());
-                } else {
-                    self.health.end_run();
                 }
                 self.notify(message, ToastKind::Error);
             }
@@ -425,9 +432,8 @@ mod tests {
         restore.observe("desk", "Desk lamp", &state(true));
         restore.observe("shelf", "Shelf lamp", &state(true));
         let mut health = HealthSet::default();
-        health.begin_run();
         for message in ["one", "two", "three"] {
-            health.apply("shelf", HealthEvent::Error(message.to_owned()));
+            health.apply("shelf", HealthEvent::Error(message.to_owned()), true);
         }
 
         let targets = sync_targets(&bulbs, &states, &workers, &health, &restore);
@@ -446,8 +452,7 @@ mod tests {
         let mut restore = RestorePlan::default();
         restore.observe("desk", "Desk lamp", &state(true));
         let mut health = HealthSet::default();
-        health.apply("desk", HealthEvent::Error("no answer".to_owned()));
-        health.begin_run();
+        health.apply("desk", HealthEvent::Error("no answer".to_owned()), false);
 
         let targets = sync_targets(&bulbs, &states, &workers, &health, &restore);
 

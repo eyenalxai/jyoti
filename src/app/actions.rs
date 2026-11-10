@@ -4,7 +4,7 @@ use rune::{TextEdit, Tx};
 
 use crate::app::App;
 use crate::app::state::{Dashboard, FormMode, FormState, Screen, Toast, ToastKind};
-use crate::app::sync::restore::{RESTORE_WINDOW, StopPhase};
+use crate::app::sync::run::StopStage;
 use crate::bulb::aggregate::AggregatePower;
 use crate::bulb::health::HealthEvent;
 use crate::bulb::model::{
@@ -63,6 +63,7 @@ impl App {
             return false;
         }
         let mut reconfigure = false;
+        let in_run = self.sync.status.is_running();
         let changed = match event {
             WorkerEvent::State {
                 id,
@@ -70,7 +71,7 @@ impl App {
                 observed_at,
                 ..
             } => {
-                let health_changed = self.health.apply(&id, HealthEvent::State);
+                let health_changed = self.health.apply(&id, HealthEvent::State, in_run);
                 reconfigure |= health_changed;
                 if self.edits.accepts(&id, observed_at) {
                     let (was_on, is_on, merged) = {
@@ -91,13 +92,15 @@ impl App {
                 }
             }
             WorkerEvent::Sent { id, .. } => {
-                let changed = self.health.apply(&id, HealthEvent::Sent);
+                let changed = self.health.apply(&id, HealthEvent::Sent, in_run);
                 reconfigure = changed;
                 changed
             }
             WorkerEvent::Error { id, error, .. } => {
                 let message = error.to_string();
-                let changed = self.health.apply(&id, HealthEvent::Error(message.clone()));
+                let changed = self
+                    .health
+                    .apply(&id, HealthEvent::Error(message.clone()), in_run);
                 self.notify(message, ToastKind::Error);
                 reconfigure = changed;
                 true
@@ -105,20 +108,26 @@ impl App {
             WorkerEvent::Restored {
                 id, generation, ok, ..
             } => {
-                let current = self.sync.status.generation() == Some(generation);
+                let current = self.sync.status.generation() == Some(generation)
+                    && matches!(
+                        self.sync.status.stop_stage(),
+                        Some(StopStage::Restoring { .. })
+                    );
                 if current {
                     if ok {
-                        reconfigure |= self.health.apply(&id, HealthEvent::Sent);
+                        reconfigure |= self.health.apply(&id, HealthEvent::Sent, in_run);
                     }
                     self.sync.restore.acknowledge(&id, ok);
-                    if self.sync.stop_seen && !self.sync.restore.is_open() {
+                    if !self.sync.restore.is_open() {
                         self.finish_restore();
                     }
                 }
                 current
             }
             WorkerEvent::Reachable { id, reachable, .. } => {
-                let changed = self.health.apply(&id, HealthEvent::Reachable(reachable));
+                let changed = self
+                    .health
+                    .apply(&id, HealthEvent::Reachable(reachable), in_run);
                 reconfigure = changed;
                 changed
             }
@@ -126,7 +135,7 @@ impl App {
                 self.workers.remove(&id);
                 reconfigure = true;
                 if exit == WorkerExit::Failed {
-                    self.health.apply(&id, HealthEvent::Exited)
+                    self.health.apply(&id, HealthEvent::Exited, in_run)
                 } else {
                     false
                 }
@@ -337,7 +346,8 @@ impl App {
         };
         if handle.send(command).is_err() {
             self.workers.remove(id);
-            if self.health.apply(id, HealthEvent::Exited) {
+            let in_run = self.sync.status.is_running();
+            if self.health.apply(id, HealthEvent::Exited, in_run) {
                 self.notify(
                     format!("The connection to {name} stopped."),
                     ToastKind::Error,
@@ -627,9 +637,10 @@ impl App {
             }
         }
         let had_gone = !gone.is_empty();
+        let in_run = self.sync.status.is_running();
         for id in gone {
             self.workers.remove(&id);
-            self.health.apply(&id, HealthEvent::Exited);
+            self.health.apply(&id, HealthEvent::Exited, in_run);
         }
         if had_gone {
             self.configure_sync();
@@ -642,52 +653,13 @@ impl App {
         if self.sync.status.is_active() {
             self.stop_sync();
         }
-        if self.sync.stop != StopPhase::Idle {
-            let stop_deadline = Instant::now() + RESTORE_WINDOW;
-            loop {
-                let mut events = Vec::new();
-                if let Some(handle) = &self.screen_handle {
-                    while let Ok(event) = handle.events.try_recv() {
-                        events.push(event);
-                    }
-                }
-                for event in events {
-                    self.handle_screen_event(event);
-                }
-                if !matches!(self.sync.stop, StopPhase::Waiting { .. })
-                    || Instant::now() >= stop_deadline
-                {
-                    break;
-                }
-                std::thread::sleep(Duration::from_millis(5));
+        while self.sync.status.is_stopping() {
+            self.drain_events();
+            self.advance_sync(Instant::now());
+            if !self.sync.status.is_stopping() {
+                break;
             }
-            if matches!(self.sync.stop, StopPhase::Waiting { .. }) {
-                self.start_restore();
-            }
-            let restore_deadline = match self.sync.stop {
-                StopPhase::Restoring { deadline } => deadline,
-                StopPhase::Idle | StopPhase::Waiting { .. } => Instant::now(),
-            };
-            loop {
-                let mut events = Vec::new();
-                if let Some(handle) = &self.screen_handle {
-                    while let Ok(event) = handle.events.try_recv() {
-                        events.push(event);
-                    }
-                }
-                for event in events {
-                    self.handle_screen_event(event);
-                }
-                while let Ok(event) = self.worker_events.try_recv() {
-                    let _ = self.handle_worker_event(event);
-                }
-                let expired = Instant::now() >= restore_deadline;
-                if expired || (self.sync.stop_seen && !self.sync.restore.is_open()) {
-                    break;
-                }
-                std::thread::sleep(Duration::from_millis(20));
-            }
-            self.finish_restore();
+            std::thread::sleep(Duration::from_millis(5));
         }
         for handle in self.workers.values() {
             handle.stop();
@@ -695,6 +667,28 @@ impl App {
         self.screen_handle.take();
         self.preferences_due = None;
         self.save_preferences();
+    }
+
+    fn drain_events(&mut self) {
+        let mut events = Vec::new();
+        if let Some(handle) = &self.screen_handle {
+            while let Ok(event) = handle.events.try_recv() {
+                events.push(event);
+            }
+        }
+        for event in events {
+            self.handle_screen_event(event);
+        }
+        while let Ok(event) = self.worker_events.try_recv() {
+            let _ = self.handle_worker_event(event);
+        }
+        let latest = self
+            .screen_handle
+            .as_ref()
+            .and_then(|handle| handle.latest.lock().ok().and_then(|mut slot| slot.take()));
+        if let Some(frame) = latest {
+            self.note_sync_frame(frame);
+        }
     }
 }
 
