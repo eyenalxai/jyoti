@@ -14,15 +14,16 @@ use std::time::{Duration, Instant};
 use rune::{TextEdit, Tx, Waker};
 
 use crate::app::selected::{SelectedLight, selected_light};
-use crate::app::state::{Dashboard, LocalEdits, SyncState, Toast, ToastKind, toast_duration};
+use crate::app::state::{Dashboard, SyncState, Toast, ToastKind, toast_duration};
 use crate::app::view::{Navigation, View, nav_direction};
-use crate::bulb::health::HealthSet;
+use crate::bulb::health::HealthEvent;
 use crate::bulb::keyring::KeyringStore;
 use crate::bulb::model::{Bulb, BulbState, ColorMode, Rgb};
 use crate::bulb::registry::BulbRegistry;
+use crate::bulb::runtime::Runtimes;
 use crate::bulb::selection::{Selection, resolve_selection};
 use crate::bulb::store::{Appearance, BulbStore, PreferencesStore};
-use crate::bulb::worker::{WorkerEvent, WorkerHandle};
+use crate::bulb::worker::WorkerEvent;
 use crate::config::AppConfig;
 use crate::screen::capture::{ScreenCommand, ScreenHandle};
 
@@ -30,10 +31,7 @@ pub struct App {
     pub config: AppConfig,
     pub registry: BulbRegistry<BulbStore, KeyringStore>,
     pub preferences_store: PreferencesStore,
-    pub bulbs: Vec<Bulb>,
-    pub states: HashMap<String, BulbState>,
-    pub health: HealthSet,
-    pub edits: LocalEdits,
+    pub runtimes: Runtimes,
     pub selection: Option<Selection>,
     pub view: View,
     pub navigation: Navigation,
@@ -42,7 +40,6 @@ pub struct App {
     pub sync: SyncState,
     pub toasts: Vec<Toast>,
     pub next_toast: u64,
-    pub workers: HashMap<String, WorkerHandle>,
     pub worker_events: Receiver<WorkerEvent>,
     pub worker_sender: Sender<WorkerEvent>,
     pub screen_handle: Option<ScreenHandle>,
@@ -82,12 +79,14 @@ impl App {
                 Err(error) => (Vec::new(), Some(error.to_string())),
             }
         };
-        let states = if demo { demo_states() } else { HashMap::new() };
-        let selection = if demo {
-            Some(Selection::All)
-        } else {
-            resolve_selection(&bulbs, None)
-        };
+        let mut runtimes = Runtimes::from_bulbs(bulbs);
+        if demo {
+            for (id, state) in demo_states() {
+                runtimes.set_state(&id, state);
+                runtimes.apply_health(&id, HealthEvent::State, false);
+            }
+        }
+        let selection = resolve_selection(&runtimes.bulb_list(), None);
         let sync = SyncState {
             gain: if demo { 1.0 } else { preferences.sync_gain },
             colour_intensity: if demo {
@@ -97,14 +96,11 @@ impl App {
             },
             ..SyncState::default()
         };
-        let mut app = Self {
+        Self {
             config,
             registry,
             preferences_store,
-            bulbs,
-            states,
-            health: HealthSet::default(),
-            edits: LocalEdits::default(),
+            runtimes,
             selection,
             view: View::control(),
             navigation: Navigation::default(),
@@ -117,7 +113,6 @@ impl App {
             sync,
             toasts: Vec::new(),
             next_toast: 1,
-            workers: HashMap::new(),
             worker_events,
             worker_sender,
             screen_handle: None,
@@ -128,15 +123,7 @@ impl App {
             startup_error,
             demo,
             capture_once,
-        };
-        if demo {
-            let ids: Vec<String> = app.states.keys().cloned().collect();
-            for id in ids {
-                app.health
-                    .apply(&id, crate::bulb::health::HealthEvent::State, false);
-            }
         }
-        app
     }
 
     pub fn start(&mut self, waker: Waker) {
@@ -151,7 +138,7 @@ impl App {
         if let Some(error) = self.startup_error.as_ref() {
             self.notify(error.clone(), ToastKind::Error);
         }
-        let bulbs = self.bulbs.clone();
+        let bulbs = self.runtimes.bulb_list();
         for bulb in bulbs {
             self.spawn_worker(&bulb);
         }
@@ -263,21 +250,16 @@ impl App {
     }
 
     pub fn aggregate(&self) -> crate::bulb::aggregate::AggregateState {
-        crate::bulb::aggregate::aggregate_state(&self.bulbs, &self.states, &self.health)
+        crate::bulb::aggregate::aggregate_state(&self.runtimes)
     }
 
     pub fn selected_light(&self) -> Option<SelectedLight> {
-        selected_light(
-            &self.bulbs,
-            &self.states,
-            &self.health,
-            self.selection.as_ref(),
-        )
+        selected_light(&self.runtimes, self.selection.as_ref())
     }
 
     pub fn selected_ids(&self) -> Vec<String> {
         match &self.selection {
-            Some(Selection::All) => self.bulbs.iter().map(|bulb| bulb.id.clone()).collect(),
+            Some(Selection::All) => self.runtimes.bulbs().map(|bulb| bulb.id.clone()).collect(),
             Some(Selection::Bulb(id)) => vec![id.clone()],
             None => Vec::new(),
         }

@@ -1,11 +1,10 @@
-use std::collections::HashMap;
-
 use crate::bulb::aggregate::{
     AggregateColor, AggregatePower, LightQuality, ValueSpan, aggregate_state, light_quality_of,
     power_of_state,
 };
-use crate::bulb::health::{HealthSet, HealthStatus};
-use crate::bulb::model::{Bulb, BulbState, Rgb};
+use crate::bulb::health::HealthLevel;
+use crate::bulb::model::Rgb;
+use crate::bulb::runtime::Runtimes;
 use crate::bulb::selection::Selection;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -19,7 +18,7 @@ pub struct SelectedHealth {
     pub total: usize,
     pub reachable: usize,
     pub failed: usize,
-    pub status: Option<HealthStatus>,
+    pub status: Option<HealthLevel>,
     pub message: Option<String>,
 }
 
@@ -91,15 +90,10 @@ fn span_label<T: std::fmt::Display + PartialEq>(
     }
 }
 
-pub fn selected_light(
-    bulbs: &[Bulb],
-    states: &HashMap<String, BulbState>,
-    health: &HealthSet,
-    selection: Option<&Selection>,
-) -> Option<SelectedLight> {
+pub fn selected_light(runtimes: &Runtimes, selection: Option<&Selection>) -> Option<SelectedLight> {
     match selection {
         Some(Selection::All) => {
-            let aggregate = aggregate_state(bulbs, states, health);
+            let aggregate = aggregate_state(runtimes);
             Some(SelectedLight {
                 scope: SelectedScope::All,
                 name: "All bulbs".to_owned(),
@@ -113,23 +107,22 @@ pub fn selected_light(
                     reachable: aggregate.reachable,
                     failed: aggregate.failed,
                     status: None,
-                    message: bulbs
+                    message: runtimes
                         .iter()
-                        .find_map(|bulb| health.message(&bulb.id))
+                        .find_map(|runtime| runtime.message())
                         .map(str::to_owned),
                 },
             })
         }
         Some(Selection::Bulb(id)) => {
-            let bulb = bulbs.iter().find(|bulb| &bulb.id == id)?;
-            let state = states.get(id).cloned().unwrap_or_default();
-            let answered = states.contains_key(id);
-            let status = health.status(id);
-            let down = status.is_down();
+            let runtime = runtimes.get(id)?;
+            let state = runtime.state();
+            let status = runtime.status();
+            let down = runtime.is_unreachable();
             Some(SelectedLight {
                 scope: SelectedScope::Bulb,
-                name: bulb.name.clone(),
-                power: power_of_state(&state),
+                name: runtime.name().to_owned(),
+                power: power_of_state(state),
                 quality: light_quality_of(state.mode),
                 brightness: state.brightness.map(|value| ValueSpan {
                     low: value,
@@ -142,10 +135,10 @@ pub fn selected_light(
                 color: state.color.map(AggregateColor::Equal),
                 health: SelectedHealth {
                     total: 1,
-                    reachable: if answered && !down { 1 } else { 0 },
+                    reachable: if runtime.has_state() && !down { 1 } else { 0 },
                     failed: if down { 1 } else { 0 },
                     status: Some(status),
-                    message: health.message(id).map(str::to_owned),
+                    message: runtime.message().map(str::to_owned),
                 },
             })
         }
@@ -155,13 +148,13 @@ pub fn selected_light(
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashMap;
     use std::net::IpAddr;
 
     use super::{SelectedScope, selected_light};
     use crate::bulb::aggregate::{AggregateColor, AggregatePower, LightQuality};
-    use crate::bulb::health::{HealthEvent, HealthSet};
+    use crate::bulb::health::HealthEvent;
     use crate::bulb::model::{Bulb, BulbState, ColorMode, Rgb};
+    use crate::bulb::runtime::Runtimes;
     use crate::bulb::selection::Selection;
 
     fn bulb(id: &str, name: &str) -> Bulb {
@@ -183,27 +176,22 @@ mod tests {
         }
     }
 
-    fn pair() -> (Vec<Bulb>, HashMap<String, BulbState>) {
-        let bulbs = vec![bulb("a", "Desk"), bulb("b", "Shelf")];
+    fn pair() -> Runtimes {
+        let mut runtimes = Runtimes::from_bulbs(vec![bulb("a", "Desk"), bulb("b", "Shelf")]);
         let state = state(true, ColorMode::Temperature, 40, 3_000);
-        let states = HashMap::from([("a".to_owned(), state.clone()), ("b".to_owned(), state)]);
-        (bulbs, states)
+        runtimes.set_state("a", state.clone());
+        runtimes.set_state("b", state);
+        runtimes
     }
 
     #[test]
     fn all_bulbs_and_one_bulb_produce_the_same_view() -> Result<(), Box<dyn std::error::Error>> {
-        let (bulbs, states) = pair();
-        let health = HealthSet::default();
+        let runtimes = pair();
 
-        let all = selected_light(&bulbs, &states, &health, Some(&Selection::All))
-            .ok_or("the all view should exist")?;
-        let one = selected_light(
-            &bulbs,
-            &states,
-            &health,
-            Some(&Selection::Bulb("a".to_owned())),
-        )
-        .ok_or("the single view should exist")?;
+        let all =
+            selected_light(&runtimes, Some(&Selection::All)).ok_or("the all view should exist")?;
+        let one = selected_light(&runtimes, Some(&Selection::Bulb("a".to_owned())))
+            .ok_or("the single view should exist")?;
 
         assert_eq!(all.scope, SelectedScope::All);
         assert_eq!(one.scope, SelectedScope::Bulb);
@@ -221,15 +209,13 @@ mod tests {
 
     #[test]
     fn mixed_quality_and_colour_render_one_clear_state() -> Result<(), Box<dyn std::error::Error>> {
-        let (bulbs, mut states) = pair();
-        if let Some(shelf) = states.get_mut("b") {
-            *shelf = state(true, ColorMode::Color, 80, 4_000);
-            shelf.color = Some(Rgb::new(0, 255, 0));
-        }
-        let health = HealthSet::default();
+        let mut runtimes = pair();
+        let mut shelf = state(true, ColorMode::Color, 80, 4_000);
+        shelf.color = Some(Rgb::new(0, 255, 0));
+        runtimes.set_state("b", shelf);
 
-        let all = selected_light(&bulbs, &states, &health, Some(&Selection::All))
-            .ok_or("the all view should exist")?;
+        let all =
+            selected_light(&runtimes, Some(&Selection::All)).ok_or("the all view should exist")?;
 
         assert_eq!(all.quality, LightQuality::Mixed);
         assert_eq!(all.color, Some(AggregateColor::Mixed));
@@ -242,17 +228,10 @@ mod tests {
 
     #[test]
     fn an_unknown_state_keeps_the_control_defaults() -> Result<(), Box<dyn std::error::Error>> {
-        let bulbs = vec![bulb("a", "Desk")];
-        let states = HashMap::new();
-        let health = HealthSet::default();
+        let runtimes = Runtimes::from_bulbs(vec![bulb("a", "Desk")]);
 
-        let view = selected_light(
-            &bulbs,
-            &states,
-            &health,
-            Some(&Selection::Bulb("a".to_owned())),
-        )
-        .ok_or("the single view should exist")?;
+        let view = selected_light(&runtimes, Some(&Selection::Bulb("a".to_owned())))
+            .ok_or("the single view should exist")?;
 
         assert_eq!(view.power, AggregatePower::Unknown);
         assert_eq!(view.quality, LightQuality::Unknown);
@@ -272,12 +251,10 @@ mod tests {
 
     #[test]
     fn an_unknown_all_view_matches_the_one_view() -> Result<(), Box<dyn std::error::Error>> {
-        let bulbs = vec![bulb("a", "Desk"), bulb("b", "Shelf")];
-        let states = HashMap::new();
-        let health = HealthSet::default();
+        let runtimes = Runtimes::from_bulbs(vec![bulb("a", "Desk"), bulb("b", "Shelf")]);
 
-        let all = selected_light(&bulbs, &states, &health, Some(&Selection::All))
-            .ok_or("the all view should exist")?;
+        let all =
+            selected_light(&runtimes, Some(&Selection::All)).ok_or("the all view should exist")?;
 
         assert_eq!(all.power, AggregatePower::Unknown);
         assert_eq!(all.quality, LightQuality::Unknown);
@@ -294,29 +271,20 @@ mod tests {
 
     #[test]
     fn the_view_reports_one_unreachable_count() -> Result<(), Box<dyn std::error::Error>> {
-        let bulbs = vec![bulb("a", "Desk"), bulb("b", "Shelf"), bulb("c", "Ceiling")];
-        let mut states = HashMap::new();
-        states.insert(
-            "a".to_owned(),
-            state(true, ColorMode::Temperature, 40, 3_000),
-        );
-        states.insert(
-            "c".to_owned(),
-            state(true, ColorMode::Temperature, 40, 3_000),
-        );
-        let mut health = HealthSet::default();
-        health.apply("b", HealthEvent::Error("no answer".to_owned()), false);
-        health.apply("c", HealthEvent::Error("no answer".to_owned()), false);
+        let mut runtimes = Runtimes::from_bulbs(vec![
+            bulb("a", "Desk"),
+            bulb("b", "Shelf"),
+            bulb("c", "Ceiling"),
+        ]);
+        runtimes.set_state("a", state(true, ColorMode::Temperature, 40, 3_000));
+        runtimes.set_state("c", state(true, ColorMode::Temperature, 40, 3_000));
+        runtimes.apply_health("b", HealthEvent::Error("no answer".to_owned()), false);
+        runtimes.apply_health("c", HealthEvent::Error("no answer".to_owned()), false);
 
-        let all = selected_light(&bulbs, &states, &health, Some(&Selection::All))
-            .ok_or("the all view should exist")?;
-        let shelf = selected_light(
-            &bulbs,
-            &states,
-            &health,
-            Some(&Selection::Bulb("b".to_owned())),
-        )
-        .ok_or("the single view should exist")?;
+        let all =
+            selected_light(&runtimes, Some(&Selection::All)).ok_or("the all view should exist")?;
+        let shelf = selected_light(&runtimes, Some(&Selection::Bulb("b".to_owned())))
+            .ok_or("the single view should exist")?;
 
         assert_eq!(all.health.total, 3);
         assert_eq!(all.health.reachable, 1);
@@ -331,18 +299,9 @@ mod tests {
 
     #[test]
     fn a_missing_selection_has_no_view() {
-        let (bulbs, states) = pair();
-        let health = HealthSet::default();
+        let runtimes = pair();
 
-        assert!(selected_light(&bulbs, &states, &health, None).is_none());
-        assert!(
-            selected_light(
-                &bulbs,
-                &states,
-                &health,
-                Some(&Selection::Bulb("missing".to_owned()))
-            )
-            .is_none()
-        );
+        assert!(selected_light(&runtimes, None).is_none());
+        assert!(selected_light(&runtimes, Some(&Selection::Bulb("missing".to_owned()))).is_none());
     }
 }
