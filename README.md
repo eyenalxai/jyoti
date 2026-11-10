@@ -106,7 +106,9 @@ cargo run -- --demo --scene dashboard --snap dashboard.png
   message. Legacy `secret-tool` entries are read and migrated on first use.
 - Both files are written atomically with mode `0600`.
 - Overrides: `JYOTI_CONFIG_PATH`, `JYOTI_KEYRING_SERVICE`, `JYOTI_MIIO_PORT`,
-  `JYOTI_MIIO_TIMEOUT`.
+  `JYOTI_MIIO_TIMEOUT`. The timeout accepts milliseconds, seconds or bare
+  seconds; finite values are capped at 60 s, and a malformed value falls back
+  to 4 s.
 
 ## Screen sync
 
