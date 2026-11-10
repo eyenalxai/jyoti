@@ -67,8 +67,9 @@ const SCENES: &[(&str, SceneFn)] = &[
     ("color-control", |app| {
         app.show_now(View::control());
         for runtime in app.runtimes.iter_mut() {
-            runtime.state_mut().mode = crate::bulb::model::ColorMode::Color;
-            runtime.state_mut().color = Some(Rgb::new(255, 96, 96));
+            let state = runtime.state_mut();
+            state.mode = crate::bulb::model::ColorMode::Color;
+            state.color = Some(Rgb::new(255, 96, 96));
         }
     }),
     ("remove", |app| {

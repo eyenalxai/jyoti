@@ -2,7 +2,7 @@ use crate::bulb::aggregate::{
     AggregateColor, AggregatePower, LightQuality, ValueSpan, aggregate_state, light_quality_of,
     power_of_state,
 };
-use crate::bulb::health::HealthStatus;
+use crate::bulb::health::HealthLevel;
 use crate::bulb::model::Rgb;
 use crate::bulb::runtime::Runtimes;
 use crate::bulb::selection::Selection;
@@ -18,7 +18,7 @@ pub struct SelectedHealth {
     pub total: usize,
     pub reachable: usize,
     pub failed: usize,
-    pub status: Option<HealthStatus>,
+    pub status: Option<HealthLevel>,
     pub message: Option<String>,
 }
 

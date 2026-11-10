@@ -10,7 +10,7 @@ use crate::app::App;
 use crate::app::selected::{SelectedLight, selected_light};
 use crate::app::view::Overlay;
 use crate::bulb::aggregate::{AggregatePower, LightQuality, power_of_state};
-use crate::bulb::health::HealthStatus;
+use crate::bulb::health::HealthLevel;
 use crate::bulb::model::{
     Rgb, TEMPERATURE_MAX, TEMPERATURE_MIN, brightness_from_fraction, fraction_of_brightness,
     fraction_of_temperature, temperature_from_fraction,
@@ -99,7 +99,7 @@ fn picker_row(app: &App, k: &Kit, layers: &mut Vec<El>, view: &SelectedLight) ->
         };
         let power = if let Some(word) = health_word(health) {
             word
-        } else if health == HealthStatus::Connecting {
+        } else if health == HealthLevel::Connecting {
             "Connecting"
         } else {
             match state.power {
@@ -547,7 +547,7 @@ fn colour_block(
     dim_when(trigger_row, disabled)
 }
 
-pub(super) fn health_word(status: HealthStatus) -> Option<&'static str> {
+pub(super) fn health_word(status: HealthLevel) -> Option<&'static str> {
     status.is_down().then_some("Unreachable")
 }
 

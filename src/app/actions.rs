@@ -32,6 +32,7 @@ impl App {
     }
 
     pub(crate) fn spawn_worker(&mut self, bulb: &Bulb) {
+        self.runtimes.drop_worker(&bulb.id);
         let Some(waker) = self.waker.clone() else {
             return;
         };

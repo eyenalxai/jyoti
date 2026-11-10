@@ -1,6 +1,6 @@
 use std::time::Instant;
 
-use crate::bulb::health::{HealthEvent, HealthState, HealthStatus, advance_health, end_run_health};
+use crate::bulb::health::{Health, HealthEvent, HealthLevel};
 use crate::bulb::model::{Bulb, BulbState};
 use crate::bulb::worker::{WorkerEvent, WorkerHandle};
 
@@ -9,8 +9,7 @@ pub struct BulbRuntime {
     bulb: Bulb,
     state: BulbState,
     seen: bool,
-    health: HealthState,
-    run_failures: u8,
+    health: Health,
     edited_at: Option<Instant>,
     worker: Option<WorkerHandle>,
 }
@@ -21,8 +20,7 @@ impl BulbRuntime {
             bulb,
             state: BulbState::default(),
             seen: false,
-            health: HealthState::default(),
-            run_failures: 0,
+            health: Health::default(),
             edited_at: None,
             worker: None,
         }
@@ -44,6 +42,9 @@ impl BulbRuntime {
         &self.state
     }
 
+    /// The state for a local control change. The edited values count as a known
+    /// state even before the worker reports, so the deck does not fall back to
+    /// the unknown placeholder after the user moves a slider.
     pub fn state_mut(&mut self) -> &mut BulbState {
         self.seen = true;
         &mut self.state
@@ -53,8 +54,8 @@ impl BulbRuntime {
         self.seen
     }
 
-    pub fn status(&self) -> HealthStatus {
-        self.health.status()
+    pub fn status(&self) -> HealthLevel {
+        self.health.level()
     }
 
     pub fn message(&self) -> Option<&str> {
@@ -74,11 +75,7 @@ impl BulbRuntime {
     }
 
     pub fn touch(&mut self) {
-        self.touch_at(Instant::now());
-    }
-
-    fn touch_at(&mut self, at: Instant) {
-        self.edited_at = Some(at);
+        self.edited_at = Some(Instant::now());
     }
 
     pub fn accepts_read_at(&self, observed_at: Instant) -> bool {
@@ -87,17 +84,15 @@ impl BulbRuntime {
     }
 
     fn apply_health(&mut self, event: HealthEvent, in_run: bool) -> bool {
-        advance_health(&mut self.health, &mut self.run_failures, event, in_run)
+        self.health.advance(event, in_run)
     }
 
     fn end_run(&mut self) {
-        self.run_failures = 0;
-        end_run_health(&mut self.health);
+        self.health.end_run();
     }
 
     fn begin_run(&mut self) {
-        self.run_failures = 0;
-        self.health.clear_run_mark();
+        self.health.begin_run();
     }
 
     fn merge_state(&mut self, patch: &BulbState, observed_at: Instant) -> Option<StateUpdate> {
@@ -118,8 +113,7 @@ impl BulbRuntime {
         if let Some(previous) = self.worker.replace(handle) {
             previous.stop();
         }
-        self.health = HealthState::default();
-        self.run_failures = 0;
+        self.health = Health::default();
     }
 
     fn drop_worker(&mut self) -> bool {
@@ -196,23 +190,11 @@ impl Runtimes {
     }
 
     pub fn add(&mut self, bulb: Bulb) {
-        match self
-            .records
-            .iter()
-            .position(|runtime| runtime.id() == bulb.id)
-        {
-            Some(index) => {
-                let mut runtime = BulbRuntime::new(bulb);
-                if let Some(previous) = self.records.get(index) {
-                    runtime.state = previous.state.clone();
-                    runtime.seen = previous.seen;
-                }
-                if let Some(previous) = self.records.get_mut(index) {
-                    *previous = runtime;
-                }
-            }
-            None => self.records.push(BulbRuntime::new(bulb)),
+        if let Some(runtime) = self.get_mut(&bulb.id) {
+            runtime.bulb = bulb;
+            return;
         }
+        self.records.push(BulbRuntime::new(bulb));
     }
 
     pub fn update_bulb(&mut self, bulb: Bulb) {
@@ -346,7 +328,7 @@ mod tests {
     use std::time::{Duration, Instant};
 
     use super::Runtimes;
-    use crate::bulb::health::{HealthEvent, HealthStatus};
+    use crate::bulb::health::{HealthEvent, HealthLevel};
     use crate::bulb::model::{Bulb, BulbState, ColorMode, Rgb};
     use crate::bulb::worker::{Command, WorkerEvent, test_handle};
 
@@ -380,7 +362,7 @@ mod tests {
             .ok_or("the configured bulb has a record")?;
         assert_eq!(runtime.bulb().name, "Desk lamp");
         assert!(!runtime.has_state());
-        assert_eq!(runtime.status(), HealthStatus::Connecting);
+        assert_eq!(runtime.status(), HealthLevel::Connecting);
         assert!(runtime.worker().is_none());
         assert!(runtime.accepts_read_at(observed));
 
@@ -405,7 +387,7 @@ mod tests {
         let runtime = runtimes
             .get("desk")
             .ok_or("the configured bulb has a record")?;
-        assert_eq!(runtime.status(), HealthStatus::Unreachable);
+        assert_eq!(runtime.status(), HealthLevel::Unreachable);
         assert_eq!(runtime.message(), Some("no answer"));
 
         let (commands, _inbox) = channel();
@@ -451,7 +433,7 @@ mod tests {
         assert!(runtimes.get("ceiling").is_some());
         let desk = runtimes.get("desk").ok_or("the kept bulb has a record")?;
         assert!(desk.has_state());
-        assert_eq!(desk.status(), HealthStatus::Connecting);
+        assert_eq!(desk.status(), HealthLevel::Connecting);
         assert!(desk.worker().is_none());
         assert!(desk.accepts_read_at(observed));
         Ok(())
@@ -524,6 +506,75 @@ mod tests {
             .ok_or("the configured bulb has a record")?;
         assert!(runtime.is_unreachable());
         assert!(!runtime.is_run_unreachable());
+        Ok(())
+    }
+
+    #[test]
+    fn a_new_worker_resets_a_failed_health() -> Result<(), Box<dyn std::error::Error>> {
+        let mut runtimes = Runtimes::from_bulbs(vec![bulb("desk", "Desk lamp")]);
+        runtimes.apply_health("desk", HealthEvent::Exited, false);
+        let runtime = runtimes
+            .get("desk")
+            .ok_or("the configured bulb has a record")?;
+        assert_eq!(runtime.status(), HealthLevel::Failed);
+        assert!(runtime.message().is_some());
+
+        let (commands, _inbox) = channel();
+        assert!(runtimes.set_worker("desk", test_handle(commands)));
+
+        let runtime = runtimes
+            .get("desk")
+            .ok_or("the configured bulb has a record")?;
+        assert_eq!(runtime.status(), HealthLevel::Connecting);
+        assert_eq!(runtime.message(), None);
+        Ok(())
+    }
+
+    #[test]
+    fn unreachable_ids_lists_standing_and_run_failures_in_id_order() {
+        let mut runtimes =
+            Runtimes::from_bulbs(vec![bulb("desk", "Desk lamp"), bulb("shelf", "Shelf lamp")]);
+        assert!(runtimes.unreachable_ids().is_empty());
+
+        runtimes.apply_health("desk", HealthEvent::Error("one".into()), true);
+        assert!(runtimes.unreachable_ids().is_empty());
+
+        runtimes.apply_health("shelf", HealthEvent::Error("no answer".into()), false);
+        for message in ["one", "two", "three"] {
+            runtimes.apply_health("desk", HealthEvent::Error(message.into()), true);
+        }
+
+        assert_eq!(
+            runtimes.unreachable_ids(),
+            vec!["desk".to_owned(), "shelf".to_owned()]
+        );
+    }
+
+    #[test]
+    fn adding_an_existing_id_updates_metadata_and_keeps_the_live_record()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let mut runtimes = Runtimes::from_bulbs(vec![bulb("desk", "Desk lamp")]);
+        assert!(
+            runtimes
+                .merge_state("desk", &state(), Instant::now())
+                .is_some()
+        );
+        let (commands, inbox) = channel();
+        assert!(runtimes.set_worker("desk", test_handle(commands)));
+        runtimes.apply_health("desk", HealthEvent::Error("no answer".into()), false);
+
+        runtimes.add(bulb("desk", "Renamed lamp"));
+
+        assert_eq!(runtimes.len(), 1);
+        let runtime = runtimes
+            .get("desk")
+            .ok_or("the configured bulb has a record")?;
+        assert_eq!(runtime.name(), "Renamed lamp");
+        assert!(runtime.has_state());
+        assert_eq!(runtime.status(), HealthLevel::Unreachable);
+        assert_eq!(runtime.message(), Some("no answer"));
+        assert!(runtime.worker().is_some());
+        assert!(inbox.try_recv().is_err());
         Ok(())
     }
 }
