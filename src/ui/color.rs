@@ -4,7 +4,7 @@ use rune::{Color, El, Tx, col, row, text};
 use rune_kit::{Button, ButtonVariant, ControlSize, Kit, TextInput};
 
 use crate::app::App;
-use crate::app::state::ColorSession;
+use crate::app::view::ColorSession;
 use crate::screen::color::{Hsb, hsb_to_rgb};
 use crate::ui::theme;
 use crate::ui::widget::{ALERT, SliderSpec, gradient_slider, hairline, notice, rgb_color};
@@ -17,7 +17,7 @@ pub fn popover(session: &ColorSession, k: &Kit) -> El {
         .label("Hex colour")
         .placeholder("#FF8A00")
         .width(None)
-        .on_edit(|app: &mut App| app.color.hex_mut())
+        .on_edit(|app: &mut App| app.color_hex_mut())
         .on_submit(|app: &mut App, tx: &mut Tx| {
             app.update_color_from_hex();
             tx.wake_after(Duration::from_millis(160));

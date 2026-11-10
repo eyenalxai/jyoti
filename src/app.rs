@@ -4,18 +4,17 @@ pub(crate) mod selected;
 mod selection;
 pub(crate) mod state;
 pub(crate) mod sync;
+pub(crate) mod view;
 
 use std::collections::HashMap;
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::time::{Duration, Instant};
 
-use rune::{Tx, Waker};
+use rune::{TextEdit, Tx, Waker};
 
 use crate::app::selected::{SelectedLight, selected_light};
-use crate::app::state::{
-    ColorEditor, Dashboard, FormState, LocalEdits, Navigation, Overlay, Screen, SyncState, Toast,
-    ToastKind, nav_direction, toast_duration,
-};
+use crate::app::state::{Dashboard, LocalEdits, SyncState, Toast, ToastKind, toast_duration};
+use crate::app::view::{Navigation, View, nav_direction};
 use crate::bulb::health::HealthSet;
 use crate::bulb::keyring::KeyringStore;
 use crate::bulb::model::{Bulb, BulbState, ColorMode, Rgb};
@@ -35,12 +34,10 @@ pub struct App {
     pub health: HealthSet,
     pub edits: LocalEdits,
     pub selection: Option<Selection>,
-    pub screen: Screen,
+    pub view: View,
     pub navigation: Navigation,
     pub appearance: Appearance,
     pub dashboard: Dashboard,
-    pub form: FormState,
-    pub color: ColorEditor,
     pub sync: SyncState,
     pub toasts: Vec<Toast>,
     pub next_toast: u64,
@@ -50,7 +47,9 @@ pub struct App {
     pub screen_handle: Option<ScreenHandle>,
     pub waker: Option<Waker>,
     pub preferences_due: Option<Instant>,
-    pub overlay: Overlay,
+    // The text inputs bind to a `&mut TextEdit`; off their view a shared
+    // scratch buffer serves the binding.
+    pub empty_edit: TextEdit,
     pub started: bool,
     pub startup_error: Option<String>,
     pub demo: bool,
@@ -106,7 +105,7 @@ impl App {
             health: HealthSet::default(),
             edits: LocalEdits::default(),
             selection,
-            screen: Screen::Dashboard,
+            view: View::control(),
             navigation: Navigation::default(),
             appearance: if demo {
                 Appearance::System
@@ -114,8 +113,6 @@ impl App {
                 preferences.appearance
             },
             dashboard: Dashboard::default(),
-            form: FormState::default(),
-            color: ColorEditor::default(),
             sync,
             toasts: Vec::new(),
             next_toast: 1,
@@ -125,7 +122,7 @@ impl App {
             screen_handle: None,
             waker: None,
             preferences_due: None,
-            overlay: Overlay::None,
+            empty_edit: TextEdit::new(""),
             started: false,
             startup_error,
             demo,
@@ -190,13 +187,13 @@ impl App {
         }
 
         let now = Instant::now();
-        if let Some((screen, due)) = self.navigation.pending.take() {
+        if let Some((view, due)) = self.navigation.pending.take() {
             if now >= due {
-                self.screen = screen;
+                self.apply_view(view);
                 self.navigation.entering_until = Some(now + Duration::from_millis(16));
                 changed = true;
             } else {
-                self.navigation.pending = Some((screen, due));
+                self.navigation.pending = Some((view, due));
                 tx.wake_after(due - now);
                 changed = true;
             }
@@ -247,7 +244,7 @@ impl App {
                 self.sync.last_probe = now;
             }
             tx.wake_after(Duration::from_secs(1));
-            if self.screen == Screen::Sync {
+            if matches!(self.view, View::Sync(_)) {
                 changed = true;
             }
         }
@@ -285,21 +282,39 @@ impl App {
         }
     }
 
-    pub(crate) fn show_now(&mut self, screen: Screen) {
+    pub(crate) fn show_now(&mut self, view: View) {
         self.navigation.pending = None;
         self.navigation.entering_until = None;
-        self.screen = screen;
+        self.apply_view(view);
     }
 
-    pub(crate) fn set_screen(&mut self, screen: Screen) {
-        self.navigation.direction = nav_direction(&self.screen, &screen);
-        if screen == self.screen {
+    pub(crate) fn show_pending(&mut self) {
+        self.navigation.entering_until = None;
+        if let Some((view, _)) = self.navigation.pending.take() {
+            self.apply_view(view);
+        }
+    }
+
+    fn apply_view(&mut self, view: View) {
+        self.cancel_color();
+        self.view.close_transients();
+        self.view.navigate(view);
+    }
+
+    /// The one navigation transition. The Control overlay, colour editor and
+    /// Sync overlay close before the destination renders; the editor reverts
+    /// to its pre-open values.
+    pub(crate) fn navigate(&mut self, next: View) {
+        self.cancel_color();
+        self.view.close_transients();
+        if self.view.same_place(&next) {
+            self.apply_view(next);
             self.navigation.pending = None;
+            self.navigation.entering_until = None;
             return;
         }
-        // Let the screen being left render once with the new direction, so its
-        // exit uses that direction rather than the one it entered with.
-        self.navigation.pending = Some((screen, Instant::now() + Duration::from_millis(16)));
+        self.navigation.direction = nav_direction(&self.view, &next);
+        self.navigation.pending = Some((next, Instant::now() + Duration::from_millis(16)));
         if let Some(waker) = &self.waker {
             waker();
         }

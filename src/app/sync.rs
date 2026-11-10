@@ -5,9 +5,10 @@ use std::collections::HashMap;
 use std::time::Instant;
 
 use crate::app::App;
-use crate::app::state::{Overlay, ToastKind};
+use crate::app::state::ToastKind;
 use crate::app::sync::restore::{RestorePlan, RestoreRequest};
 use crate::app::sync::run::{RunAdvance, RunEvent, StopStage};
+use crate::app::view::Overlay;
 use crate::bulb::health::HealthSet;
 use crate::bulb::model::{Bulb, BulbState, Rgb};
 use crate::bulb::worker::{Command, WorkerHandle};

@@ -3,8 +3,8 @@ use rune_kit::Kit;
 use rune_kit::shell::{Page, Toolbar};
 
 use crate::app::App;
-use crate::app::state::{NavDirection, Screen};
 use crate::app::sync::run::RunPhase;
+use crate::app::view::{NavDirection, View};
 use crate::ui::theme;
 use crate::ui::widget::{FLAME, PAGE_PAD, dot, sync_status_tone};
 
@@ -22,7 +22,7 @@ pub fn view(app: &App, cx: &mut rune::Cx<App>, k: &Kit, main: El) -> El {
     };
     let entering = app.navigation.pending.is_some() || app.navigation.entering_until.is_some();
     let mut screen = col()
-        .key(format!("screen-{}", app.screen.element_key()))
+        .key(format!("screen-{}", app.view.element_key()))
         .w_full()
         .grow(1.0)
         .min_h(0.0)
@@ -92,10 +92,10 @@ fn sync_status(app: &App, k: &Kit) -> Option<El> {
 }
 
 fn nav(app: &App, k: &Kit) -> El {
-    let selected = match &app.screen {
-        Screen::Dashboard | Screen::Form(_) | Screen::Remove(_) => Some(0),
-        Screen::Sync => Some(1),
-        Screen::Settings => Some(2),
+    let selected = match &app.view {
+        View::Control(_) | View::Form { .. } | View::Remove(_) => Some(0),
+        View::Sync(_) => Some(1),
+        View::Settings => Some(2),
     };
     let labels = ["Control", "Sync", "Settings"];
     let mut tabs = row()
