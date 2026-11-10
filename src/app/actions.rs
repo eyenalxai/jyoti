@@ -682,13 +682,6 @@ impl App {
         while let Ok(event) = self.worker_events.try_recv() {
             let _ = self.handle_worker_event(event);
         }
-        let latest = self
-            .screen_handle
-            .as_ref()
-            .and_then(|handle| handle.latest.lock().ok().and_then(|mut slot| slot.take()));
-        if let Some(frame) = latest {
-            self.note_sync_frame(frame);
-        }
     }
 }
 

@@ -42,6 +42,7 @@ impl App {
         if self.sync.apply(RunEvent::Start(generation)).is_err() {
             return;
         }
+        self.health.begin_run();
         self.flush_pending();
         self.sync.restore.begin(&self.bulbs, &self.states);
 
@@ -77,6 +78,7 @@ impl App {
                 generation,
                 message: message.clone(),
             });
+            self.health.end_run();
             self.notify(message, ToastKind::Error);
         }
     }
@@ -125,7 +127,7 @@ impl App {
 
     pub(crate) fn stop_sync(&mut self) {
         let now = Instant::now();
-        if self.sync.apply(RunEvent::Stop(now)).is_err() {
+        if self.sync.apply(RunEvent::Stop).is_err() {
             return;
         }
         self.request_capture_stop();
@@ -146,20 +148,23 @@ impl App {
     }
 
     pub(crate) fn advance_sync(&mut self, now: Instant) -> bool {
-        match self.sync.advance(now) {
+        match self.sync.status.advance(now) {
             RunAdvance::Unchanged => false,
             RunAdvance::BeginRestore { deadline } => {
-                self.dispatch_restore(deadline);
-                if self.sync.restore.is_open() {
-                    return false;
-                }
+                self.dispatch_or_finish(deadline);
+                true
+            }
+            RunAdvance::RestoreDue => {
                 self.finish_restore();
                 true
             }
-            RunAdvance::Restored => {
-                self.finish_restore();
-                true
-            }
+        }
+    }
+
+    fn dispatch_or_finish(&mut self, deadline: Instant) {
+        self.dispatch_restore(deadline);
+        if !self.sync.restore.is_open() {
+            self.finish_restore();
         }
     }
 
@@ -197,15 +202,10 @@ impl App {
         let Some(generation) = self.sync.status.generation() else {
             return;
         };
-        if !matches!(
-            self.sync.status.stop_stage(),
-            Some(StopStage::Restoring { .. })
-        ) {
-            return;
-        }
         if self.sync.apply(RunEvent::Restored(generation)).is_err() {
             return;
         }
+        self.health.end_run();
         let report = self.sync.restore.finish();
         let kind = if report.not_restored.is_empty() {
             ToastKind::Success
@@ -271,10 +271,7 @@ impl App {
                             self.advance_sync(Instant::now());
                         }
                         Some(StopStage::Restoring { deadline }) => {
-                            self.dispatch_restore(deadline);
-                            if !self.sync.restore.is_open() {
-                                self.finish_restore();
-                            }
+                            self.dispatch_or_finish(deadline);
                         }
                         None => {}
                     }
@@ -304,7 +301,9 @@ impl App {
                 {
                     failed = true;
                 }
-                if !failed {
+                if failed {
+                    self.health.end_run();
+                } else {
                     self.sync.capture_error = Some(message.clone());
                 }
                 self.notify(message, ToastKind::Error);

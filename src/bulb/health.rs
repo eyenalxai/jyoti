@@ -44,13 +44,6 @@ struct Record {
 impl Record {
     fn apply(&mut self, event: HealthEvent, in_run: bool) -> bool {
         let was = (self.status(), self.message.clone());
-        if !in_run {
-            self.run_unreachable = false;
-            self.run_failures = 0;
-            if !self.unreachable && !self.exited {
-                self.message = None;
-            }
-        }
         match event {
             HealthEvent::State | HealthEvent::Sent | HealthEvent::Reachable(true) => {
                 self.answered = true;
@@ -96,6 +89,19 @@ impl Record {
             HealthStatus::Connecting
         }
     }
+
+    fn begin_run(&mut self) {
+        self.run_unreachable = false;
+        self.run_failures = 0;
+    }
+
+    fn end_run(&mut self) {
+        self.run_unreachable = false;
+        self.run_failures = 0;
+        if !self.unreachable && !self.exited {
+            self.message = None;
+        }
+    }
 }
 
 #[derive(Default)]
@@ -109,6 +115,18 @@ impl HealthSet {
             .entry(id.to_owned())
             .or_default()
             .apply(event, in_run)
+    }
+
+    pub fn begin_run(&mut self) {
+        for record in self.records.values_mut() {
+            record.begin_run();
+        }
+    }
+
+    pub fn end_run(&mut self) {
+        for record in self.records.values_mut() {
+            record.end_run();
+        }
     }
 
     pub fn remove(&mut self, id: &str) {
@@ -187,6 +205,7 @@ mod tests {
     #[test]
     fn a_run_failure_stays_visible_after_the_run_ends() {
         let mut health = HealthSet::default();
+        health.begin_run();
 
         health.apply("desk", error("one"), true);
         health.apply("desk", error("two"), true);
@@ -198,7 +217,7 @@ mod tests {
         assert!(health.run_unreachable("desk"));
         assert_eq!(health.unreachable_ids().len(), 1);
 
-        health.apply("desk", HealthEvent::Reachable(false), false);
+        health.end_run();
         assert!(health.unreachable("desk"));
         assert!(!health.run_unreachable("desk"));
         assert_eq!(health.unreachable_ids().len(), 1);
@@ -209,9 +228,10 @@ mod tests {
     #[test]
     fn a_failed_probe_stays_visible_after_the_run_ends() {
         let mut health = HealthSet::default();
+        health.begin_run();
 
         health.apply("desk", HealthEvent::Reachable(false), true);
-        health.apply("desk", HealthEvent::Reachable(false), false);
+        health.end_run();
 
         assert!(health.unreachable("desk"));
         assert!(!health.run_unreachable("desk"));
@@ -226,12 +246,13 @@ mod tests {
         assert!(health.unreachable("desk"));
         assert!(!health.run_unreachable("desk"));
 
+        health.begin_run();
         health.apply("desk", error("one"), true);
         health.apply("desk", error("two"), true);
         health.apply("desk", error("three"), true);
         assert!(health.run_unreachable("desk"));
 
-        health.apply("desk", HealthEvent::Reachable(false), false);
+        health.end_run();
         assert!(health.unreachable("desk"));
         assert!(!health.run_unreachable("desk"));
         assert!(health.message("desk").is_some());
@@ -242,8 +263,9 @@ mod tests {
         let mut health = HealthSet::default();
         health.apply("desk", error("no answer"), false);
 
+        health.begin_run();
         health.apply("desk", HealthEvent::State, true);
-        health.apply("desk", HealthEvent::Sent, false);
+        health.end_run();
 
         assert_eq!(health.status("desk"), HealthStatus::Online);
         assert!(health.unreachable_ids().is_empty());
@@ -253,12 +275,14 @@ mod tests {
     #[test]
     fn a_recovered_bulb_leaves_the_run_count() {
         let mut health = HealthSet::default();
+        health.begin_run();
         for message in ["one", "two", "three"] {
             health.apply("desk", error(message), true);
         }
         assert_eq!(health.unreachable_ids().len(), 1);
 
         health.apply("desk", HealthEvent::Sent, true);
+        health.end_run();
 
         assert!(!health.unreachable("desk"));
         assert!(health.unreachable_ids().is_empty());
@@ -275,7 +299,7 @@ mod tests {
         assert!(!health.apply("desk", HealthEvent::Exited, false));
         assert_eq!(health.unreachable_ids().len(), 1);
 
-        health.apply("desk", HealthEvent::Reachable(false), false);
+        health.end_run();
         assert_eq!(health.unreachable_ids().len(), 1);
         assert!(health.message("desk").is_some());
     }

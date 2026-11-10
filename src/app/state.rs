@@ -4,7 +4,7 @@ use std::time::{Duration, Instant};
 use rune::TextEdit;
 
 use crate::app::sync::restore::RestorePlan;
-use crate::app::sync::run::{Controls, RunAdvance, RunEvent, RunPhase, RunRejection};
+use crate::app::sync::run::{Controls, RunEvent, RunPhase, RunRejection};
 use crate::bulb::model::{BulbField, BulbState, Rgb};
 use crate::screen::color::rgb_to_hsb;
 use crate::screen::monitor::{MonitorInfo, Scene};
@@ -314,10 +314,6 @@ impl SyncState {
         Ok(())
     }
 
-    pub fn advance(&mut self, now: Instant) -> RunAdvance {
-        self.status.advance(now)
-    }
-
     pub fn controls(&self) -> Controls {
         self.status.controls()
     }
@@ -358,7 +354,7 @@ mod tests {
         RunPhase::Stopping {
             generation,
             stage: StopStage::AwaitingCapture {
-                until: Instant::now(),
+                until: Some(Instant::now()),
                 seen: false,
             },
         }
